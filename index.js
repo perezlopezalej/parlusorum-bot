@@ -27,6 +27,15 @@ client.on('connected', (addr, port) => {
   timers.start(client, config);
 });
 
+// Reconexión automática
+client.on('disconnected', (reason) => {
+  console.log(`❌ Bot desconectado: ${reason}`);
+  console.log('🔄 Reconectando en 5 segundos...');
+  setTimeout(() => {
+    client.connect().catch(console.error);
+  }, 5000);
+});
+
 // Escuchar mensajes del chat
 client.on('message', async (channel, tags, message, self) => {
   if (self) return; // Ignorar mensajes del propio bot
@@ -40,6 +49,9 @@ client.on('message', async (channel, tags, message, self) => {
 
   // Detector de hype
   ai.detectHype(client, channel, msg, config);
+
+  // Comprobar respuestas de trivia (cualquier mensaje)
+  games.checkTriviaAnswer(client, channel, tags, msg);
 
   // Si no empieza por ! no es un comando
   if (!msg.startsWith(process.env.PREFIX)) return;
@@ -64,11 +76,11 @@ client.on('message', async (channel, tags, message, self) => {
     return ai.handlePersonality(client, channel, tags, command);
   }
 
-  // Comandos generales
+  // Comandos generales (incluye !puntos, !top10, !uptime, !x2, etc.)
   commands.handle(client, channel, tags, command, args, config, isMod || isBroadcaster);
 });
 
-// Alertas de nuevos seguidores (requiere autorización del streamer)
+// Alertas de subs y raids
 client.on('subscription', (channel, username, method, message, tags) => {
   alerts.onSub(client, channel, username);
 });
@@ -76,5 +88,3 @@ client.on('subscription', (channel, username, method, message, tags) => {
 client.on('raided', (channel, username, viewers) => {
   alerts.onRaid(client, channel, username, viewers);
 });
-
-module.exports = client;

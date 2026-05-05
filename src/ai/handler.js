@@ -4,6 +4,22 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY
 });
 
+// --- Límite de caracteres de Twitch ---
+const TWITCH_MAX_LENGTH = 490;
+
+function truncate(msg) {
+  if (msg.length <= TWITCH_MAX_LENGTH) return msg;
+  return msg.slice(0, TWITCH_MAX_LENGTH - 3) + '...';
+}
+
+// --- Sanitizar input del usuario ---
+function sanitizeInput(text) {
+  return text
+    .slice(0, 200) // Máximo 200 chars de pregunta
+    .replace(/[<>]/g, '') // Eliminar posibles inyecciones HTML
+    .trim();
+}
+
 // --- Detector de hype ---
 const hypeBuffer = [];
 
@@ -13,8 +29,8 @@ function detectHype(client, channel, message, config) {
 
   hypeBuffer.push(now);
 
-  const window = hype_window_seconds * 1000;
-  while (hypeBuffer.length > 0 && hypeBuffer[0] < now - window) {
+  const windowMs = hype_window_seconds * 1000;
+  while (hypeBuffer.length > 0 && hypeBuffer[0] < now - windowMs) {
     hypeBuffer.shift();
   }
 
@@ -31,6 +47,7 @@ const recentMessages = [];
 function trackMessage() {
   const now = Date.now();
   recentMessages.push(now);
+  // Limpiar mensajes fuera de la ventana de 1 minuto
   while (recentMessages.length > 0 && recentMessages[0] < now - 60000) {
     recentMessages.shift();
   }
@@ -41,20 +58,30 @@ function getPersonality(messageCount) {
   if (messageCount >= 20) {
     return `Eres un bot de Twitch con personalidad HYPE y enérgica.
     El chat está muy activo. Responde con energía, emojis y entusiasmo.
-    Sé divertido y rápido. Máximo 2 frases. Responde siempre en español.`;
+    Sé divertido y rápido. Máximo 2 frases cortas. Responde siempre en español.
+    IMPORTANTE: Tu respuesta no debe superar los 400 caracteres.`;
   } else if (messageCount >= 5) {
     return `Eres un bot de Twitch con personalidad amigable y cercana.
     El chat está tranquilo. Responde de forma amigable y natural.
-    Sé simpático. Máximo 2 frases. Responde siempre en español.`;
+    Sé simpático. Máximo 2 frases cortas. Responde siempre en español.
+    IMPORTANTE: Tu respuesta no debe superar los 400 caracteres.`;
   } else {
     return `Eres un bot de Twitch con personalidad tranquila y relajada.
     El chat está muy tranquilo. Responde de forma calmada y acogedora.
-    Sé amable. Máximo 2 frases. Responde siempre en español.`;
+    Sé amable. Máximo 2 frases cortas. Responde siempre en español.
+    IMPORTANTE: Tu respuesta no debe superar los 400 caracteres.`;
   }
 }
 
 // --- Comando !pregunta ---
 const questionCooldowns = new Map();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, expiry] of questionCooldowns) {
+    if (now > expiry) questionCooldowns.delete(key);
+  }
+}, 30 * 60 * 1000);
 
 async function handleQuestion(client, channel, tags, args) {
   const username = tags['display-name'];
@@ -66,12 +93,13 @@ async function handleQuestion(client, channel, tags, args) {
     return;
   }
 
-  const question = args.slice(1).join(' ');
-  if (!question) {
+  const rawQuestion = args.slice(1).join(' ');
+  if (!rawQuestion) {
     client.say(channel, `@${username} escribe algo después de !pregunta 😅`);
     return;
   }
 
+  const question = sanitizeInput(rawQuestion);
   questionCooldowns.set(username, now + 30000);
 
   try {
@@ -79,31 +107,38 @@ async function handleQuestion(client, channel, tags, args) {
     const personality = getPersonality(messageCount);
 
     const response = await groq.chat.completions.create({
-      model: 'llama3-8b-8192',
-      max_tokens: 150,
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 120,
       messages: [
         { role: 'system', content: personality },
         { role: 'user', content: `${username} pregunta: ${question}` }
       ]
     });
 
-    const answer = response.choices[0].message.content;
-    client.say(channel, `@${username} ${answer}`);
+    const answer = truncate(`@${username} ${response.choices[0].message.content}`);
+    client.say(channel, answer);
   } catch (err) {
-    console.error('Error en IA:', err);
+    console.error('Error en IA:', err.message || err);
     client.say(channel, `@${username} no puedo responder ahora mismo, ¡inténtalo más tarde!`);
   }
 }
 
 // --- Comandos de personalidad ---
 const personalityPrompts = {
-  cita: 'Dame una frase inspiradora, épica o de videojuegos. Solo la frase y el autor si lo tiene. Máximo 1 frase. En español.',
-  chiste: 'Cuéntame un chiste corto y gracioso relacionado con videojuegos, internet o streaming. Máximo 2 frases. En español.',
-  consejo: 'Dame un consejo random. Puede ser útil, absurdo o gracioso. Máximo 1 frase. En español.',
-  meme: 'Describe un meme de internet o gaming en formato texto de forma graciosa. Máximo 2 frases. En español.'
+  cita: 'Dame una frase inspiradora, épica o de videojuegos. Solo la frase y el autor si lo tiene. Máximo 1 frase corta. En español.',
+  chiste: 'Cuéntame un chiste muy corto y gracioso relacionado con videojuegos, internet o streaming. Máximo 2 frases. En español.',
+  consejo: 'Dame un consejo random. Puede ser útil, absurdo o gracioso. Solo 1 frase. En español.',
+  meme: 'Describe un meme de internet o gaming en formato texto de forma graciosa. Máximo 1 frase. En español.'
 };
 
 const personalityCooldowns = new Map();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, expiry] of personalityCooldowns) {
+    if (now > expiry) personalityCooldowns.delete(key);
+  }
+}, 30 * 60 * 1000);
 
 async function handlePersonality(client, channel, tags, command) {
   const username = tags['display-name'];
@@ -123,7 +158,7 @@ async function handlePersonality(client, channel, tags, command) {
     const personality = getPersonality(messageCount);
 
     const response = await groq.chat.completions.create({
-      model: 'llama3-8b-8192',
+      model: 'llama-3.1-8b-instant',
       max_tokens: 100,
       messages: [
         { role: 'system', content: personality },
@@ -131,10 +166,10 @@ async function handlePersonality(client, channel, tags, command) {
       ]
     });
 
-    const answer = response.choices[0].message.content;
+    const answer = truncate(response.choices[0].message.content);
     client.say(channel, answer);
   } catch (err) {
-    console.error('Error en personalidad IA:', err);
+    console.error('Error en personalidad IA:', err.message || err);
     client.say(channel, `No puedo responder ahora mismo, ¡inténtalo más tarde!`);
   }
 }
