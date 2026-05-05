@@ -9,9 +9,10 @@ const alerts = require('./src/alerts/handler');
 const timers = require('./src/timers/handler');
 const ai = require('./src/ai/handler');
 
-// Cliente de Twitch
+// Cliente de Twitch con reconexión nativa (evita duplicar timers)
 const client = new tmi.Client({
-  options: { debug: true },
+  options: { debug: process.env.NODE_ENV !== 'production' },
+  connection: { reconnect: true }, // tmi.js gestiona la reconexión automáticamente
   identity: {
     username: process.env.BOT_USERNAME,
     password: process.env.BOT_TOKEN
@@ -22,35 +23,35 @@ const client = new tmi.Client({
 // Conexión
 client.connect().catch(console.error);
 
+// Los timers solo se inician una vez en la primera conexión
+let timersStarted = false;
+
 client.on('connected', (addr, port) => {
   console.log(`✅ Bot conectado a #${process.env.CHANNEL}`);
-  timers.start(client, config);
+  if (!timersStarted) {
+    timers.start(client, config);
+    timersStarted = true;
+  }
 });
 
-// Reconexión automática
 client.on('disconnected', (reason) => {
-  console.log(`❌ Bot desconectado: ${reason}`);
-  console.log('🔄 Reconectando en 5 segundos...');
-  setTimeout(() => {
-    client.connect().catch(console.error);
-  }, 5000);
+  console.log(`⚠️ Bot desconectado: ${reason || 'sin motivo'} — reconectando automáticamente...`);
 });
 
 // Escuchar mensajes del chat
 client.on('message', async (channel, tags, message, self) => {
-  if (self) return; // Ignorar mensajes del propio bot
+  if (self) return;
 
   alerts.handleMessage(client, channel, tags);
 
   const msg = message.trim();
-  const username = tags['display-name'];
   const isMod = tags.mod || tags['user-type'] === 'mod';
   const isBroadcaster = tags.badges?.broadcaster === '1';
 
   // Detector de hype
-  ai.detectHype(client, channel, msg, config);
+  ai.detectHype(client, channel, tags, msg, config);
 
-  // Comprobar respuestas de trivia (cualquier mensaje)
+  // Comprobar respuestas de trivia
   games.checkTriviaAnswer(client, channel, tags, msg);
 
   // Si no empieza por ! no es un comando
@@ -58,6 +59,7 @@ client.on('message', async (channel, tags, message, self) => {
 
   const args = msg.slice(1).split(' ');
   const command = args[0].toLowerCase();
+  const username = tags['display-name'];
 
   console.log(`💬 [${username}] !${command}`);
 
@@ -76,7 +78,7 @@ client.on('message', async (channel, tags, message, self) => {
     return ai.handlePersonality(client, channel, tags, command);
   }
 
-  // Comandos generales (incluye !puntos, !top10, !uptime, !x2, etc.)
+  // Comandos generales
   commands.handle(client, channel, tags, command, args, config, isMod || isBroadcaster);
 });
 

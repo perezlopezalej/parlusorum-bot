@@ -1,39 +1,4 @@
-const fs = require('fs');
-const { isDoublePoints } = require('../utils/state');
-
-const pointsPath = './data/points.json';
-
-// --- Cache en memoria para puntos ---
-let pointsCache = null;
-
-function loadPoints() {
-  if (pointsCache) return pointsCache;
-  if (!fs.existsSync(pointsPath)) { pointsCache = {}; return {}; }
-  pointsCache = JSON.parse(fs.readFileSync(pointsPath, 'utf8'));
-  return pointsCache;
-}
-
-function savePoints(data) {
-  pointsCache = data;
-  fs.writeFileSync(pointsPath, JSON.stringify(data, null, 2));
-}
-
-function addPoints(username, amount) {
-  const points = loadPoints();
-  if (!points[username]) points[username] = { points: 0, achievements: [] };
-  const multiplier = isDoublePoints() ? 2 : 1;
-  const finalAmount = amount > 0 ? amount * multiplier : amount; // No multiplicar pérdidas
-  points[username].points = Math.max(0, points[username].points + finalAmount);
-  savePoints(points);
-  return points[username].points;
-}
-
-function getPoints(username) {
-  const points = loadPoints();
-  return points[username]?.points || 0;
-}
-
-// --- Trivia (ampliada a 30 preguntas) ---
+// --- Trivia (30 preguntas sin repetición) ---
 const triviaQuestions = [
   { question: '¿En qué año salió Minecraft?', answer: '2011' },
   { question: '¿Cuántos jugadores tiene un equipo de fútbol?', answer: '11' },
@@ -69,7 +34,7 @@ const triviaQuestions = [
 
 let activeTriviaQuestion = null;
 let triviaTimeout = null;
-const askedQuestions = new Set(); // Evitar repeticiones
+const askedQuestions = new Set();
 
 function handleTrivia(client, channel) {
   if (activeTriviaQuestion) {
@@ -77,10 +42,8 @@ function handleTrivia(client, channel) {
     return;
   }
 
-  // Resetear preguntas usadas si se han agotado
   if (askedQuestions.size >= triviaQuestions.length) askedQuestions.clear();
 
-  // Elegir pregunta no repetida
   let q;
   do {
     q = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
@@ -101,28 +64,28 @@ function handleTrivia(client, channel) {
 
 function checkTriviaAnswer(client, channel, tags, message) {
   if (!activeTriviaQuestion) return;
+
   const normalizedMsg = message.toLowerCase().trim()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quitar tildes
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const normalizedAnswer = activeTriviaQuestion.answer.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
   if (normalizedMsg === normalizedAnswer) {
     const username = tags['display-name'];
     clearTimeout(triviaTimeout);
-    const total = addPoints(username, 50);
-    client.say(channel, `🎉 ¡@${username} ha acertado! +50 puntos (Total: ${total} pts)`);
+    client.say(channel, `🎉 ¡@${username} ha acertado! ¡Enhorabuena! 🏆`);
     activeTriviaQuestion = null;
   }
 }
 
-// --- Ruleta con cooldowns con limpieza ---
+// --- Ruleta (cooldown por user-id) ---
 const ruletaOutcomes = [
-  { text: '💀 ¡Has perdido todo! -100 puntos', points: -100 },
-  { text: '😅 Mala suerte... -50 puntos', points: -50 },
-  { text: '😐 Nada. La ruleta no se mueve hoy.', points: 0 },
-  { text: '🎲 Pequeña ganancia +30 puntos', points: 30 },
-  { text: '✨ ¡Buena jugada! +75 puntos', points: 75 },
-  { text: '🎰 ¡JACKPOT! +200 puntos 🔥', points: 200 },
+  '💀 ¡Mala suerte total! La ruleta no te quiere hoy.',
+  '😅 Casi... pero no. Intenta otra vez.',
+  '😐 Nada. La ruleta no se mueve hoy.',
+  '🎲 ¡Algo es algo! Pequeña victoria.',
+  '✨ ¡Buena jugada! La suerte está de tu lado.',
+  '🎰 ¡JACKPOT! ¡Eres el elegido de la ruleta! 🔥',
 ];
 
 const ruletaCooldowns = new Map();
@@ -136,22 +99,22 @@ setInterval(() => {
 
 function handleRuleta(client, channel, tags) {
   const username = tags['display-name'];
+  const userId = tags['user-id']; // usar user-id en vez de display-name
   const now = Date.now();
   const cooldown = 60000;
 
-  if (ruletaCooldowns.has(username) && now < ruletaCooldowns.get(username)) {
-    const remaining = Math.ceil((ruletaCooldowns.get(username) - now) / 1000);
+  if (ruletaCooldowns.has(userId) && now < ruletaCooldowns.get(userId)) {
+    const remaining = Math.ceil((ruletaCooldowns.get(userId) - now) / 1000);
     client.say(channel, `@${username} espera ${remaining}s para volver a jugar a la ruleta.`);
     return;
   }
 
-  ruletaCooldowns.set(username, now + cooldown);
+  ruletaCooldowns.set(userId, now + cooldown);
   const outcome = ruletaOutcomes[Math.floor(Math.random() * ruletaOutcomes.length)];
-  const total = addPoints(username, outcome.points);
-  client.say(channel, `🎰 @${username} ${outcome.text} | Total: ${total} pts`);
+  client.say(channel, `🎰 @${username} ${outcome}`);
 }
 
-// --- Moneda con cooldowns con limpieza ---
+// --- Moneda (cooldown por user-id) ---
 const monedaCooldowns = new Map();
 
 setInterval(() => {
@@ -163,16 +126,17 @@ setInterval(() => {
 
 function handleMoneda(client, channel, tags) {
   const username = tags['display-name'];
+  const userId = tags['user-id']; // usar user-id en vez de display-name
   const now = Date.now();
   const cooldown = 30000;
 
-  if (monedaCooldowns.has(username) && now < monedaCooldowns.get(username)) {
-    const remaining = Math.ceil((monedaCooldowns.get(username) - now) / 1000);
+  if (monedaCooldowns.has(userId) && now < monedaCooldowns.get(userId)) {
+    const remaining = Math.ceil((monedaCooldowns.get(userId) - now) / 1000);
     client.say(channel, `@${username} espera ${remaining}s para lanzar la moneda de nuevo.`);
     return;
   }
 
-  monedaCooldowns.set(username, now + cooldown);
+  monedaCooldowns.set(userId, now + cooldown);
   const result = Math.random() < 0.5 ? '🌕 CARA' : '🌑 CRUZ';
   client.say(channel, `🪙 @${username} ha lanzado la moneda... ¡${result}!`);
 }
@@ -186,4 +150,4 @@ function handle(client, channel, tags, command, args) {
   }
 }
 
-module.exports = { handle, checkTriviaAnswer, addPoints, getPoints, loadPoints, savePoints };
+module.exports = { handle, checkTriviaAnswer };

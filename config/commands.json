@@ -9,7 +9,7 @@
       "cooldown": 30
     },
     "comandos": {
-      "response": "📋 Comandos disponibles: !discord !redes !cita !chiste !consejo !ruleta !trivia !moneda !top10 !pregunta",
+      "response": "📋 Comandos: !discord !redes !cita !chiste !consejo !meme !ruleta !trivia !moneda !pregunta !uptime",
       "cooldown": 10
     }
   },
@@ -28,8 +28,8 @@
     }
   ],
   "personality": {
-    "hype_threshold": 10,
-    "hype_window_seconds": 5,
+    "hype_threshold": 5,
+    "hype_window_seconds": 10,
     "hype_messages": [
       "¡¡EL CHAT ESTÁ EXPLOTANDO!! 🔥🔥🔥",
       "¡¡ESTO ES UN CAOS Y ME ENCANTA!! 💥",
