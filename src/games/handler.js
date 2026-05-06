@@ -1,3 +1,5 @@
+const { setTriviaActive } = require('../ai/handler');
+
 // --- Trivia (30 preguntas sin repetición) ---
 const triviaQuestions = [
   { question: '¿En qué año salió Minecraft?', answer: '2011' },
@@ -51,6 +53,7 @@ function handleTrivia(client, channel) {
 
   askedQuestions.add(q.question);
   activeTriviaQuestion = q;
+  setTriviaActive(true); // Bloquear co-host
 
   client.say(channel, `🧠 TRIVIA: ${q.question} (tienes 30 segundos para responder)`);
 
@@ -58,6 +61,7 @@ function handleTrivia(client, channel) {
     if (activeTriviaQuestion) {
       client.say(channel, `⏰ ¡Tiempo! La respuesta era: ${q.answer}`);
       activeTriviaQuestion = null;
+      setTriviaActive(false); // Desbloquear co-host
     }
   }, 30000);
 }
@@ -75,10 +79,11 @@ function checkTriviaAnswer(client, channel, tags, message) {
     clearTimeout(triviaTimeout);
     client.say(channel, `🎉 ¡@${username} ha acertado! ¡Enhorabuena! 🏆`);
     activeTriviaQuestion = null;
+    setTriviaActive(false); // Desbloquear co-host
   }
 }
 
-// --- Ruleta (cooldown por user-id) ---
+// --- Ruleta ---
 const ruletaOutcomes = [
   '💀 ¡Mala suerte total! La ruleta no te quiere hoy.',
   '😅 Casi... pero no. Intenta otra vez.',
@@ -89,7 +94,6 @@ const ruletaOutcomes = [
 ];
 
 const ruletaCooldowns = new Map();
-
 setInterval(() => {
   const now = Date.now();
   for (const [key, expiry] of ruletaCooldowns) {
@@ -99,7 +103,7 @@ setInterval(() => {
 
 function handleRuleta(client, channel, tags) {
   const username = tags['display-name'];
-  const userId = tags['user-id']; // usar user-id en vez de display-name
+  const userId = tags['user-id'];
   const now = Date.now();
   const cooldown = 60000;
 
@@ -114,9 +118,8 @@ function handleRuleta(client, channel, tags) {
   client.say(channel, `🎰 @${username} ${outcome}`);
 }
 
-// --- Moneda (cooldown por user-id) ---
+// --- Moneda ---
 const monedaCooldowns = new Map();
-
 setInterval(() => {
   const now = Date.now();
   for (const [key, expiry] of monedaCooldowns) {
@@ -126,7 +129,7 @@ setInterval(() => {
 
 function handleMoneda(client, channel, tags) {
   const username = tags['display-name'];
-  const userId = tags['user-id']; // usar user-id en vez de display-name
+  const userId = tags['user-id'];
   const now = Date.now();
   const cooldown = 30000;
 

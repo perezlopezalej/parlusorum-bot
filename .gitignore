@@ -1,4 +1,4 @@
 node_modules/
 .env
-data/
+data/users.json
 *.code-workspace

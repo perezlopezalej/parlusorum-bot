@@ -1,6 +1,7 @@
-// Referencias a los intervalos para poder pararlos
+const { getCurrentGame } = require('../twitch/api');
+
 const timerRefs = [];
-let lastMessages = []; // Evitar mensajes idénticos consecutivos
+let lastMessages = [];
 
 function start(client, config) {
   if (!config.timers || config.timers.length === 0) return;
@@ -10,8 +11,11 @@ function start(client, config) {
   lastMessages = new Array(config.timers.length).fill('');
 
   config.timers.forEach((timer, index) => {
-    const ref = setInterval(() => {
-      // Añadir sufijo invisible para evitar el bloqueo de mensajes idénticos
+    const ref = setInterval(async () => {
+      // No enviar timers si el canal no está en directo
+      const gameInfo = await getCurrentGame();
+      if (!gameInfo?.game) return; // Si no hay juego configurado, el canal probablemente está offline
+
       const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
       const msg = timer.message + suffix;
       lastMessages[index] = msg;
