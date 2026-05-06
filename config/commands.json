@@ -9,7 +9,7 @@
       "cooldown": 30
     },
     "comandos": {
-      "response": "📋 Comandos: !discord !redes !cita !chiste !consejo !meme !ruleta !trivia !moneda !pregunta !uptime",
+      "response": "📋 Comandos: !discord !redes !cita !chiste !consejo !meme !ruleta !trivia !moneda !pregunta !lurk !resumen !uptime",
       "cooldown": 10
     }
   },
