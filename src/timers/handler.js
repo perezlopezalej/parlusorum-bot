@@ -1,4 +1,5 @@
-const { getCurrentGame } = require('../twitch/api');
+const { isStreamLive } = require('../twitch/api');
+const logger = require('../utils/logger');
 
 const timerRefs = [];
 let lastMessages = [];
@@ -6,16 +7,15 @@ let lastMessages = [];
 function start(client, config) {
   if (!config.timers || config.timers.length === 0) return;
 
-  console.log(`⏰ Timers iniciados (${config.timers.length} mensajes)`);
-
+  logger.info(`⏰ Timers iniciados (${config.timers.length} mensajes)`);
   lastMessages = new Array(config.timers.length).fill('');
 
   config.timers.forEach((timer, index) => {
-    const ref = setInterval(async () => {
-      // No enviar timers si el canal no está en directo
-      const gameInfo = await getCurrentGame();
-      if (!gameInfo?.game) return; // Si no hay juego configurado, el canal probablemente está offline
+    const ref = setInterval(() => {
+      // Solo enviar si el canal está en directo
+      if (!isStreamLive()) return;
 
+      // Evitar mensajes idénticos consecutivos
       const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
       const msg = timer.message + suffix;
       lastMessages[index] = msg;
@@ -29,7 +29,7 @@ function start(client, config) {
 function stop() {
   timerRefs.forEach(ref => clearInterval(ref));
   timerRefs.length = 0;
-  console.log('⏹️ Timers detenidos');
+  logger.info('⏹️ Timers detenidos');
 }
 
 module.exports = { start, stop };

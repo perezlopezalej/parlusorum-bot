@@ -1,39 +1,18 @@
 {
   "commands": {
-    "discord": {
-      "response": "¡Únete a nuestro Discord aquí! 👉 https://discord.gg/tulink",
-      "cooldown": 30
-    },
-    "redes": {
-      "response": "📱 Síguenos en todas las redes: Twitter/X: @tuusuario | Instagram: @tuusuario",
-      "cooldown": 30
-    },
     "comandos": {
-      "response": "📋 Comandos: !discord !redes !cita !chiste !consejo !meme !ruleta !trivia !moneda !pregunta !lurk !uptime",
+      "response": "📋 Comandos: !cita !chiste !consejo !meme !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime !ayuda | Mods: !so !prediccion !votar !resolver !brb !silencio !todo !muertes !clip",
       "cooldown": 10
     }
   },
   "timers": [
     {
-      "message": "¡No olvides darle follow si te gusta el contenido! 🔔",
+      "message": "¡Si te gusta el stream dale follow a ParLusorum! 🔔 ¡FUA!",
       "interval": 20
     },
     {
-      "message": "¡Únete a nuestro Discord para estar al día de todo! 💬",
-      "interval": 30
-    },
-    {
-      "message": "¿Estás disfrutando del stream? ¡Compártelo con tus amigos! 🚀",
-      "interval": 25
+      "message": "¿Tienes alguna pregunta? ¡Usa !dios_fua y te respondo! 🤖",
+      "interval": 35
     }
-  ],
-  "personality": {
-    "hype_threshold": 5,
-    "hype_window_seconds": 10,
-    "hype_messages": [
-      "¡¡EL CHAT ESTÁ EXPLOTANDO!! 🔥🔥🔥",
-      "¡¡ESTO ES UN CAOS Y ME ENCANTA!! 💥",
-      "¡¡LA COMUNIDAD HA ENLOQUECIDO!! 🚀🚀🚀"
-    ]
-  }
+  ]
 }

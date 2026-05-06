@@ -1,7 +1,8 @@
-const { setTriviaActive } = require('../ai/handler');
+const { setTriviaActive } = require('../utils/state');
 
-// --- Trivia (30 preguntas sin repetición) ---
+// --- Trivia (general + canal) ---
 const triviaQuestions = [
+  // Generales
   { question: '¿En qué año salió Minecraft?', answer: '2011' },
   { question: '¿Cuántos jugadores tiene un equipo de fútbol?', answer: '11' },
   { question: '¿Cuál es el planeta más grande del sistema solar?', answer: 'jupiter' },
@@ -20,18 +21,21 @@ const triviaQuestions = [
   { question: '¿Cuántos continentes hay en la Tierra?', answer: '7' },
   { question: '¿Qué empresa desarrolló Grand Theft Auto?', answer: 'rockstar' },
   { question: '¿En qué año salió League of Legends?', answer: '2009' },
-  { question: '¿Cuál es el metal más abundante en la corteza terrestre?', answer: 'aluminio' },
   { question: '¿Cuántos segundos tiene un minuto?', answer: '60' },
   { question: '¿Qué empresa creó Xbox?', answer: 'microsoft' },
   { question: '¿En qué país se inventó el ajedrez?', answer: 'india' },
-  { question: '¿Cuántos jugadores tiene un equipo de voleibol?', answer: '6' },
-  { question: '¿Cuál es el río más largo del mundo?', answer: 'nilo' },
-  { question: '¿En qué año salió Counter-Strike: GO?', answer: '2012' },
   { question: '¿Cuántos planetas hay en el sistema solar?', answer: '8' },
   { question: '¿Qué empresa creó la Nintendo Switch?', answer: 'nintendo' },
   { question: '¿En qué año salió Among Us?', answer: '2018' },
   { question: '¿Cuál es la capital de Japón?', answer: 'tokio' },
   { question: '¿Cuántos jugadores hay en un equipo de béisbol?', answer: '9' },
+  // Del canal
+  { question: '¿Qué significa FUA según el meme original?', answer: 'fuerza universal aplicada' },
+  { question: '¿Cómo se llama el bot del canal?', answer: 'dios_fua' },
+  { question: '¿ParLusorum es un streamer o una pareja de streamers?', answer: 'pareja' },
+  { question: '¿En qué juego cooperativo han jugado juntos ParLusorum?', answer: 'it takes two' },
+  { question: '¿De qué mitología trata Black Myth: Wukong?', answer: 'china' },
+  { question: '¿Cómo se llama el remake del juego del rey de los zombies que jugaron?', answer: 'the last of us part ii remastered' },
 ];
 
 let activeTriviaQuestion = null;
@@ -53,15 +57,15 @@ function handleTrivia(client, channel) {
 
   askedQuestions.add(q.question);
   activeTriviaQuestion = q;
-  setTriviaActive(true); // Bloquear co-host
+  setTriviaActive(true);
 
-  client.say(channel, `🧠 TRIVIA: ${q.question} (tienes 30 segundos para responder)`);
+  client.say(channel, `🧠 TRIVIA: ${q.question} (30 segundos para responder)`);
 
   triviaTimeout = setTimeout(() => {
     if (activeTriviaQuestion) {
       client.say(channel, `⏰ ¡Tiempo! La respuesta era: ${q.answer}`);
       activeTriviaQuestion = null;
-      setTriviaActive(false); // Desbloquear co-host
+      setTriviaActive(false);
     }
   }, 30000);
 }
@@ -79,43 +83,8 @@ function checkTriviaAnswer(client, channel, tags, message) {
     clearTimeout(triviaTimeout);
     client.say(channel, `🎉 ¡@${username} ha acertado! ¡Enhorabuena! 🏆`);
     activeTriviaQuestion = null;
-    setTriviaActive(false); // Desbloquear co-host
+    setTriviaActive(false);
   }
-}
-
-// --- Ruleta ---
-const ruletaOutcomes = [
-  '💀 ¡Mala suerte total! La ruleta no te quiere hoy.',
-  '😅 Casi... pero no. Intenta otra vez.',
-  '😐 Nada. La ruleta no se mueve hoy.',
-  '🎲 ¡Algo es algo! Pequeña victoria.',
-  '✨ ¡Buena jugada! La suerte está de tu lado.',
-  '🎰 ¡JACKPOT! ¡Eres el elegido de la ruleta! 🔥',
-];
-
-const ruletaCooldowns = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, expiry] of ruletaCooldowns) {
-    if (now > expiry) ruletaCooldowns.delete(key);
-  }
-}, 30 * 60 * 1000);
-
-function handleRuleta(client, channel, tags) {
-  const username = tags['display-name'];
-  const userId = tags['user-id'];
-  const now = Date.now();
-  const cooldown = 60000;
-
-  if (ruletaCooldowns.has(userId) && now < ruletaCooldowns.get(userId)) {
-    const remaining = Math.ceil((ruletaCooldowns.get(userId) - now) / 1000);
-    client.say(channel, `@${username} espera ${remaining}s para volver a jugar a la ruleta.`);
-    return;
-  }
-
-  ruletaCooldowns.set(userId, now + cooldown);
-  const outcome = ruletaOutcomes[Math.floor(Math.random() * ruletaOutcomes.length)];
-  client.say(channel, `🎰 @${username} ${outcome}`);
 }
 
 // --- Moneda ---
@@ -131,7 +100,6 @@ function handleMoneda(client, channel, tags) {
   const username = tags['display-name'];
   const userId = tags['user-id'];
   const now = Date.now();
-  const cooldown = 30000;
 
   if (monedaCooldowns.has(userId) && now < monedaCooldowns.get(userId)) {
     const remaining = Math.ceil((monedaCooldowns.get(userId) - now) / 1000);
@@ -139,15 +107,13 @@ function handleMoneda(client, channel, tags) {
     return;
   }
 
-  monedaCooldowns.set(userId, now + cooldown);
+  monedaCooldowns.set(userId, now + 30000);
   const result = Math.random() < 0.5 ? '🌕 CARA' : '🌑 CRUZ';
   client.say(channel, `🪙 @${username} ha lanzado la moneda... ¡${result}!`);
 }
 
-// --- Handler principal ---
 function handle(client, channel, tags, command, args) {
   switch (command) {
-    case 'ruleta': return handleRuleta(client, channel, tags);
     case 'trivia': return handleTrivia(client, channel);
     case 'moneda': return handleMoneda(client, channel, tags);
   }

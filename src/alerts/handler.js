@@ -2,12 +2,14 @@ const fs = require('fs');
 const Groq = require('groq-sdk');
 const { getChannelInfo, getFollowerCount } = require('../twitch/api');
 const channelConfig = require('../../config/channel.json');
+const logger = require('../utils/logger');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const usersPath = './data/users.json';
 
-// --- Cache en memoria ---
+// --- Cache con escritura diferida ---
 let usersCache = null;
+let saveTimer = null;
 
 function loadUsers() {
   if (usersCache) return usersCache;
@@ -15,7 +17,7 @@ function loadUsers() {
   try {
     usersCache = JSON.parse(fs.readFileSync(usersPath, 'utf8'));
   } catch (e) {
-    console.error('⚠️ users.json corrupto, reiniciando...');
+    logger.error('users.json corrupto, reiniciando...');
     usersCache = {};
   }
   return usersCache;
@@ -23,15 +25,52 @@ function loadUsers() {
 
 function saveUsers(data) {
   usersCache = data;
-  try {
-    fs.writeFileSync(usersPath, JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error('⚠️ Error al guardar users.json:', e.message);
-  }
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    try {
+      fs.writeFileSync(usersPath, JSON.stringify(usersCache, null, 2));
+    } catch (e) {
+      logger.error(`Error al guardar users.json: ${e.message}`);
+    }
+    saveTimer = null;
+  }, 5000);
 }
 
-// --- Aniversarios celebrados en esta sesión ---
+// --- Mensajes variados ---
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+const welcomeMessages = [
+  '👋 ¡Bienvenid@ @{username} al canal! Es tu primer mensaje aquí 🎉',
+  '🎊 ¡Ey @{username}! Primera vez por aquí, ¡qué alegría tenerte! 💜',
+  '✨ ¡@{username} ha entrado al chat por primera vez! ¡Bienvenid@! 🔥',
+  '🌟 ¡Mira quién aparece! @{username} estrena su primer mensaje. ¡Bienvenid@! 👋',
+];
+
+const returnMessages = [
+  '🎊 ¡@{username} ha vuelto después de {days} días! ¡Bienvenid@ de nuevo! 🔥',
+  '👀 ¡@{username} resucita después de {days} días! ¡Cuánto tiempo! 🎉',
+  '🥳 ¡Ha vuelto @{username} después de {days} días! ¡El canal estaba incompleto sin ti! 💜',
+];
+
+const lurkerMessages = [
+  '👀 ¡@{username} ha salido del modo lurker! Gracias por seguir ahí 💜',
+  '🕵️ ¡@{username} sale de las sombras! Sabíamos que estabas ahí 😏',
+  '🐱 ¡@{username} vuelve al chat! El lurker ha hablado 🎉',
+  '🌙 ¡@{username} abandona el modo fantasma! ¡Bienvenid@ de vuelta! 👋',
+];
+
+const subMessages = [
+  '🎉 ¡Muchísimas gracias @{username} por suscribirte! ¡Eres increíble! 💜',
+  '💜 ¡@{username} se ha suscrito! ¡La familia crece! ¡Gracias! 🎊',
+  '🥳 ¡@{username} acaba de suscribirse! ¡Eres un crack! 🔥',
+  '⭐ ¡Nuevo suscriptor! ¡Bienvenid@ al club @{username}! 💜🎉',
+];
+
+// --- Control de aniversarios ---
 const anniversaryCelebrated = new Set();
+const MAX_ANNIVERSARY_SET = 500;
 
 // --- Primer mensaje + regreso + aniversario ---
 function checkFirstMessage(client, channel, tags) {
@@ -49,7 +88,7 @@ function checkFirstMessage(client, channel, tags) {
       achievements: []
     };
     saveUsers(users);
-    client.say(channel, `👋 ¡Bienvenid@ @${username} al canal! Es tu primer mensaje aquí 🎉`);
+    client.say(channel, pick(welcomeMessages).replace('{username}', username));
     return;
   }
 
@@ -58,7 +97,10 @@ function checkFirstMessage(client, channel, tags) {
   const daysSinceLastSeen = (now - lastSeen) / (1000 * 60 * 60 * 24);
 
   if (daysSinceLastSeen >= 7) {
-    client.say(channel, `🎊 ¡@${username} ha vuelto después de ${Math.floor(daysSinceLastSeen)} días! ¡Bienvenid@ de nuevo! 🔥`);
+    const msg = pick(returnMessages)
+      .replace('{username}', username)
+      .replace('{days}', Math.floor(daysSinceLastSeen));
+    client.say(channel, msg);
   }
 
   userData.lastSeen = now.toISOString();
@@ -66,6 +108,7 @@ function checkFirstMessage(client, channel, tags) {
   userData.username = username;
 
   if (!anniversaryCelebrated.has(userId)) {
+    if (anniversaryCelebrated.size >= MAX_ANNIVERSARY_SET) anniversaryCelebrated.clear();
     checkAnniversary(client, channel, username, userData, now);
     anniversaryCelebrated.add(userId);
   }
@@ -88,7 +131,7 @@ function checkAnniversary(client, channel, username, userData, now) {
 
 // --- Lurker Love ---
 const lurkerMap = new Map();
-const LURKER_THRESHOLD = 15 * 60 * 1000;
+const LURKER_THRESHOLD = parseInt(process.env.LURKER_THRESHOLD_MS || String(15 * 60 * 1000), 10);
 
 setInterval(() => {
   const now = Date.now();
@@ -106,7 +149,7 @@ function trackLurker(client, channel, tags) {
   if (lurkerMap.has(userId)) {
     const lastMessage = lurkerMap.get(userId);
     if (now - lastMessage >= LURKER_THRESHOLD) {
-      client.say(channel, `👀 ¡@${username} ha salido del modo lurker! Gracias por seguir ahí 💜`);
+      client.say(channel, pick(lurkerMessages).replace('{username}', username));
     }
   }
   lurkerMap.set(userId, now);
@@ -131,35 +174,40 @@ function checkAchievements(client, channel, username, userData) {
 
 // --- Sub ---
 function onSub(client, channel, username) {
-  client.say(channel, `🎉 ¡Muchísimas gracias @${username} por suscribirte! ¡Eres increíble! 💜`);
+  client.say(channel, pick(subMessages).replace('{username}', username));
 }
 
-// --- Raid contextual inteligente ---
+// --- Bits ---
+function onBits(client, channel, username, bits) {
+  if (bits >= 1000) {
+    client.say(channel, `💎 ¡¡WOW!! ¡@${username} acaba de donar ${bits} bits! ¡INCREÍBLE! ¡Muchísimas gracias! 🔥🔥🔥`);
+  } else if (bits >= 100) {
+    client.say(channel, `💜 ¡@${username} ha donado ${bits} bits! ¡Muchas gracias por el apoyo! 🎉`);
+  } else {
+    client.say(channel, `✨ ¡Gracias @${username} por los ${bits} bits! 💜`);
+  }
+}
+
+// --- Raid contextual ---
 async function onRaid(client, channel, username, viewers) {
-  // Mensaje inmediato mientras carga la IA
   client.say(channel, `⚔️ ¡RAID de @${username} con ${viewers} viewers! ¡Bienvenidos a todos! 🔥`);
 
-  // Intentar obtener info del canal raider para personalizar
   try {
     const raidInfo = await getChannelInfo(username);
     const game = raidInfo?.game_name || null;
-    const title = raidInfo?.title || null;
-
-    const context = game
-      ? `Venían de streamear "${game}"${title ? ` con el título "${title}"` : ''}.`
-      : '';
+    const context = game ? `Venían de streamear "${game}".` : '';
 
     const response = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 100,
       messages: [
         {
           role: 'system',
-          content: `Eres el bot del canal de ${channelConfig.streamer}. ${channelConfig.description} Responde en español. Máximo 400 caracteres.`
+          content: `Eres el bot del canal de ${channelConfig.streamer}. ${channelConfig.description} Responde SIEMPRE en español. Máximo 400 caracteres.`
         },
         {
           role: 'user',
-          content: `El streamer @${username} acaba de hacer un raid al canal con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado, cálido y gracioso para su comunidad. Máximo 1-2 frases. Sin repetir que ya llegaron, eso ya se dijo.`
+          content: `@${username} ha hecho raid con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado, cálido y gracioso. Máximo 1-2 frases. Sin repetir que ya llegaron.`
         }
       ]
     });
@@ -167,36 +215,32 @@ async function onRaid(client, channel, username, viewers) {
     const extra = response.choices[0].message.content.trim();
     if (extra) client.say(channel, extra.slice(0, 490));
   } catch (err) {
-    console.error('Error en raid IA:', err.message);
+    logger.error(`Error en raid IA: ${err.message}`);
   }
 }
 
-// --- Contador de seguidores en hitos ---
+// --- Hitos de seguidores ---
 let broadcasterId = null;
 let lastFollowerCount = null;
 const milestones = channelConfig.milestones || [50, 100, 200, 500, 1000];
 
 async function initFollowerTracking(client, channel, id) {
   broadcasterId = id;
-  // Obtener count inicial sin celebrar
   lastFollowerCount = await getFollowerCount(broadcasterId);
-  console.log(`👥 Seguidores actuales: ${lastFollowerCount}`);
+  logger.info(`👥 Seguidores actuales: ${lastFollowerCount}`);
 }
 
 async function checkFollowerMilestones(client, channel) {
   if (!broadcasterId) return;
-
   const current = await getFollowerCount(broadcasterId);
   if (current === null || current === lastFollowerCount) return;
 
-  // Comprobar si se cruzó algún hito
   for (const milestone of milestones) {
     if (lastFollowerCount < milestone && current >= milestone) {
-      client.say(channel, `🎊 ¡¡EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! ¡ESTO ES INCREÍBLE! 🥳🔥 ¡Gracias a todos por hacer esto posible!`);
-      console.log(`🎉 Hito alcanzado: ${milestone} seguidores`);
+      client.say(channel, `🎊 ¡¡EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! ¡INCREÍBLE! 🥳🔥 ¡Gracias a todos!`);
+      logger.info(`🎉 Hito: ${milestone} seguidores`);
     }
   }
-
   lastFollowerCount = current;
 }
 
@@ -209,6 +253,7 @@ function handleMessage(client, channel, tags) {
 module.exports = {
   handleMessage,
   onSub,
+  onBits,
   onRaid,
   initFollowerTracking,
   checkFollowerMilestones
