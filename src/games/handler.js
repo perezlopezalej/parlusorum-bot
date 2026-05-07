@@ -35,7 +35,7 @@ const triviaQuestions = [
   { question: '¿ParLusorum es un streamer o una pareja de streamers?', answer: 'pareja' },
   { question: '¿En qué juego cooperativo han jugado juntos ParLusorum?', answer: 'it takes two' },
   { question: '¿De qué mitología trata Black Myth: Wukong?', answer: 'china' },
-  { question: '¿Cómo se llama el remake del juego del rey de los zombies que jugaron?', answer: 'the last of us part ii remastered' },
+  { question: '¿Cómo se llama el juego de supervivencia post-apocalíptico que han jugado en el canal?', answer: 'the last of us part ii remastered' },
 ];
 
 let activeTriviaQuestion = null;

@@ -5,10 +5,6 @@ function getToken() {
   return (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
 }
 
-function getBotToken() {
-  return (process.env.BOT_TOKEN || '').replace('oauth:', '');
-}
-
 function getHeaders() {
   return {
     'Client-ID': process.env.CLIENT_ID,

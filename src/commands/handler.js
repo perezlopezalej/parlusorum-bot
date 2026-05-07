@@ -4,7 +4,6 @@ const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = requir
 const { handleShoutout } = require('../ai/handler');
 const { addTodo, getTodos } = require('../utils/todolist');
 const { getSummary, trackCommand } = require('../utils/metrics');
-const { startPrediction, resolvePrediction, showPredictionStatus, votePrediction } = require('../games/prediccion');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
@@ -44,9 +43,6 @@ const helpTexts = {
   'silencio': '(Mods) Activa/desactiva el silencio del bot.',
   'brb': '(Mods) Avisa de ausencia del streamer.',
   'so': '(Mods) Shoutout inteligente. Uso: !so @usuario',
-  'prediccion': '(Mods) Lanza predicción. Uso: !prediccion [pregunta]',
-  'votar': 'Vota en predicción activa. Uso: !votar si / !votar no',
-  'resolver': '(Mods) Resuelve predicción. Uso: !resolver si / !resolver no',
   'todo': '(Mods) Añade tarea. Uso: !todo [tarea]',
   'pendientes': 'Lista de tareas pendientes.',
   'muertes': 'Contador de muertes. Mods: !muertes +1 / !muertes reset',
@@ -83,14 +79,6 @@ async function handle(client, channel, tags, command, args, config) {
     case 'titulo': return handleTitulo(client, channel, tags);
     case 'pendientes': return handlePendientes(client, channel);
     case 'muertes': return handleMuertes(client, channel, args, isMod);
-    case 'prediccion':
-      if (!isPred(client, channel, username, isMod, true)) return;
-      return handlePrediccion(client, channel, args);
-    case 'votar':
-      return votePrediction(client, channel, tags, args[1]);
-    case 'resolver':
-      if (!isPred(client, channel, username, isMod, true)) return;
-      return resolvePrediction(client, channel, args[1]);
     case 'brb':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return handleBrb(client, channel, username);
@@ -109,11 +97,6 @@ async function handle(client, channel, tags, command, args, config) {
       return handleMetricas(client, channel);
     case 'ayuda': return handleAyuda(client, channel, args);
   }
-}
-
-function isPred(client, channel, username, isMod, requireMod = false) {
-  if (requireMod && !isMod) { client.say(channel, `@${username} solo mods.`); return false; }
-  return true;
 }
 
 const botStartTime = Date.now();
@@ -164,12 +147,6 @@ function handleSilencio(client, channel, username) {
   client.say(channel, newState ? `🔇 Modo silencio activado por @${username}.` : `🔊 ¡De vuelta! ¡FUA! 💪`);
 }
 
-function handlePrediccion(client, channel, args) {
-  const question = args.slice(1).join(' ');
-  if (!question) { client.say(channel, `Uso: !prediccion [pregunta]`); return; }
-  startPrediction(client, channel, question, 60);
-}
-
 function handleTodo(client, channel, username, args) {
   const task = args.slice(1).join(' ');
   if (!task) { client.say(channel, `Uso: !todo [tarea]`); return; }
@@ -200,8 +177,9 @@ function handleMetricas(client, channel) {
 function handleTitulo(client, channel, tags) {
   const username = tags['display-name'];
   try {
-    if (fs.existsSync('./data/users.json')) {
-      const users = JSON.parse(fs.readFileSync('./data/users.json', 'utf8'));
+    const usersPath = require('path').join(__dirname, '../../data/users.json');
+    if (fs.existsSync(usersPath)) {
+      const users = JSON.parse(fs.readFileSync(usersPath, 'utf8'));
       const userData = users[tags['user-id']];
       if (userData) {
         const title = getUserTitle(userData.messageCount || 0);
@@ -218,7 +196,7 @@ function handleAyuda(client, channel, args) {
   if (sub && helpTexts[sub]) {
     client.say(channel, `❓ !${sub}: ${helpTexts[sub]}`);
   } else {
-    client.say(channel, `❓ Comandos principales: !cita !chiste !consejo !meme !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime | Mods: !so !prediccion !votar !resolver !brb !silencio !todo !muertes !clip | !ayuda [comando] para más info`);
+    client.say(channel, `❓ Comandos principales: !cita !chiste !consejo !meme !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime | Mods: !so !brb !silencio !todo !muertes !clip | !ayuda [comando] para más info`);
   }
 }
 

@@ -5,7 +5,7 @@ const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const usersPath = './data/users.json';
+const usersPath = require('path').join(__dirname, '../../data/users.json');
 
 // --- Cache con escritura diferida ---
 let usersCache = null;
@@ -42,10 +42,10 @@ function pick(arr) {
 }
 
 const welcomeMessages = [
-  '👋 ¡Bienvenid@ @{username} al canal! Es tu primer mensaje aquí 🎉',
-  '🎊 ¡Ey @{username}! Primera vez por aquí, ¡qué alegría tenerte! 💜',
-  '✨ ¡@{username} ha entrado al chat por primera vez! ¡Bienvenid@! 🔥',
-  '🌟 ¡Mira quién aparece! @{username} estrena su primer mensaje. ¡Bienvenid@! 👋',
+  '👋 ¡Bienvenid@ @{username}! Es tu primer mensaje aquí 🎉 Si tienes alguna pregunta usa !dios_fua',
+  '🎊 ¡Ey @{username}! Primera vez por aquí, ¡qué alegría! 💜 ¡Pregúntame lo que quieras con !dios_fua!',
+  '✨ ¡@{username} entra al chat por primera vez! ¡Bienvenid@! 🔥 Usa !comandos para ver qué puedo hacer',
+  '🌟 ¡@{username} estrena su primer mensaje! ¡Bienvenid@! 👋 ¡El FUA te da la bienvenida! 💪',
 ];
 
 const returnMessages = [

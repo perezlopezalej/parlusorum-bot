@@ -10,9 +10,8 @@ const games = require('./src/games/handler');
 const alerts = require('./src/alerts/handler');
 const timers = require('./src/timers/handler');
 const ai = require('./src/ai/handler');
-const { getStreamInfo, getRecentGames } = require('./src/twitch/api');
+const { getStreamInfo } = require('./src/twitch/api');
 const { trackMessage, updatePeakViewers } = require('./src/utils/metrics');
-const { votePrediction } = require('./src/games/prediccion');
 
 // --- Health check ---
 const PORT = process.env.PORT || 3000;
@@ -63,6 +62,7 @@ client.on('connected', async (addr, port) => {
     timers.start(client, config);
     timersStarted = true;
     await validateBroadcasterToken();
+    await ai.initStreamStatus();
 
     const broadcasterId = channelConfig.broadcaster_id;
     if (broadcasterId) {
@@ -73,11 +73,15 @@ client.on('connected', async (addr, port) => {
       } catch (err) { logger.error(`Error seguidores: ${err.message}`); }
     }
 
+    // Polling del stream cada minuto
     setInterval(async () => {
       const info = await getStreamInfo().catch(() => null);
       if (info?.viewers) updatePeakViewers(info.viewers);
+      // Detectar cierre de stream
+      await ai.checkStreamStatus(client, `#${process.env.CHANNEL}`);
     }, 60 * 1000);
 
+    // Conversation hooks cada minuto (se auto-regula internamente)
     setInterval(() => ai.checkChatHook(client, `#${process.env.CHANNEL}`), 60 * 1000);
   }
 });
@@ -110,24 +114,16 @@ client.on('message', async (channel, tags, message, self) => {
 
   logger.debug(`💬 [${username}] !${command}`);
 
-  // !votar si/no — solo aquí, sin duplicar
-  if (command === 'votar') {
-    const vote = args[1]?.toLowerCase();
-    if (vote === 'si' || vote === 'no') votePrediction(client, channel, tags, vote);
-    return;
-  }
-
   if (['trivia', 'moneda'].includes(command)) return games.handle(client, channel, tags, command, args);
   if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
   if (command === 'chiste') return ai.handleChiste(client, channel, tags);
   if (['cita', 'consejo', 'meme'].includes(command)) return ai.handlePersonality(client, channel, tags, command);
 
-  // handle() es async ahora
   await commands.handle(client, channel, tags, command, args, config);
 });
 
-client.on('subscription', (channel, username, method, message, tags) => alerts.onSub(client, channel, username));
-client.on('cheer', (channel, userstate, message) => {
+client.on('subscription', (channel, username) => alerts.onSub(client, channel, username));
+client.on('cheer', (channel, userstate) => {
   const username = userstate['display-name'];
   const bits = parseInt(userstate.bits, 10);
   if (username && bits > 0) alerts.onBits(client, channel, username, bits);

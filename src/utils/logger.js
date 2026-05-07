@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOG_DIR = './logs';
-const LOG_FILE = path.join(LOG_DIR, 'bot.log');
+const LOG_DIR = require('path').join(__dirname, '../../logs');
+const LOG_FILE = require('path').join(LOG_DIR, 'bot.log');
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB máximo
 
 // Crear carpeta logs si no existe

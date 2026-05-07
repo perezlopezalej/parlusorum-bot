@@ -1,5 +1,5 @@
 const fs = require('fs');
-const path = './data/todo.json';
+const path = require('path').join(__dirname, '../../data/todo.json');
 
 function loadTodos() {
   if (!fs.existsSync(path)) return [];
