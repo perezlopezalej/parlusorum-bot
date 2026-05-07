@@ -225,6 +225,29 @@ async function checkStreamStatus(client, channel) {
   }
 }
 
+// --- !chiste ---
+const chistesDB = require('../../data/chistes.json');
+const chisteCooldowns = new Map();
+let lastChisteIndex = -1;
+setInterval(() => { const now = Date.now(); for (const [k,v] of chisteCooldowns) if (now > v) chisteCooldowns.delete(k); }, 30 * 60 * 1000);
+
+function handleChiste(client, channel, tags) {
+  if (isSilenced()) return;
+  const username = tags['display-name'];
+  const userId = tags['user-id'];
+  const key = `chiste-${userId}`;
+  const now = Date.now();
+  if (chisteCooldowns.has(key) && now < chisteCooldowns.get(key)) {
+    client.say(channel, `@${username} espera ${Math.ceil((chisteCooldowns.get(key) - now) / 1000)}s.`);
+    return;
+  }
+  let index, attempts = 0;
+  do { index = Math.floor(Math.random() * chistesDB.length); attempts++; } while (index === lastChisteIndex && attempts < 10);
+  lastChisteIndex = index;
+  chisteCooldowns.set(key, now + 30000);
+  client.say(channel, truncate(`😂 ${chistesDB[index]}`));
+}
+
 module.exports = {
   handleCohost,
   handleChiste,
