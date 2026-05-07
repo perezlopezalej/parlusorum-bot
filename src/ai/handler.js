@@ -225,6 +225,33 @@ async function checkStreamStatus(client, channel) {
   }
 }
 
+// --- Conversation hooks ---
+let lastHookTime = 0;
+const HOOK_INTERVAL = parseInt(process.env.HOOK_INTERVAL_MS || '600000', 10);
+const HOOK_MIN_SILENCE = parseInt(process.env.HOOK_SILENCE_MS || '300000', 10);
+
+async function checkChatHook(client, channel) {
+  if (isSilenced() || isTriviaActive()) return;
+  const now = Date.now();
+  if (now - lastHookTime < HOOK_INTERVAL) return;
+  if (now - lastChatMessageTime < HOOK_MIN_SILENCE) return;
+  lastHookTime = now;
+  const gameInfo = await getCurrentGame().catch(() => null);
+  const game = gameInfo?.game;
+  const genericHooks = [
+    '¿Alguien tiene alguna pregunta? ¡Usad !dios_fua! 🤖',
+    '¿Sois más de cooperativo o en solitario? 💬',
+    '¡Chat! ¿Alguien se anima con un !trivia? 🧠',
+    '¿Cuántas muertes creéis que habrá hoy? 💀',
+  ];
+  const gameHooks = game ? [
+    `¿Qué os parece ${game} hasta ahora? 🎮`,
+    `¿Alguien ha jugado ${game}? ¿Es difícil? 🤔`,
+  ] : [];
+  const allHooks = [...gameHooks, ...genericHooks];
+  client.say(channel, allHooks[Math.floor(Math.random() * allHooks.length)]);
+}
+
 // --- !chiste ---
 const chistesDB = require('../../data/chistes.json');
 const chisteCooldowns = new Map();
@@ -246,6 +273,106 @@ function handleChiste(client, channel, tags) {
   lastChisteIndex = index;
   chisteCooldowns.set(key, now + 30000);
   client.say(channel, truncate(`😂 ${chistesDB[index]}`));
+}
+
+// --- !dios_fua ---
+const questionCooldowns = new Map();
+setInterval(() => { const now = Date.now(); for (const [k,v] of questionCooldowns) if (now > v) questionCooldowns.delete(k); }, 30 * 60 * 1000);
+
+async function handleQuestion(client, channel, tags, args) {
+  if (isSilenced()) return;
+  const username = tags['display-name'];
+  const userId = tags['user-id'];
+  const now = Date.now();
+  if (questionCooldowns.has(userId) && now < questionCooldowns.get(userId)) {
+    client.say(channel, `@${username} espera ${Math.ceil((questionCooldowns.get(userId) - now) / 1000)}s.`);
+    return;
+  }
+  const rawQuestion = args.slice(1).join(' ');
+  if (!rawQuestion) { client.say(channel, `@${username} escribe algo después de !dios_fua 😅`); return; }
+  const question = sanitizeForAI(rawQuestion);
+  if (!question) { client.say(channel, `@${username} esa pregunta no la puedo responder 🙅`); return; }
+  if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones ⏳`); return; }
+  if (rawQuestion.length > MAX_QUESTION_LENGTH) {
+    client.say(channel, `@${username} (pregunta muy larga, respondo a los primeros ${MAX_QUESTION_LENGTH} caracteres)`);
+  }
+  try {
+    const personality = await getPersonality(trackMessage());
+    const userConv = getUserConversation(userId);
+    const response = await groqWithRetry({
+      model: 'llama-3.3-70b-versatile', max_tokens: 150,
+      messages: [
+        { role: 'system', content: `${personality}\nRespuesta directa. NUNCA inventes viewers/subs. Si no sabes: humor. Sin "Lo siento".` },
+        ...userConv,
+        { role: 'user', content: `${username}: ${question}` }
+      ]
+    });
+    const answer = response.choices[0].message.content;
+    client.say(channel, truncate(`@${username} ${answer}`));
+    questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
+    addToUserConversation(userId, 'user', `${username}: ${question}`);
+    addToUserConversation(userId, 'assistant', answer);
+  } catch (err) {
+    logger.error(`!dios_fua: ${err.message}`);
+    client.say(channel, `@${username} no puedo responder ahora mismo.`);
+  }
+}
+
+// --- Comandos de personalidad ---
+const personalityPrompts = {
+  cita: 'Frase épica o inspiradora de videojuegos. Solo frase y autor. 1 frase en español.',
+  consejo: 'Consejo random útil, absurdo o gracioso. 1 frase en español. Puedes usar FUA.',
+  meme: 'Describe un meme de internet o gaming. 1 frase graciosa en español.'
+};
+const personalityCooldowns = new Map();
+setInterval(() => { const now = Date.now(); for (const [k,v] of personalityCooldowns) if (now > v) personalityCooldowns.delete(k); }, 30 * 60 * 1000);
+
+async function handlePersonality(client, channel, tags, command) {
+  if (isSilenced()) return;
+  const username = tags['display-name'];
+  const userId = tags['user-id'];
+  const key = `${command}-${userId}`;
+  const now = Date.now();
+  if (personalityCooldowns.has(key) && now < personalityCooldowns.get(key)) {
+    client.say(channel, `@${username} espera ${Math.ceil((personalityCooldowns.get(key) - now) / 1000)}s.`);
+    return;
+  }
+  if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones ⏳`); return; }
+  try {
+    const response = await groqWithRetry({
+      model: 'llama-3.3-70b-versatile', max_tokens: 90,
+      messages: [
+        { role: 'system', content: getMinimalPersonality() },
+        { role: 'user', content: personalityPrompts[command] }
+      ]
+    });
+    client.say(channel, truncate(response.choices[0].message.content));
+    personalityCooldowns.set(key, now + 30000);
+  } catch (err) { logger.error(`!${command}: ${err.message}`); client.say(channel, `No puedo responder ahora mismo.`); }
+}
+
+// --- !so ---
+async function handleShoutout(client, channel, tags, targetUsername) {
+  const isMod = tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1';
+  if (!isMod) { client.say(channel, `@${tags['display-name']} solo mods pueden usar !so.`); return; }
+  if (!targetUsername) { client.say(channel, `Uso: !so @usuario`); return; }
+  const { getChannelInfo } = require('../twitch/api');
+  try {
+    const target = targetUsername.replace('@', '');
+    const info = await getChannelInfo(target);
+    const game = info?.game_name ? `Su último juego: "${info.game_name}".` : '';
+    const response = await groqWithRetry({
+      model: 'llama-3.3-70b-versatile', max_tokens: 80,
+      messages: [
+        { role: 'system', content: `Shoutout para @${target}. ${game} En español. 1 frase cálida y graciosa. Anima a visitarle.` },
+        { role: 'user', content: `Shoutout para @${target}` }
+      ]
+    });
+    client.say(channel, truncate(`📢 ${response.choices[0].message.content.trim()} twitch.tv/${target}`));
+  } catch (err) {
+    logger.error(`!so: ${err.message}`);
+    client.say(channel, `📢 ¡Echad un ojo a @${targetUsername.replace('@', '')}! 💜 twitch.tv/${targetUsername.replace('@', '')}`);
+  }
 }
 
 module.exports = {
