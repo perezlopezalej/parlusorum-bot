@@ -1,40 +1,10 @@
-const fs = require('fs');
 const Groq = require('groq-sdk');
 const { getChannelInfo, getFollowerCount } = require('../twitch/api');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
+const { loadUsers, saveUsers } = require('../utils/storage');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const usersPath = require('path').join(__dirname, '../../data/users.json');
-
-// --- Cache con escritura diferida ---
-let usersCache = null;
-let saveTimer = null;
-
-function loadUsers() {
-  if (usersCache) return usersCache;
-  if (!fs.existsSync(usersPath)) { usersCache = {}; return {}; }
-  try {
-    usersCache = JSON.parse(fs.readFileSync(usersPath, 'utf8'));
-  } catch (e) {
-    logger.error('users.json corrupto, reiniciando...');
-    usersCache = {};
-  }
-  return usersCache;
-}
-
-function saveUsers(data) {
-  usersCache = data;
-  if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    try {
-      fs.writeFileSync(usersPath, JSON.stringify(usersCache, null, 2));
-    } catch (e) {
-      logger.error(`Error al guardar users.json: ${e.message}`);
-    }
-    saveTimer = null;
-  }, 5000);
-}
 
 // --- Mensajes variados ---
 function pick(arr) {
@@ -73,10 +43,10 @@ const anniversaryCelebrated = new Set();
 const MAX_ANNIVERSARY_SET = 500;
 
 // --- Primer mensaje + regreso + aniversario ---
-function checkFirstMessage(client, channel, tags) {
+async function checkFirstMessage(client, channel, tags) {
   const username = tags['display-name'];
   const userId = tags['user-id'];
-  const users = loadUsers();
+  const users = await loadUsers();
   const now = new Date();
 
   if (!users[userId]) {
@@ -245,8 +215,12 @@ async function checkFollowerMilestones(client, channel) {
 }
 
 // --- Handler principal ---
-function handleMessage(client, channel, tags) {
-  checkFirstMessage(client, channel, tags);
+async function handleMessage(client, channel, tags) {
+  // Ignorar mensajes del propio bot
+  const botName = (process.env.BOT_USERNAME || '').toLowerCase();
+  if (tags['display-name']?.toLowerCase() === botName) return;
+
+  await checkFirstMessage(client, channel, tags);
   trackLurker(client, channel, tags);
 }
 

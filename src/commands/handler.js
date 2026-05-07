@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { loadUsers } = require('../utils/storage');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
@@ -76,7 +77,7 @@ async function handle(client, channel, tags, command, args, config) {
     case 'uptime': return handleUptime(client, channel);
     case 'juego': return await handleJuego(client, channel);
     case 'estadisticas': return await handleEstadisticas(client, channel);
-    case 'titulo': return handleTitulo(client, channel, tags);
+    case 'titulo': return await handleTitulo(client, channel, tags);
     case 'pendientes': return handlePendientes(client, channel);
     case 'muertes': return handleMuertes(client, channel, args, isMod);
     case 'brb':
@@ -174,18 +175,15 @@ function handleMetricas(client, channel) {
   client.say(channel, `📊 Activo: ${s.uptime} | 💬 Msgs/hora: ${s.messagesLastHour} | 👁️ Pico: ${s.peakViewers} | Top: ${s.topCommands || 'ninguno'}`);
 }
 
-function handleTitulo(client, channel, tags) {
+async function handleTitulo(client, channel, tags) {
   const username = tags['display-name'];
   try {
-    const usersPath = require('path').join(__dirname, '../../data/users.json');
-    if (fs.existsSync(usersPath)) {
-      const users = JSON.parse(fs.readFileSync(usersPath, 'utf8'));
-      const userData = users[tags['user-id']];
-      if (userData) {
-        const title = getUserTitle(userData.messageCount || 0);
-        client.say(channel, `🏅 @${username} — ${title} (${userData.messageCount || 0} msgs)`);
-        return;
-      }
+    const users = await loadUsers();
+    const userData = users[tags['user-id']];
+    if (userData) {
+      const title = getUserTitle(userData.messageCount || 0);
+      client.say(channel, `🏅 @${username} — ${title} (${userData.messageCount || 0} msgs)`);
+      return;
     }
   } catch {}
   client.say(channel, `🏅 @${username} — 👤 Nuevo`);
