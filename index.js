@@ -4,7 +4,7 @@ const http = require('http');
 const config = require('./config/commands.json');
 const channelConfig = require('./config/channel.json');
 const logger = require('./src/utils/logger');
-const { createEventSubHandler, registerFollowSubscription } = require('./src/eventsub');
+const { createEventSubHandler, registerSubscriptions, isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('./src/eventsub');
 
 const commands = require('./src/commands/handler');
 const games = require('./src/games/handler');
@@ -114,8 +114,8 @@ client.on('connected', async (addr, port) => {
         setInterval(() => alerts.checkFollowerMilestones(client, CHANNEL), 5 * 60 * 1000);
         logger.info(`✅ Seguimiento de seguidores iniciado`);
 
-        // Registrar EventSub para follows en tiempo real
-        await registerFollowSubscription(broadcasterId);
+        // Registrar EventSub: follows, stream.online, stream.offline
+        await registerSubscriptions(broadcasterId);
       } catch (err) {
         logger.error(`Error seguidores: ${err.message}`);
       }

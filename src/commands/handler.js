@@ -114,13 +114,30 @@ async function handleJuego(client, channel) {
 
 async function handleEstadisticas(client, channel) {
   try {
-    const [s, f] = await Promise.all([getStreamInfo(), getFollowerCount(channelConfig.broadcaster_id)]);
-    if (s?.live) {
-      const mins = s.startedAt ? Math.floor((Date.now() - new Date(s.startedAt)) / 60000) : null;
-      const uptime = mins ? `${Math.floor(mins/60)}h ${mins%60}m` : '?';
-      client.say(channel, `📊 ${s.game || '?'} | 👁️ ${s.viewers} viewers | 👥 ${f ?? '?'} seguidores | ⏱️ ${uptime}`);
+    const eventsub = require('../eventsub');
+    const [gameInfo, followers] = await Promise.all([
+      getCurrentGame(),
+      getFollowerCount(channelConfig.broadcaster_id)
+    ]);
+
+    const live = eventsub.isLiveViaEventSub();
+    const uptime = eventsub.getStreamUptime();
+
+    // Intentar obtener viewers con app token
+    let viewers = null;
+    if (live) {
+      viewers = await eventsub.getViewersWithAppToken(channelConfig.broadcaster_id);
+    }
+
+    if (live) {
+      const parts = [];
+      if (gameInfo?.game) parts.push(`🎮 ${gameInfo.game}`);
+      if (viewers !== null) parts.push(`👁️ ${viewers} viewers`);
+      parts.push(`👥 ${followers ?? '?'} seguidores`);
+      if (uptime) parts.push(`⏱️ ${uptime}`);
+      client.say(channel, `📊 ${parts.join(' | ')}`);
     } else {
-      client.say(channel, `📊 Canal offline. 👥 ${f ?? '?'} seguidores.`);
+      client.say(channel, `📊 Canal offline. 👥 ${followers ?? '?'} seguidores.`);
     }
   } catch (err) { logger.error(`!estadisticas: ${err.message}`); client.say(channel, `No puedo obtener stats ahora.`); }
 }

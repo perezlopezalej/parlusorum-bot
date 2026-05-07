@@ -2,32 +2,45 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 
-const TWITCH_MESSAGE_ID = 'Twitch-Eventsub-Message-Id';
-const TWITCH_MESSAGE_TIMESTAMP = 'Twitch-Eventsub-Message-Timestamp';
-const TWITCH_MESSAGE_SIGNATURE = 'Twitch-Eventsub-Message-Signature';
-const MESSAGE_TYPE = 'Twitch-Eventsub-Message-Type';
+const TWITCH_MESSAGE_ID = 'twitch-eventsub-message-id';
+const TWITCH_MESSAGE_TIMESTAMP = 'twitch-eventsub-message-timestamp';
+const TWITCH_MESSAGE_SIGNATURE = 'twitch-eventsub-message-signature';
+const MESSAGE_TYPE = 'twitch-eventsub-message-type';
 const MESSAGE_TYPE_VERIFICATION = 'webhook_callback_verification';
 const MESSAGE_TYPE_NOTIFICATION = 'notification';
 const MESSAGE_TYPE_REVOCATION = 'revocation';
 
 const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET || 'parlusorum-bot-secret-2026';
 
-// --- Verificar firma de Twitch ---
-function verifySignature(req, body) {
-  const messageId = req.headers[TWITCH_MESSAGE_ID.toLowerCase()];
-  const timestamp = req.headers[TWITCH_MESSAGE_TIMESTAMP.toLowerCase()];
-  const signature = req.headers[TWITCH_MESSAGE_SIGNATURE.toLowerCase()];
-  if (!messageId || !timestamp || !signature) return false;
+// --- Estado del stream en tiempo real (via EventSub) ---
+let streamStartedAt = null;
+let streamIsLive = false;
 
-  const hmacMessage = messageId + timestamp + body;
-  const hmac = 'sha256=' + crypto.createHmac('sha256', EVENTSUB_SECRET)
-    .update(hmacMessage)
-    .digest('hex');
-
-  return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+function getStreamUptime() {
+  if (!streamStartedAt) return null;
+  const mins = Math.floor((Date.now() - streamStartedAt) / 60000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-// --- Mensajes variados de bienvenida a nuevos seguidores ---
+function isLiveViaEventSub() { return streamIsLive; }
+
+// --- Verificar firma ---
+function verifySignature(req, body) {
+  const messageId = req.headers[TWITCH_MESSAGE_ID];
+  const timestamp = req.headers[TWITCH_MESSAGE_TIMESTAMP];
+  const signature = req.headers[TWITCH_MESSAGE_SIGNATURE];
+  if (!messageId || !timestamp || !signature) return false;
+  const hmac = 'sha256=' + crypto.createHmac('sha256', EVENTSUB_SECRET)
+    .update(messageId + timestamp + body)
+    .digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+  } catch { return false; }
+}
+
+// --- Mensajes de bienvenida a nuevos seguidores ---
 const followMessages = [
   '🎉 ¡@{username} acaba de seguir el canal! ¡Bienvenid@ a la familia! ¡FUA! 💜',
   '💜 ¡Nuevo seguidor! ¡@{username} se une a ParLusorum! ¡Gracias! 🔥',
@@ -37,11 +50,10 @@ const followMessages = [
 ];
 
 function getFollowMessage(username) {
-  const msg = followMessages[Math.floor(Math.random() * followMessages.length)];
-  return msg.replace('{username}', username);
+  return followMessages[Math.floor(Math.random() * followMessages.length)].replace('{username}', username);
 }
 
-// --- Obtener App Access Token (necesario para EventSub) ---
+// --- Obtener App Access Token ---
 async function getAppAccessToken() {
   try {
     const res = await fetch('https://id.twitch.tv/oauth2/token', {
@@ -61,8 +73,8 @@ async function getAppAccessToken() {
   }
 }
 
-// --- Registrar suscripción EventSub ---
-async function registerFollowSubscription(broadcasterId) {
+// --- Registrar suscripciones EventSub ---
+async function registerSubscriptions(broadcasterId) {
   const callbackUrl = `${process.env.PUBLIC_URL}/eventsub`;
 
   if (!callbackUrl || callbackUrl.startsWith('undefined')) {
@@ -70,7 +82,6 @@ async function registerFollowSubscription(broadcasterId) {
     return false;
   }
 
-  // Obtener app access token
   const appToken = await getAppAccessToken();
   if (!appToken) {
     logger.warn('⚠️ EventSub: no se pudo obtener app token.');
@@ -83,13 +94,31 @@ async function registerFollowSubscription(broadcasterId) {
     'Content-Type': 'application/json'
   };
 
+  // Tipos de suscripción a registrar
+  const subscriptions = [
+    {
+      type: 'channel.follow',
+      version: '2',
+      condition: { broadcaster_user_id: broadcasterId, moderator_user_id: broadcasterId }
+    },
+    {
+      type: 'stream.online',
+      version: '1',
+      condition: { broadcaster_user_id: broadcasterId }
+    },
+    {
+      type: 'stream.offline',
+      version: '1',
+      condition: { broadcaster_user_id: broadcasterId }
+    }
+  ];
+
   try {
-    // Eliminar suscripciones antiguas
+    // Limpiar suscripciones antiguas
     const listRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers });
     const listData = await listRes.json();
     const oldSubs = listData.data?.filter(s =>
-      s.type === 'channel.follow' &&
-      s.condition?.broadcaster_user_id === broadcasterId
+      subscriptions.some(sub => sub.type === s.type)
     ) || [];
 
     for (const sub of oldSubs) {
@@ -98,46 +127,63 @@ async function registerFollowSubscription(broadcasterId) {
       });
     }
 
-    // Registrar nueva suscripción
-    const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        type: 'channel.follow',
-        version: '2',
-        condition: {
-          broadcaster_user_id: broadcasterId,
-          moderator_user_id: broadcasterId
-        },
-        transport: {
-          method: 'webhook',
-          callback: callbackUrl,
-          secret: EVENTSUB_SECRET
-        }
-      })
-    });
-
-    const data = await res.json();
-    if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
-      logger.info('✅ EventSub: suscripción de follows registrada correctamente.');
-      return true;
-    } else {
-      logger.warn(`⚠️ EventSub: ${JSON.stringify(data)}`);
-      return false;
+    // Registrar nuevas suscripciones
+    let success = 0;
+    for (const sub of subscriptions) {
+      const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...sub,
+          transport: {
+            method: 'webhook',
+            callback: callbackUrl,
+            secret: EVENTSUB_SECRET
+          }
+        })
+      });
+      const data = await res.json();
+      if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
+        logger.info(`✅ EventSub: ${sub.type} registrado.`);
+        success++;
+      } else {
+        logger.warn(`⚠️ EventSub ${sub.type}: ${JSON.stringify(data.message || data)}`);
+      }
     }
+
+    return success > 0;
   } catch (e) {
     logger.error(`EventSub error: ${e.message}`);
     return false;
   }
 }
 
+// --- Intentar obtener viewers con app token ---
+async function getViewersWithAppToken(broadcasterId) {
+  try {
+    const appToken = await getAppAccessToken();
+    if (!appToken) return null;
+    const res = await fetch(
+      `https://api.twitch.tv/helix/streams?user_id=${broadcasterId}`,
+      {
+        headers: {
+          'Client-ID': process.env.CLIENT_ID,
+          'Authorization': `Bearer ${appToken}`
+        }
+      }
+    );
+    const data = await res.json();
+    return data.data?.[0]?.viewer_count ?? null;
+  } catch { return null; }
+}
+
 // --- Handler del webhook ---
 function createEventSubHandler(client, channel) {
   return function handleEventSub(req, res, rawBody) {
-    const messageType = req.headers[MESSAGE_TYPE.toLowerCase()];
+    const messageType = req.headers[MESSAGE_TYPE];
 
     if (!verifySignature(req, rawBody)) {
-      logger.warn('⚠️ EventSub: firma inválida — petición rechazada');
+      logger.warn('⚠️ EventSub: firma inválida');
       res.writeHead(403);
       res.end();
       return;
@@ -148,20 +194,33 @@ function createEventSubHandler(client, channel) {
     catch { res.writeHead(400); res.end(); return; }
 
     if (messageType === MESSAGE_TYPE_VERIFICATION) {
-      // Twitch verifica el webhook
-      logger.info('✅ EventSub: webhook verificado por Twitch');
+      logger.info(`✅ EventSub: webhook verificado (${body.subscription?.type})`);
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end(body.challenge);
       return;
     }
 
     if (messageType === MESSAGE_TYPE_NOTIFICATION) {
+      const type = body.subscription?.type;
       const event = body.event;
-      if (body.subscription?.type === 'channel.follow' && event?.user_name) {
-        const username = event.user_name;
-        logger.info(`👤 Nuevo seguidor: ${username}`);
-        client.say(channel, getFollowMessage(username));
+
+      if (type === 'channel.follow' && event?.user_name) {
+        logger.info(`👤 Nuevo seguidor: ${event.user_name}`);
+        client.say(channel, getFollowMessage(event.user_name));
       }
+
+      if (type === 'stream.online') {
+        streamIsLive = true;
+        streamStartedAt = event?.started_at ? new Date(event.started_at).getTime() : Date.now();
+        logger.info(`🔴 Stream en directo detectado via EventSub`);
+      }
+
+      if (type === 'stream.offline') {
+        streamIsLive = false;
+        streamStartedAt = null;
+        logger.info(`⚫ Stream offline detectado via EventSub`);
+      }
+
       res.writeHead(204);
       res.end();
       return;
@@ -179,4 +238,10 @@ function createEventSubHandler(client, channel) {
   };
 }
 
-module.exports = { createEventSubHandler, registerFollowSubscription };
+module.exports = {
+  createEventSubHandler,
+  registerSubscriptions,
+  getStreamUptime,
+  isLiveViaEventSub,
+  getViewersWithAppToken
+};
