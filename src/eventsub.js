@@ -41,24 +41,51 @@ function getFollowMessage(username) {
   return msg.replace('{username}', username);
 }
 
+// --- Obtener App Access Token (necesario para EventSub) ---
+async function getAppAccessToken() {
+  try {
+    const res = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.CLIENT_ID,
+        client_secret: process.env.CLIENT_SECRET,
+        grant_type: 'client_credentials'
+      })
+    });
+    const data = await res.json();
+    return data.access_token || null;
+  } catch (e) {
+    logger.error(`Error obteniendo app token: ${e.message}`);
+    return null;
+  }
+}
+
 // --- Registrar suscripción EventSub ---
 async function registerFollowSubscription(broadcasterId) {
-  const token = (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
-  const callbackUrl = `${process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL}/eventsub`;
+  const callbackUrl = `${process.env.PUBLIC_URL}/eventsub`;
 
   if (!callbackUrl || callbackUrl.startsWith('undefined')) {
-    logger.warn('⚠️ EventSub: PUBLIC_URL no configurada, no se puede registrar el webhook.');
+    logger.warn('⚠️ EventSub: PUBLIC_URL no configurada.');
     return false;
   }
 
+  // Obtener app access token
+  const appToken = await getAppAccessToken();
+  if (!appToken) {
+    logger.warn('⚠️ EventSub: no se pudo obtener app token.');
+    return false;
+  }
+
+  const headers = {
+    'Client-ID': process.env.CLIENT_ID,
+    'Authorization': `Bearer ${appToken}`,
+    'Content-Type': 'application/json'
+  };
+
   try {
-    // Eliminar suscripciones antiguas primero
-    const listRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-      headers: {
-        'Client-ID': process.env.CLIENT_ID,
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    // Eliminar suscripciones antiguas
+    const listRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers });
     const listData = await listRes.json();
     const oldSubs = listData.data?.filter(s =>
       s.type === 'channel.follow' &&
@@ -67,22 +94,14 @@ async function registerFollowSubscription(broadcasterId) {
 
     for (const sub of oldSubs) {
       await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Client-ID': process.env.CLIENT_ID,
-          'Authorization': `Bearer ${token}`
-        }
+        method: 'DELETE', headers
       });
     }
 
     // Registrar nueva suscripción
     const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
       method: 'POST',
-      headers: {
-        'Client-ID': process.env.CLIENT_ID,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         type: 'channel.follow',
         version: '2',
@@ -103,11 +122,11 @@ async function registerFollowSubscription(broadcasterId) {
       logger.info('✅ EventSub: suscripción de follows registrada correctamente.');
       return true;
     } else {
-      logger.warn(`⚠️ EventSub: respuesta inesperada — ${JSON.stringify(data)}`);
+      logger.warn(`⚠️ EventSub: ${JSON.stringify(data)}`);
       return false;
     }
   } catch (e) {
-    logger.error(`EventSub registro error: ${e.message}`);
+    logger.error(`EventSub error: ${e.message}`);
     return false;
   }
 }
