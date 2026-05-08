@@ -22,6 +22,35 @@ const ai = require('./src/ai/handler');
 const { getStreamInfo } = require('./src/twitch/api');
 const { trackMessage, updatePeakViewers } = require('./src/utils/metrics');
 
+// --- Refresh automático del broadcaster token ---
+async function refreshBroadcasterToken() {
+  try {
+    const res = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.CLIENT_ID,
+        client_secret: process.env.CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: process.env.BROADCASTER_REFRESH_TOKEN || ''
+      })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      process.env.BROADCASTER_TOKEN = `oauth:${data.access_token}`;
+      if (data.refresh_token) process.env.BROADCASTER_REFRESH_TOKEN = data.refresh_token;
+      logger.info(`✅ Broadcaster token refrescado automáticamente`);
+    } else {
+      logger.warn(`⚠️ No se pudo refrescar el broadcaster token: ${data.message || 'sin motivo'}`);
+    }
+  } catch (e) {
+    logger.error(`Error refrescando broadcaster token: ${e.message}`);
+  }
+}
+
+// Refrescar cada 30 días
+setInterval(refreshBroadcasterToken, 30 * 24 * 60 * 60 * 1000);
+
 const PORT = process.env.PORT || 3000;
 const CHANNEL = `#${process.env.CHANNEL}`;
 const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
@@ -95,6 +124,12 @@ client.on('connected', async (addr, port) => {
 
     await validateBroadcasterToken();
 
+    // FIX #4: migración automática npoint → Supabase (solo si Supabase está configurado)
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
+      const { migrateFromNpoint } = require('./src/utils/supabase');
+      await migrateFromNpoint().catch(e => logger.warn(`Migración: ${e.message}`));
+    }
+
     // Inicializar estado del stream con app token (fiable)
     await initStreamState();
     await ai.initStreamStatus();
@@ -164,7 +199,6 @@ client.on('message', async (channel, tags, message, self) => {
   if (['trivia', 'moneda'].includes(command)) return games.handle(client, channel, tags, command, args);
   if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
   if (command === 'chiste') return ai.handleChiste(client, channel, tags);
-  if (['cita', 'consejo', 'meme'].includes(command)) return ai.handlePersonality(client, channel, tags, command);
 
   await commands.handle(client, channel, tags, command, args, config);
 });

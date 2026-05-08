@@ -1,15 +1,14 @@
-const fs = require('fs');
 const { loadUsers } = require('../utils/storage');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
-const { addTodo, getTodos } = require('../utils/todolist');
 const { getSummary, trackCommand } = require('../utils/metrics');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
-// --- Contador de muertes ---
+// --- Contador de muertes --- FIX #1: exportado para que eventsub lo use
 let deathCount = 0;
+function getDeathCount() { return deathCount; }
 
 // --- Cooldowns ---
 const cooldowns = new Map();
@@ -25,33 +24,28 @@ function getUserTitle(messageCount) {
   return '👤 Nuevo';
 }
 
-// --- Ayuda ---
+// --- Textos de ayuda actualizados ---
 const helpTexts = {
-  // Comandos públicos
-  'comandos': 'Lista de comandos principales. ¡Incluyendo !titulo para ver tu rango!',
-  'cita': 'Frase épica o inspiradora.',
-  'chiste': 'Chiste real.',
-  'consejo': 'Consejo random.',
-  'meme': 'Meme en texto.',
-  'trivia': 'Pregunta de trivia. Responde directamente.',
+  'comandos': 'Lista de comandos disponibles.',
+  'chiste': 'Chiste real del banco de 169 chistes.',
+  'trivia': 'Pregunta de trivia. Responde directamente en el chat.',
   'moneda': 'Cara o cruz.',
-  'dios_fua': 'Pregúntame cualquier cosa. Uso: !dios_fua [pregunta]',
-  'juego': 'Juego actual del canal.',
-  'estadisticas': 'Stats del stream.',
-  'uptime': 'Tiempo activo del bot.',
-  'titulo': 'Tu título en el canal.',
-  // Comandos de mods
-  'silencio': '(Mods) Activa/desactiva el silencio del bot.',
-  'brb': '(Mods) Avisa de ausencia del streamer.',
-  'so': '(Mods) Shoutout inteligente. Uso: !so @usuario',
-  'todo': '(Mods) Añade tarea. Uso: !todo [tarea]',
-  'pendientes': 'Lista de tareas pendientes.',
+  'dios_fua': 'Preguntame cualquier cosa. Uso: !dios_fua [pregunta]',
+  'juego': 'Juego actual del canal con info de RAWG.',
+  'estadisticas': 'Stats del stream en tiempo real.',
+  'uptime': 'Tiempo que lleva activo el bot.',
+  'titulo': 'Tu titulo en el canal segun mensajes enviados.',
+  'silencio': '(Mods) Activa/desactiva todos los mensajes automaticos del bot.',
+  'brb': '(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min.',
+  'so': '(Mods) Shoutout con IA. Uso: !so @usuario',
   'muertes': 'Contador de muertes. Mods: !muertes +1 / !muertes reset',
   'clip': '(Mods) Crea un clip del momento actual.',
-  'metricas': '(Mods) Métricas de actividad del chat.',
+  'marker': '(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]',
+  'resumen': '(Mods) Resumen completo del stream actual.',
+  'metricas': '(Mods) Metricas de actividad del chat.',
 };
 
-// --- Handler principal (async) ---
+// --- Handler principal ---
 async function handle(client, channel, tags, command, args, config) {
   const username = tags['display-name'];
   const userId = tags['user-id'];
@@ -78,7 +72,6 @@ async function handle(client, channel, tags, command, args, config) {
     case 'juego': return await handleJuego(client, channel);
     case 'estadisticas': return await handleEstadisticas(client, channel);
     case 'titulo': return await handleTitulo(client, channel, tags);
-    case 'pendientes': return handlePendientes(client, channel);
     case 'muertes': return handleMuertes(client, channel, args, isMod);
     case 'brb':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
@@ -87,9 +80,6 @@ async function handle(client, channel, tags, command, args, config) {
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return handleSilencio(client, channel, username);
     case 'so': return await handleShoutout(client, channel, tags, args[1]);
-    case 'todo':
-      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
-      return handleTodo(client, channel, username, args);
     case 'clip':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return await handleClip(client, channel);
@@ -118,7 +108,7 @@ async function handleJuego(client, channel) {
   if (!g?.game) { client.say(channel, '🎮 Sin informacion del juego actual.'); return; }
   try {
     const rawg = await getGameInfo(g.game);
-    if (rawg && rawg.genres && rawg.rating) {
+    if (rawg?.genres && rawg?.rating) {
       const year = rawg.released ? rawg.released.slice(0, 4) : '';
       const title = g.title ? ` | "${g.title}"` : '';
       client.say(channel, `🎮 ${g.game}${year ? ` (${year})` : ''} — ${rawg.genres} — ⭐ ${rawg.rating}/5 en RAWG${title}`);
@@ -128,36 +118,6 @@ async function handleJuego(client, channel) {
   client.say(channel, `🎮 ${g.game}${g.title ? ` — "${g.title}"` : ''}`);
 }
 
-async function handleMarker(client, channel, args) {
-  const eventsub = require('../eventsub');
-  if (!eventsub.isLiveViaEventSub()) { client.say(channel, '❌ El canal no esta en directo.'); return; }
-  const { createStreamMarker } = require('../twitch/api');
-  const desc = args.slice(1).join(' ') || 'Momento marcado manualmente';
-  const marker = await createStreamMarker(desc.slice(0, 140));
-  if (marker) {
-    client.say(channel, `🏁 Marker creado: "${desc.slice(0, 50)}" FUA!`);
-  } else {
-    client.say(channel, '❌ No se pudo crear el marker. Revisa scope user:edit:broadcast.');
-  }
-}
-
-async function handleResumen(client, channel) {
-  try {
-    const eventsub = require('../eventsub');
-    const s = getSummary();
-    const uptime = eventsub.getStreamUptime() || s.uptime;
-    const gameInfo = await getCurrentGame().catch(() => null);
-    const game = gameInfo && gameInfo.game ? `🎮 ${gameInfo.game}` : '';
-    const topCmds = s.topCommands || 'ninguno';
-    const parts1 = [`📊 Duracion: ${uptime}`, `💬 Msgs/hora: ${s.messagesLastHour}`, game].filter(Boolean);
-    const parts2 = [`👁️ Pico viewers: ${s.peakViewers}`, `💀 Muertes: ${deathCount}`, `🏆 Cmds: ${topCmds}`];
-    client.say(channel, parts1.join(' | '));
-    setTimeout(() => client.say(channel, parts2.join(' | ')), 1500);
-  } catch (err) {
-    client.say(channel, 'No pude generar el resumen.');
-  }
-}
-
 async function handleEstadisticas(client, channel) {
   try {
     const eventsub = require('../eventsub');
@@ -165,15 +125,10 @@ async function handleEstadisticas(client, channel) {
       getCurrentGame(),
       getFollowerCount(channelConfig.broadcaster_id)
     ]);
-
     const live = eventsub.isLiveViaEventSub();
     const uptime = eventsub.getStreamUptime();
-
-    // Intentar obtener viewers con app token
     let viewers = null;
-    if (live) {
-      viewers = await eventsub.getViewersWithAppToken(channelConfig.broadcaster_id);
-    }
+    if (live) viewers = await eventsub.getViewersWithAppToken(channelConfig.broadcaster_id).catch(() => null);
 
     if (live) {
       const parts = [];
@@ -183,9 +138,12 @@ async function handleEstadisticas(client, channel) {
       if (uptime) parts.push(`⏱️ ${uptime}`);
       client.say(channel, `📊 ${parts.join(' | ')}`);
     } else {
-      client.say(channel, `📊 El canal está descansando ahora 😴 | 👥 ${followers ?? '?'} seguidores. ¡Vuelve pronto! 💜`);
+      client.say(channel, `📊 Canal offline 😴 | 👥 ${followers ?? '?'} seguidores. ¡Vuelve pronto! 💜`);
     }
-  } catch (err) { logger.error(`!estadisticas: ${err.message}`); client.say(channel, `No puedo obtener stats ahora.`); }
+  } catch (err) {
+    logger.error(`!estadisticas: ${err.message}`);
+    client.say(channel, `No puedo obtener stats ahora.`);
+  }
 }
 
 function handleMuertes(client, channel, args, isMod) {
@@ -198,7 +156,7 @@ function handleBrb(client, channel, username) {
   if (isBrb()) {
     const mins = getBrbDuration();
     setBrbMode(false, null, null);
-    client.say(channel, `🔙 ¡@${username} ha vuelto después de ${mins} min! 🎉`);
+    client.say(channel, `🔙 ¡@${username} ha vuelto despues de ${mins} min! 🎉`);
   } else {
     setBrbMode(true, client, `#${process.env.CHANNEL}`);
     client.say(channel, `🚪 El streamer ha salido un momento. ¡Ahora vuelve! 👀`);
@@ -211,26 +169,50 @@ function handleSilencio(client, channel, username) {
   client.say(channel, newState ? `🔇 Modo silencio activado por @${username}.` : `🔊 ¡De vuelta! ¡FUA! 💪`);
 }
 
-function handleTodo(client, channel, username, args) {
-  const task = args.slice(1).join(' ');
-  if (!task) { client.say(channel, `Uso: !todo [tarea]`); return; }
-  const num = addTodo(task, username);
-  client.say(channel, `📝 Tarea #${num}: "${task}"`);
-}
-
-function handlePendientes(client, channel) {
-  const todos = getTodos().filter(t => !t.done);
-  if (todos.length === 0) { client.say(channel, `✅ ¡Sin tareas pendientes!`); return; }
-  const list = todos.slice(0, 5).map((t, i) => `${i + 1}. ${t.task}`).join(' | ');
-  client.say(channel, `📋 ${list}`.slice(0, 490));
-}
-
 async function handleClip(client, channel) {
   const eventsub = require('../eventsub');
-  if (!eventsub.isLiveViaEventSub()) { client.say(channel, `❌ El canal no está en directo.`); return; }
+  if (!eventsub.isLiveViaEventSub()) { client.say(channel, `❌ El canal no esta en directo.`); return; }
   client.say(channel, `🎬 Creando clip...`);
-  const url = await createClip();
-  client.say(channel, url ? `🎬 ¡Clip creado! ${url}` : `❌ No se pudo crear el clip.`);
+  try {
+    const url = await createClip();
+    client.say(channel, url ? `🎬 ¡Clip creado! ${url}` : `❌ No se pudo crear el clip. Revisa scope channel:manage:clips.`);
+  } catch (err) {
+    logger.error(`!clip: ${err.message}`);
+    client.say(channel, `❌ Error al crear el clip.`);
+  }
+}
+
+async function handleMarker(client, channel, args) {
+  const eventsub = require('../eventsub');
+  if (!eventsub.isLiveViaEventSub()) { client.say(channel, '❌ El canal no esta en directo.'); return; }
+  const { createStreamMarker } = require('../twitch/api');
+  const desc = args.slice(1).join(' ') || 'Momento marcado manualmente';
+  try {
+    const marker = await createStreamMarker(desc.slice(0, 140));
+    if (marker) client.say(channel, `🏁 Marker creado: "${desc.slice(0, 50)}" FUA!`);
+    else client.say(channel, '❌ No se pudo crear el marker. Revisa scope user:edit:broadcast.');
+  } catch (err) {
+    logger.error(`!marker: ${err.message}`);
+    client.say(channel, '❌ Error al crear el marker.');
+  }
+}
+
+async function handleResumen(client, channel) {
+  try {
+    const eventsub = require('../eventsub');
+    const s = getSummary();
+    const uptime = eventsub.getStreamUptime() || s.uptime;
+    const gameInfo = await getCurrentGame().catch(() => null);
+    const game = gameInfo?.game ? `🎮 ${gameInfo.game}` : '';
+    const topCmds = s.topCommands || 'ninguno';
+    const parts1 = [`📊 Duracion: ${uptime}`, `💬 Msgs/hora: ${s.messagesLastHour}`, game].filter(Boolean);
+    const parts2 = [`👁️ Pico: ${s.peakViewers}`, `💀 Muertes: ${deathCount}`, `🏆 Cmds: ${topCmds}`];
+    client.say(channel, parts1.join(' | '));
+    setTimeout(() => client.say(channel, parts2.join(' | ')), 1500);
+  } catch (err) {
+    logger.error(`!resumen: ${err.message}`);
+    client.say(channel, 'No pude generar el resumen.');
+  }
 }
 
 function handleMetricas(client, channel) {
@@ -257,8 +239,8 @@ function handleAyuda(client, channel, args) {
   if (sub && helpTexts[sub]) {
     client.say(channel, `❓ !${sub}: ${helpTexts[sub]}`);
   } else {
-    client.say(channel, `❓ Comandos principales: !cita !chiste !consejo !meme !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime | Mods: !so !brb !silencio !todo !muertes !clip | !ayuda [comando] para más info`);
+    client.say(channel, `❓ Comandos: !chiste !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime | Mods: !so !brb !silencio !muertes !clip !marker !resumen | !ayuda [cmd] para más info`);
   }
 }
 
-module.exports = { handle };
+module.exports = { handle, getDeathCount };

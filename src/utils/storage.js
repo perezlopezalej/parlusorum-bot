@@ -1,68 +1,84 @@
-// Almacenamiento persistente via npoint.io
+/**
+ * storage.js — Capa de almacenamiento
+ * Usa Supabase si está configurado, npoint.io como fallback.
+ */
+
 const logger = require('./logger');
 
+const USE_SUPABASE = !!(process.env.SUPABASE_URL && process.env.SUPABASE_KEY);
+
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+let supabaseStorage = null;
+function getSupabase() {
+  if (!supabaseStorage) supabaseStorage = require('./supabase');
+  return supabaseStorage;
+}
+
+// ─── NPOINT FALLBACK ──────────────────────────────────────────────────────────
 const NPOINT_ID = process.env.NPOINT_BIN_ID;
 const BASE_URL = `https://api.npoint.io/${NPOINT_ID}`;
+let nCache = null;
+let nDirty = false;
+let nSaveTimer = null;
+let nLoading = false;
+let nLoadPromise = null;
 
-// Cache agresiva — solo carga una vez, guarda con debounce
-let cache = null;
-let dirty = false;
-let saveTimer = null;
-let loading = false;
-let loadPromise = null;
-
-async function loadUsers() {
-  // Si ya tenemos cache, devolverla (evita requests innecesarios a npoint)
-  if (cache !== null) return cache;
-
-  // Evitar cargas simultáneas (race condition fix)
-  if (loading) return loadPromise;
-
-  if (!NPOINT_ID) {
-    logger.warn('⚠️ NPOINT_BIN_ID no configurado, usando memoria local.');
-    cache = {};
-    return cache;
-  }
-
-  loading = true;
-  loadPromise = (async () => {
+async function nLoadUsers() {
+  if (nCache !== null) return nCache;
+  if (nLoading) return nLoadPromise;
+  if (!NPOINT_ID) { nCache = {}; return nCache; }
+  nLoading = true;
+  nLoadPromise = (async () => {
     try {
       const res = await fetch(BASE_URL);
       const data = await res.json();
-      // Validar que sea un objeto (no array ni null)
-      cache = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
-      logger.info(`✅ Usuarios cargados desde npoint (${Object.keys(cache).length} usuarios)`);
+      nCache = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+      logger.info(`✅ Usuarios cargados desde npoint (${Object.keys(nCache).length})`);
     } catch (e) {
-      logger.error(`Error cargando usuarios desde npoint: ${e.message}`);
-      cache = {};
+      logger.error(`Error npoint load: ${e.message}`);
+      nCache = {};
     }
-    loading = false;
-    return cache;
+    nLoading = false;
+    return nCache;
   })();
-
-  return loadPromise;
+  return nLoadPromise;
 }
 
-// Guardar con debounce de 5 segundos — evita saturar npoint
-function saveUsers(data) {
-  cache = data;
-  dirty = true;
-  if (saveTimer) return;
-  saveTimer = setTimeout(async () => {
-    if (!dirty || !NPOINT_ID) { saveTimer = null; return; }
+function nSaveUsers(data) {
+  nCache = data;
+  nDirty = true;
+  if (nSaveTimer) return;
+  nSaveTimer = setTimeout(async () => {
+    if (!nDirty || !NPOINT_ID) { nSaveTimer = null; return; }
     try {
       await fetch(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cache)
+        body: JSON.stringify(nCache)
       });
-      dirty = false;
-      logger.debug('💾 Usuarios guardados en npoint');
+      nDirty = false;
     } catch (e) {
-      logger.error(`Error guardando usuarios en npoint: ${e.message}`);
+      logger.error(`Error npoint save: ${e.message}`);
     }
-    saveTimer = null;
+    nSaveTimer = null;
   }, 5000);
+}
+
+// ─── API PÚBLICA ──────────────────────────────────────────────────────────────
+async function loadUsers() {
+  if (USE_SUPABASE) return getSupabase().loadUsers();
+  return nLoadUsers();
+}
+
+async function saveUsers(data) {
+  if (USE_SUPABASE) return getSupabase().saveUsers(data);
+  return nSaveUsers(data);
+}
+
+if (USE_SUPABASE) {
+  logger.info('💾 Storage: Supabase');
+} else {
+  logger.info('💾 Storage: npoint.io (fallback)');
 }
 
 module.exports = { loadUsers, saveUsers };

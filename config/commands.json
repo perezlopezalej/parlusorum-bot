@@ -1,17 +1,17 @@
 {
   "commands": {
     "comandos": {
-      "response": "\ud83d\udccb Comandos: !cita !chiste !consejo !meme !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime !ayuda | Mods: !so !brb !silencio !todo !muertes !clip",
+      "response": "📋 Comandos: !dios_fua !chiste !trivia !moneda !juego !estadisticas !titulo !uptime !ayuda | Mods: !so !brb !silencio !muertes !clip !marker !resumen !metricas",
       "cooldown": 10
     }
   },
   "timers": [
     {
-      "message": "\u00a1Si te gusta el stream dale follow a ParLusorum! \ud83d\udd14 \u00a1FUA!",
+      "message": "¡Si te gusta el stream dale follow a ParLusorum! 🔔 ¡FUA!",
       "interval": 20
     },
     {
-      "message": "\u00bfTienes alguna pregunta? \u00a1Usa !dios_fua y te respondo! \ud83e\udd16",
+      "message": "¿Tienes alguna pregunta? ¡Usa !dios_fua y te respondo! 🤖",
       "interval": 30
     }
   ]

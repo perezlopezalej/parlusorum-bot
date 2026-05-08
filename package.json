@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.4",
     "dotenv": "^17.4.2",
     "groq-sdk": "^1.1.2",
     "tmi.js": "^1.8.5"

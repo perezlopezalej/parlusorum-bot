@@ -183,7 +183,7 @@ async function getViewersWithAppToken(broadcasterId) {
 
 // --- Handler del webhook ---
 function createEventSubHandler(client, channel) {
-  return function handleEventSub(req, res, rawBody) {
+  return async function handleEventSub(req, res, rawBody) {
     const messageType = req.headers[MESSAGE_TYPE];
 
     if (!verifySignature(req, rawBody)) {
@@ -216,12 +216,56 @@ function createEventSubHandler(client, channel) {
         logger.info(`🔴 Stream online via EventSub`);
         // FIX #2: notificar al handler de alertas para limpiar lurkerMap
         try { require('./alerts/handler').onStreamOnline(); } catch {}
+        // Iniciar sesión en Supabase
+        try {
+          const { getCurrentGame } = require('../twitch/api');
+          const { startStreamSession } = require('../utils/supabase');
+          const { invalidateMemoryCache } = require('../memory/handler');
+          const gameInfo = await getCurrentGame().catch(() => null);
+          await startStreamSession(gameInfo?.game || null);
+          invalidateMemoryCache();
+        } catch (e) { logger.warn(`Supabase session start: ${e.message}`); }
       }
 
       if (type === 'stream.offline') {
         streamIsLive = false;
+        const endedAt = Date.now();
+        const durationMinutes = streamStartedAt
+          ? Math.floor((endedAt - streamStartedAt) / 60000)
+          : 0;
         streamStartedAt = null;
         logger.info(`⚫ Stream offline via EventSub`);
+        // Cerrar sesión y guardar memoria en Supabase
+        try {
+          const { getCurrentGame } = require('../twitch/api');
+          const { getSummary } = require('../utils/metrics');
+          const { onStreamEnd } = require('../memory/handler');
+          const { getDeathCount } = require('../commands/handler');
+          const gameInfo = await getCurrentGame().catch(() => null);
+          const metrics = getSummary();
+          const { getRecentHistory, getActiveUsers, resetActiveUsers } = require('../ai/handler');
+          const chatSample = typeof getRecentHistory === 'function' ? getRecentHistory(10) : '';
+          const activeUsers = getActiveUsers();
+          resetActiveUsers();
+          await onStreamEnd({
+            game: gameInfo?.game || null,
+            durationMinutes,
+            deathCount: getDeathCount(),
+            peakViewers: metrics.peakViewers || 0,
+            totalMessages: metrics.messagesLastHour || 0,
+            topCommands: Object.fromEntries(
+              (metrics.topCommands || '')
+                .split(' ')
+                .filter(Boolean)
+                .map(s => {
+                  const m = s.match(/!(\w+)\((\d+)\)/);
+                  return m ? [m[1], parseInt(m[2])] : null;
+                })
+                .filter(Boolean)
+            ),
+            activeUsers: activeUsers
+          }, chatSample);
+        } catch (e) { logger.warn(`Supabase session end: ${e.message}`); }
       }
 
       res.writeHead(204); res.end(); return;

@@ -3,8 +3,9 @@ const channelConfig = require('../../config/channel.json');
 const { getCurrentGame, getGameInfo, getStreamInfo } = require('../twitch/api');
 const { isTriviaActive, isSilenced, setTriviaActive } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
-const { canMakeRequest } = require('../utils/ratelimit');
+const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { searchWeb, needsWebSearch } = require('../utils/search');
+const { getMemoryContext } = require('../memory/handler');
 const logger = require('../utils/logger');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -81,6 +82,12 @@ async function getFullContext() {
   const isLive = getEventSubLiveStatus();
   context += isLive ? ` El canal ESTA EN DIRECTO ahora mismo.` : ` El canal esta offline ahora mismo.`;
 
+  // Inyectar memoria de streams anteriores
+  try {
+    const memory = await getMemoryContext();
+    if (memory) context += memory;
+  } catch {}
+
   fullContextCache = context;
   lastContextCheck = now;
   return fullContextCache;
@@ -96,7 +103,20 @@ function getMinimalContext() {
   return `Canal de ${channelConfig.streamer}: ${channelConfig.vibe}. Juegos: ${games}. ${channelConfig.inside_jokes || ''}`;
 }
 
-// --- Historial de chat ---
+// --- Usuarios activos en el stream actual ---
+const activeUsersThisStream = new Set();
+
+function trackActiveUser(username) {
+  if (username) activeUsersThisStream.add(username.toLowerCase());
+}
+
+function getActiveUsers() {
+  return [...activeUsersThisStream];
+}
+
+function resetActiveUsers() {
+  activeUsersThisStream.clear();
+}
 const chatHistory = [];
 const MAX_HISTORY = 40;
 let lastChatMessageTime = Date.now();
@@ -107,6 +127,7 @@ function addToHistory(username, message) {
   chatHistory.push({ username, message, ts: Date.now() });
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
   lastChatMessageTime = Date.now();
+  trackActiveUser(username);
 }
 
 function updateLastChatTime() { lastChatMessageTime = Date.now(); }
@@ -384,9 +405,10 @@ async function handleQuestion(client, channel, tags, args) {
   if (!rawQuestion) { client.say(channel, `@${username} escribe algo despues de !dios_fua 😅`); return; }
   const question = sanitizeForAI(rawQuestion);
   if (!question) { client.say(channel, `@${username} esa pregunta no la puedo responder 🙅`); return; }
-  if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones ⏳`); return; }
+  if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones globales ⏳`); return; }
 
   const userType = getUserType(username);
+  if (!canUserMakeRequest(userId, userType)) { client.say(channel, `@${username} espera un momento antes de volver a preguntar ⏳`); return; }
 
   try {
     const personality = await getPersonality(trackMessage(), userType);
@@ -529,7 +551,8 @@ async function checkForHighlight(client, channel, message) {
 }
 
 module.exports = {
-  handleCohost, handleChiste, handleQuestion, handlePersonality, handleShoutout,
-  addToHistory, updateLastChatTime, checkChatHook, checkStreamStatus, initStreamStatus,
-  invalidateContextCache, checkForHighlight
+  handleCohost, handleChiste, handleQuestion, handleShoutout,
+  addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
+  initStreamStatus, invalidateContextCache, checkForHighlight,
+  getActiveUsers, resetActiveUsers
 };
