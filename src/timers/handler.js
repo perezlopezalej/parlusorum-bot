@@ -1,11 +1,8 @@
-const { isStreamLive, getCurrentGame, getStreamInfo } = require('../twitch/api');
+const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const logger = require('../utils/logger');
 
 const timerRefs = [];
 let lastMessages = [];
-let streamStartTime = null;
-
-// Timer extra: duración del stream cada 40 minutos
 let streamDurationInterval = null;
 
 function start(client, config) {
@@ -15,8 +12,9 @@ function start(client, config) {
   lastMessages = new Array(config.timers.length).fill('');
 
   config.timers.forEach((timer, index) => {
-    const ref = setInterval(async () => {
-      if (!isStreamLive()) return;
+    const ref = setInterval(() => {
+      // Usar EventSub para saber si está en directo (fiable)
+      if (!isLiveViaEventSub()) return;
 
       const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
       const msg = timer.message + suffix;
@@ -27,22 +25,14 @@ function start(client, config) {
     timerRefs.push(ref);
   });
 
-  // Timer de duración del stream cada 40 min
-  streamDurationInterval = setInterval(async () => {
-    const info = await getStreamInfo().catch(() => null);
-    if (!info?.live) { streamStartTime = null; return; }
+  // Timer de duración del stream cada 40 min — usa EventSub (fiable)
+  streamDurationInterval = setInterval(() => {
+    if (!isLiveViaEventSub()) return;
 
-    if (!streamStartTime && info.startedAt) {
-      streamStartTime = new Date(info.startedAt);
-    }
+    const uptime = getStreamUptime();
+    if (!uptime) return;
 
-    if (streamStartTime) {
-      const mins = Math.floor((Date.now() - streamStartTime) / 60000);
-      const hours = Math.floor(mins / 60);
-      const remaining = mins % 60;
-      const timeStr = hours > 0 ? `${hours}h ${remaining}m` : `${mins}m`;
-      client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${timeStr} de stream! ¿Cómo lo estáis pasando? 💜`);
-    }
+    client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`);
   }, 40 * 60 * 1000);
 }
 

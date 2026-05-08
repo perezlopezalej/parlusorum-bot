@@ -6,10 +6,18 @@
   "content": "variedad de videojuegos — aventuras, shooters, cooperativos y de todo tipo",
   "vibe": "relajado, divertido y con mucho buen rollo",
   "description": "ParLusorum es una pareja de streamers que juega de todo: aventuras, shooters, cooperativos y lo que se les cruce por delante. A veces juegan cada uno a lo suyo y otras se unen para superar o sufrir juegos juntos. El canal es conocido por las risas, los fails épicos y el buen ambiente. La comunidad es cálida, familiar y acogedora.",
-  "streamers": ["ParLusorum", "su pareja"],
-  "tags": ["Español", "Variedad", "Cooperativo", "Pareja"],
+  "streamers": [
+    "ParLusorum",
+    "su pareja"
+  ],
+  "tags": [
+    "Español",
+    "Variedad",
+    "Cooperativo",
+    "Pareja"
+  ],
   "inside_jokes": "El poder del FUA — referencia al meme viral de Julio César Segura (Fuerza Universal Aplicada), que significa sacar tu máximo potencial y dar el extra. En el canal se usa como expresión de hype, motivación y cuando alguien saca algo épico. El bot se llama dios_fua precisamente por esto.",
-  "bot_personality": "Eres dios_fua, el bot del canal de ParLusorum. Tu nombre viene del meme 'El FUA' (Fuerza Universal Aplicada). Tienes personalidad propia: eres gracioso, directo y con buen rollo. Te gustan los juegos de acción difíciles. Sufres con los streamers cuando mueren en los bosses. Celebras los logros con energía. Usas el FUA cuando algo es épico.",
+  "bot_personality": "Eres dios_fua, el bot del canal de ParLusorum. Tu nombre viene del meme 'El FUA' (Fuerza Universal Aplicada). Tienes personalidad propia: eres gracioso, directo y con buen rollo. Puedes hablar de CUALQUIER tema con soltura — no estás limitado a videojuegos. Si no sabes algo de juegos específicos, lo admites con humor. Usas el FUA cuando algo es épico. Sin 'Lo siento', sin formalismos.",
   "games_played": [
     "Black Myth: Wukong",
     "Ghost of Yōtei",
@@ -17,6 +25,28 @@
     "The Last of Us Part II Remastered",
     "South Park: The Stick of Truth"
   ],
-  "moderators": ["vlxj97"],
-  "milestones": [10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 5000, 10000]
+  "moderators": [
+    "vlxj97"
+  ],
+  "milestones": [
+    10,
+    25,
+    50,
+    75,
+    100,
+    150,
+    200,
+    250,
+    300,
+    400,
+    500,
+    750,
+    1000,
+    1500,
+    2000,
+    5000,
+    10000
+  ],
+  "creator_username": "vlxj97",
+  "streamer_username": "parlusorum"
 }

@@ -1,7 +1,7 @@
 const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
 const { getCurrentGame, getGameInfo, getStreamInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
@@ -13,18 +13,19 @@ const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.08');
 const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
 const MAX_QUESTION_LENGTH = 200;
 
+const CREATOR_USERNAME = (channelConfig.creator_username || '').toLowerCase();
+const STREAMER_USERNAME = (channelConfig.streamer_username || '').toLowerCase();
+
 function truncate(msg) {
   if (msg.length <= TWITCH_MAX_LENGTH) return msg;
   return msg.slice(0, TWITCH_MAX_LENGTH - 3) + '...';
 }
 
-// --- Retry con backoff ---
 async function groqWithRetry(params, maxRetries = 2) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try { return await groq.chat.completions.create(params); }
     catch (err) {
-      const isRateLimit = err.status === 429 || err.message?.includes('rate');
-      if (isRateLimit && attempt < maxRetries) {
+      if ((err.status === 429 || err.message?.includes('rate')) && attempt < maxRetries) {
         await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
         continue;
       }
@@ -33,13 +34,18 @@ async function groqWithRetry(params, maxRetries = 2) {
   }
 }
 
-// --- Contexto del canal compacto ---
-function getChannelContext() {
-  const games = (channelConfig.games_played || []).slice(0, 4).join(', ');
-  return `Canal: ${channelConfig.streamer}. ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos: ${games}. ${channelConfig.inside_jokes || ''}`;
+// --- Estado live via EventSub (fuente fiable) ---
+function getEventSubLiveStatus() {
+  try { return require('../eventsub').isLiveViaEventSub(); }
+  catch { return false; }
 }
 
-// --- Contexto completo dinámico (con fallback si RAWG falla) ---
+// --- Contexto del canal ---
+function getChannelContext() {
+  const games = (channelConfig.games_played || []).slice(0, 4).join(', ');
+  return `Canal: ${channelConfig.streamer}. ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${channelConfig.inside_jokes || ''}`;
+}
+
 let fullContextCache = null;
 let lastContextCheck = 0;
 const CONTEXT_CACHE_TTL = 2 * 60 * 1000;
@@ -48,38 +54,42 @@ async function getFullContext() {
   const now = Date.now();
   if (fullContextCache && now - lastContextCheck < CONTEXT_CACHE_TTL) return fullContextCache;
 
-  const [gameInfo, streamInfo] = await Promise.all([getCurrentGame(), getStreamInfo()]);
+  const gameInfo = await getCurrentGame();
   const base = getChannelContext();
   let context = base;
 
   if (gameInfo?.game) {
     context += ` Juego actual: "${gameInfo.game}".`;
-    // RAWG con fallback — si falla no bloquea el contexto
     try {
       const rawgInfo = await getGameInfo(gameInfo.game);
       if (rawgInfo?.genres) context += ` Géneros: ${rawgInfo.genres}.`;
     } catch {}
   }
 
-  context += streamInfo?.live
-    ? ` Stream en directo con ${streamInfo.viewers} viewers.`
-    : ` Canal offline.`;
+  const isLive = getEventSubLiveStatus();
+  context += isLive ? ` El canal ESTÁ EN DIRECTO ahora mismo.` : ` El canal está offline ahora mismo.`;
 
   fullContextCache = context;
   lastContextCheck = now;
   return fullContextCache;
 }
 
-// --- Contexto mínimo para comandos de personalidad (sin viewers ni stream info) ---
+function invalidateContextCache() {
+  fullContextCache = null;
+  lastContextCheck = 0;
+}
+
 function getMinimalContext() {
   const games = (channelConfig.games_played || []).slice(0, 3).join(', ');
   return `Canal de ${channelConfig.streamer}: ${channelConfig.vibe}. Juegos: ${games}. ${channelConfig.inside_jokes || ''}`;
 }
 
-// --- Historial de chat (sin comandos) ---
+// --- Historial de chat ---
 const chatHistory = [];
 const MAX_HISTORY = 40;
 let lastChatMessageTime = Date.now();
+// Límite de tamaño del mapa de conversaciones
+const MAX_CONVERSATION_USERS = 200;
 
 function addToHistory(username, message) {
   if (message.startsWith('!')) return;
@@ -91,14 +101,20 @@ function addToHistory(username, message) {
 function updateLastChatTime() { lastChatMessageTime = Date.now(); }
 
 function getRecentHistory(n = 6) {
-  return chatHistory.slice(-n).map(m => `${m.username}: ${m.message}`).join('\n');
+  // Solo mensajes de los últimos 10 minutos para evitar contexto viejo
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  return chatHistory
+    .filter(m => m.ts > cutoff)
+    .slice(-n)
+    .map(m => `${m.username}: ${m.message}`)
+    .join('\n');
 }
 
-// --- Memoria de conversación por usuario (máx 1 hora) ---
+// --- Memoria de conversación por usuario ---
 const userConversations = new Map();
 const sessionStart = Date.now();
 const MAX_CONV_TURNS = 5;
-const MAX_CONV_AGE = 60 * 60 * 1000; // 1 hora
+const MAX_CONV_AGE = 60 * 60 * 1000;
 
 function getUserConversation(userId) {
   const conv = userConversations.get(userId) || [];
@@ -109,13 +125,20 @@ function getUserConversation(userId) {
 }
 
 function addToUserConversation(userId, role, content) {
+  // Evitar memory leak — si hay demasiados usuarios, limpiar los más viejos
+  if (userConversations.size >= MAX_CONVERSATION_USERS) {
+    const oldest = [...userConversations.entries()]
+      .sort((a, b) => (a[1].at(-1)?.ts || 0) - (b[1].at(-1)?.ts || 0))
+      .slice(0, 50)
+      .map(([k]) => k);
+    oldest.forEach(k => userConversations.delete(k));
+  }
   const conv = userConversations.get(userId) || [];
   conv.push({ role, content, ts: Date.now() });
   while (conv.length > MAX_CONV_TURNS * 2) conv.shift();
   userConversations.set(userId, conv);
 }
 
-// --- Mensajes recientes ---
 const recentMessages = [];
 function trackMessage() {
   const now = Date.now();
@@ -124,25 +147,48 @@ function trackMessage() {
   return recentMessages.length;
 }
 
-// --- Personalidad completa (para !dios_fua y co-host) ---
-async function getPersonality(messageCount) {
+// --- Personalidad ---
+async function getPersonality(messageCount, userType = 'normal') {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
   const context = await getFullContext();
+
+  let specialNote = '';
+  if (userType === 'creator') {
+    specialNote = ` IMPORTANTE: estás hablando con tu amo creador (@${CREATOR_USERNAME}). Trátale con respeto y humor como "amo creador". Puedes ser ligeramente más servilmente gracioso con él.`;
+  } else if (userType === 'streamer') {
+    specialNote = ` IMPORTANTE: estás hablando con el streamer del canal (@${STREAMER_USERNAME}). Trátale con respeto y complicidad, como el "jefe del canal".`;
+  }
+
   const base = `Eres ${botName}, bot de ${channelConfig.streamer}. ${channelConfig.bot_personality || ''}
-${context}
-Reglas: español natural siempre. Max 2 frases (400 chars). No te presentes. Directo. Usa "FUA" cuando es épico. Si no sabes: "ni idea" con humor. NUNCA inventes datos. Sin "Lo siento".`;
+${context}${specialNote}
+Reglas IMPORTANTES:
+- Responde en español natural SIEMPRE.
+- Puedes hablar de CUALQUIER tema — no solo videojuegos. Cultura general, ciencia, historia, deportes, lo que sea.
+- El contexto del canal es tu identidad, no una limitación de conocimiento.
+- Máximo 2 frases (400 chars). No te presentes. Directo al grano.
+- Usa "FUA" cuando algo es épico.
+- Si no sabes algo: "ni idea" con humor. NUNCA inventes datos.
+- Sin "Lo siento". Sin formalismos.`;
+
   if (messageCount >= 20) return `${base} Chat muy activo, sé enérgico.`;
   if (messageCount >= 5) return `${base} Chat tranquilo, sé amigable.`;
   return `${base} Chat tranquilo, sé acogedor.`;
 }
 
-// --- Personalidad mínima (para !cita, !consejo, !meme) ---
 function getMinimalPersonality() {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
-  return `Eres ${botName}, bot gracioso del canal de ${channelConfig.streamer}. ${getMinimalContext()} Responde en español. Max 1-2 frases cortas. Puedes usar "FUA" si es épico.`;
+  return `Eres ${botName}, bot gracioso del canal de ${channelConfig.streamer}. ${getMinimalContext()} Responde en español. Max 1-2 frases. Puedes usar "FUA" si es épico. Puedes hablar de cualquier tema.`;
 }
 
-// --- Co-host (prompt diferenciado, más espectador) ---
+// --- Detectar tipo de usuario ---
+function getUserType(username) {
+  const lower = username.toLowerCase();
+  if (CREATOR_USERNAME && lower === CREATOR_USERNAME) return 'creator';
+  if (STREAMER_USERNAME && lower === STREAMER_USERNAME) return 'streamer';
+  return 'normal';
+}
+
+// --- Co-host ---
 let lastCohostTime = 0;
 let cohostRunning = false;
 
@@ -151,25 +197,24 @@ async function handleCohost(client, channel) {
   const now = Date.now();
   if (now - lastCohostTime < COHOST_COOLDOWN) return;
   if (Math.random() > COHOST_PROBABILITY) return;
-  if (chatHistory.length < 3) return;
+  const recentContext = getRecentHistory(5);
+  if (!recentContext) return; // No comentar si no hay mensajes recientes
   if (!canMakeRequest()) return;
 
   cohostRunning = true;
   lastCohostTime = now;
 
   try {
-    const context = getRecentHistory(5);
     const gameInfo = await getCurrentGame();
     const game = gameInfo?.game ? `Están jugando a "${gameInfo.game}".` : '';
-
     const response = await groqWithRetry({
       model: 'llama-3.3-70b-versatile', max_tokens: 70,
       messages: [
         {
           role: 'system',
-          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con mucho buen rollo. ${game} Haces comentarios espontáneos como lo haría alguien del chat, no como un bot. Sin saludos formales. Sin presentarte. 1 frase máximo en español. A veces usas FUA cuando algo es épico.`
+          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game} Haces comentarios espontáneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en español. A veces usas FUA cuando es épico.`
         },
-        { role: 'user', content: `Chat reciente:\n${context}\nComenta algo natural sobre lo que está pasando.` }
+        { role: 'user', content: `Chat reciente:\n${recentContext}\nComenta algo natural.` }
       ]
     });
     client.say(channel, truncate(response.choices[0].message.content));
@@ -177,50 +222,51 @@ async function handleCohost(client, channel) {
   finally { cohostRunning = false; }
 }
 
-// --- Detección de inicio y cierre de stream ---
+// --- Stream status ---
 let streamWasLive = false;
 let streamStatusInitialized = false;
 
-// Inicializar estado real del stream al arrancar (evita falso positivo en reinicio)
 async function initStreamStatus() {
+  const isLive = getEventSubLiveStatus();
+  if (isLive) {
+    streamWasLive = true;
+    streamStatusInitialized = true;
+    logger.info(`📺 Estado inicial: EN DIRECTO (EventSub)`);
+    return;
+  }
   const info = await getStreamInfo().catch(() => null);
   streamWasLive = info?.live === true;
   streamStatusInitialized = true;
-  logger.info(`📺 Estado inicial del stream: ${streamWasLive ? 'EN DIRECTO' : 'OFFLINE'}`);
+  logger.info(`📺 Estado inicial: ${streamWasLive ? 'EN DIRECTO' : 'OFFLINE'}`);
 }
 
 const streamStartMessages = [
   '🔴 ¡El stream ha arrancado! ¡Bienvenidos todos! ¡FUA! 💪🔥',
   '🎮 ¡El canal ha arrancado! ¡A disfrutar! ¡FUA! 🔥',
-  '🔴 ¡ESTAMOS EN DIRECTO! ¡El FUA nos convoca! ¡Bienvenidos! 💪',
+  '🔴 ¡ESTAMOS EN DIRECTO! ¡El FUA nos convoca! 💪',
   '🚀 ¡Arranca el stream! ¡Preparaos para el caos! ¡FUA! 🔥',
 ];
 
 const streamEndMessages = [
-  '🎬 ¡Y hasta aquí el stream de hoy! ¡Gracias a todos por estar ahí! ¡FUA y hasta la próxima! 💜🔥',
-  '💜 ¡Stream terminado! ¡Gracias por acompañarnos! ¡FUA! Hasta la próxima 🔥',
-  '🎮 ¡Eso es todo por hoy! ¡Gracias a toda la comunidad! ¡FUA! 💜',
-  '🔴➡️⚫ ¡Se acabó! ¡Gracias por el stream! ¡FUA y nos vemos pronto! 🔥💪',
+  '🎬 ¡Y hasta aquí el stream! ¡Gracias a todos! ¡FUA y hasta la próxima! 💜🔥',
+  '💜 ¡Stream terminado! ¡Gracias por acompañarnos! ¡FUA! 🔥',
+  '🎮 ¡Eso es todo por hoy! ¡Gracias a la comunidad! ¡FUA! 💜',
+  '🔴➡️⚫ ¡Se acabó! ¡FUA y nos vemos pronto! 🔥💪',
 ];
 
-function pickRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 async function checkStreamStatus(client, channel) {
   if (!streamStatusInitialized) return;
-  const info = await getStreamInfo().catch(() => null);
-  if (!info) return;
+  const isLive = getEventSubLiveStatus();
 
-  if (!streamWasLive && info.live) {
-    // Stream acaba de empezar
+  if (!streamWasLive && isLive) {
     streamWasLive = true;
-    fullContextCache = null; // Invalidar cache para que coja el juego nuevo
+    invalidateContextCache();
     client.say(channel, pickRandom(streamStartMessages));
-  } else if (streamWasLive && !info.live) {
-    // Stream acaba de terminar
+  } else if (streamWasLive && !isLive) {
     streamWasLive = false;
-    fullContextCache = null;
+    invalidateContextCache();
     client.say(channel, pickRandom(streamEndMessages));
   }
 }
@@ -229,12 +275,21 @@ async function checkStreamStatus(client, channel) {
 let lastHookTime = 0;
 const HOOK_INTERVAL = parseInt(process.env.HOOK_INTERVAL_MS || '600000', 10);
 const HOOK_MIN_SILENCE = parseInt(process.env.HOOK_SILENCE_MS || '300000', 10);
+const MIN_VIEWERS_FOR_HOOKS = 3;
 
 async function checkChatHook(client, channel) {
   if (isSilenced() || isTriviaActive()) return;
   const now = Date.now();
   if (now - lastHookTime < HOOK_INTERVAL) return;
   if (now - lastChatMessageTime < HOOK_MIN_SILENCE) return;
+
+  // No lanzar hooks si hay muy pocos viewers
+  try {
+    const eventsub = require('../eventsub');
+    const viewers = await eventsub.getViewersWithAppToken(channelConfig.broadcaster_id);
+    if (viewers !== null && viewers < MIN_VIEWERS_FOR_HOOKS) return;
+  } catch {}
+
   lastHookTime = now;
   const gameInfo = await getCurrentGame().catch(() => null);
   const game = gameInfo?.game;
@@ -284,25 +339,27 @@ async function handleQuestion(client, channel, tags, args) {
   const username = tags['display-name'];
   const userId = tags['user-id'];
   const now = Date.now();
+
   if (questionCooldowns.has(userId) && now < questionCooldowns.get(userId)) {
     client.say(channel, `@${username} espera ${Math.ceil((questionCooldowns.get(userId) - now) / 1000)}s.`);
     return;
   }
+
   const rawQuestion = args.slice(1).join(' ');
   if (!rawQuestion) { client.say(channel, `@${username} escribe algo después de !dios_fua 😅`); return; }
   const question = sanitizeForAI(rawQuestion);
   if (!question) { client.say(channel, `@${username} esa pregunta no la puedo responder 🙅`); return; }
   if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones ⏳`); return; }
-  if (rawQuestion.length > MAX_QUESTION_LENGTH) {
-    client.say(channel, `@${username} (pregunta muy larga, respondo a los primeros ${MAX_QUESTION_LENGTH} caracteres)`);
-  }
+
+  const userType = getUserType(username);
+
   try {
-    const personality = await getPersonality(trackMessage());
+    const personality = await getPersonality(trackMessage(), userType);
     const userConv = getUserConversation(userId);
     const response = await groqWithRetry({
       model: 'llama-3.3-70b-versatile', max_tokens: 150,
       messages: [
-        { role: 'system', content: `${personality}\nRespuesta directa. NUNCA inventes viewers/subs. Si no sabes: humor. Sin "Lo siento".` },
+        { role: 'system', content: `${personality}\nPuedes responder sobre CUALQUIER tema, no solo videojuegos. NUNCA inventes datos. Sin "Lo siento".` },
         ...userConv,
         { role: 'user', content: `${username}: ${question}` }
       ]
@@ -320,9 +377,9 @@ async function handleQuestion(client, channel, tags, args) {
 
 // --- Comandos de personalidad ---
 const personalityPrompts = {
-  cita: 'Frase épica o inspiradora de videojuegos. Solo frase y autor. 1 frase en español.',
-  consejo: 'Consejo random útil, absurdo o gracioso. 1 frase en español. Puedes usar FUA.',
-  meme: 'Describe un meme de internet o gaming. 1 frase graciosa en español.'
+  cita: 'Frase épica o inspiradora de videojuegos o de la vida. Solo frase y autor. 1 frase en español.',
+  consejo: 'Consejo random útil, absurdo o gracioso sobre cualquier tema. 1 frase en español. Puedes usar FUA.',
+  meme: 'Describe un meme de internet, gaming o cultura pop. 1 frase graciosa en español.'
 };
 const personalityCooldowns = new Map();
 setInterval(() => { const now = Date.now(); for (const [k,v] of personalityCooldowns) if (now > v) personalityCooldowns.delete(k); }, 30 * 60 * 1000);
@@ -356,9 +413,13 @@ async function handleShoutout(client, channel, tags, targetUsername) {
   const isMod = tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1';
   if (!isMod) { client.say(channel, `@${tags['display-name']} solo mods pueden usar !so.`); return; }
   if (!targetUsername) { client.say(channel, `Uso: !so @usuario`); return; }
+
+  const target = targetUsername.replace('@', '');
+  // Mensaje inmediato mientras la IA prepara el shoutout
+  client.say(channel, `📢 Preparando shoutout para @${target}...`);
+
   const { getChannelInfo } = require('../twitch/api');
   try {
-    const target = targetUsername.replace('@', '');
     const info = await getChannelInfo(target);
     const game = info?.game_name ? `Su último juego: "${info.game_name}".` : '';
     const response = await groqWithRetry({
@@ -371,19 +432,12 @@ async function handleShoutout(client, channel, tags, targetUsername) {
     client.say(channel, truncate(`📢 ${response.choices[0].message.content.trim()} twitch.tv/${target}`));
   } catch (err) {
     logger.error(`!so: ${err.message}`);
-    client.say(channel, `📢 ¡Echad un ojo a @${targetUsername.replace('@', '')}! 💜 twitch.tv/${targetUsername.replace('@', '')}`);
+    client.say(channel, `📢 ¡Echad un ojo a @${target}! 💜 twitch.tv/${target}`);
   }
 }
 
 module.exports = {
-  handleCohost,
-  handleChiste,
-  handleQuestion,
-  handlePersonality,
-  handleShoutout,
-  addToHistory,
-  updateLastChatTime,
-  checkChatHook,
-  checkStreamStatus,
-  initStreamStatus
+  handleCohost, handleChiste, handleQuestion, handlePersonality, handleShoutout,
+  addToHistory, updateLastChatTime, checkChatHook, checkStreamStatus, initStreamStatus,
+  invalidateContextCache
 };

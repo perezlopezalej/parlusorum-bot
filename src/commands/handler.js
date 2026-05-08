@@ -28,7 +28,7 @@ function getUserTitle(messageCount) {
 // --- Ayuda ---
 const helpTexts = {
   // Comandos públicos
-  'comandos': 'Lista de comandos principales.',
+  'comandos': 'Lista de comandos principales. ¡Incluyendo !titulo para ver tu rango!',
   'cita': 'Frase épica o inspiradora.',
   'chiste': 'Chiste real.',
   'consejo': 'Consejo random.',
@@ -137,7 +137,7 @@ async function handleEstadisticas(client, channel) {
       if (uptime) parts.push(`⏱️ ${uptime}`);
       client.say(channel, `📊 ${parts.join(' | ')}`);
     } else {
-      client.say(channel, `📊 Canal offline. 👥 ${followers ?? '?'} seguidores.`);
+      client.say(channel, `📊 El canal está descansando ahora 😴 | 👥 ${followers ?? '?'} seguidores. ¡Vuelve pronto! 💜`);
     }
   } catch (err) { logger.error(`!estadisticas: ${err.message}`); client.say(channel, `No puedo obtener stats ahora.`); }
 }
@@ -180,8 +180,8 @@ function handlePendientes(client, channel) {
 }
 
 async function handleClip(client, channel) {
-  const s = await getStreamInfo();
-  if (!s?.live) { client.say(channel, `❌ El canal no está en directo.`); return; }
+  const eventsub = require('../eventsub');
+  if (!eventsub.isLiveViaEventSub()) { client.say(channel, `❌ El canal no está en directo.`); return; }
   client.say(channel, `🎬 Creando clip...`);
   const url = await createClip();
   client.say(channel, url ? `🎬 ¡Clip creado! ${url}` : `❌ No se pudo crear el clip.`);

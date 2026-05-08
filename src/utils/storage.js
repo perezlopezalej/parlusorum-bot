@@ -1,37 +1,49 @@
 // Almacenamiento persistente via npoint.io
-// Sustituye al sistema de archivos local que no persiste en Render
-
 const logger = require('./logger');
 
 const NPOINT_ID = process.env.NPOINT_BIN_ID;
 const BASE_URL = `https://api.npoint.io/${NPOINT_ID}`;
 
+// Cache agresiva — solo carga una vez, guarda con debounce
 let cache = null;
 let dirty = false;
 let saveTimer = null;
+let loading = false;
+let loadPromise = null;
 
-// Cargar datos desde npoint
 async function loadUsers() {
-  if (cache) return cache;
+  // Si ya tenemos cache, devolverla (evita requests innecesarios a npoint)
+  if (cache !== null) return cache;
+
+  // Evitar cargas simultáneas (race condition fix)
+  if (loading) return loadPromise;
+
   if (!NPOINT_ID) {
     logger.warn('⚠️ NPOINT_BIN_ID no configurado, usando memoria local.');
     cache = {};
     return cache;
   }
-  try {
-    const res = await fetch(BASE_URL);
-    const data = await res.json();
-    cache = data || {};
-    logger.info(`✅ Usuarios cargados desde npoint (${Object.keys(cache).length} usuarios)`);
+
+  loading = true;
+  loadPromise = (async () => {
+    try {
+      const res = await fetch(BASE_URL);
+      const data = await res.json();
+      // Validar que sea un objeto (no array ni null)
+      cache = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+      logger.info(`✅ Usuarios cargados desde npoint (${Object.keys(cache).length} usuarios)`);
+    } catch (e) {
+      logger.error(`Error cargando usuarios desde npoint: ${e.message}`);
+      cache = {};
+    }
+    loading = false;
     return cache;
-  } catch (e) {
-    logger.error(`Error cargando usuarios desde npoint: ${e.message}`);
-    cache = {};
-    return cache;
-  }
+  })();
+
+  return loadPromise;
 }
 
-// Guardar datos en npoint (con debounce de 5 segundos)
+// Guardar con debounce de 5 segundos — evita saturar npoint
 function saveUsers(data) {
   cache = data;
   dirty = true;
