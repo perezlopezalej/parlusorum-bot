@@ -146,7 +146,9 @@ client.on('message', async (channel, tags, message, self) => {
   ai.updateLastChatTime();
   alerts.handleMessage(client, channel, tags);
 
+  // FIX #10: detección automática de highlights para stream markers
   if (!msg.startsWith(process.env.PREFIX)) {
+    ai.checkForHighlight(client, channel, msg);
     ai.handleCohost(client, channel);
   }
 

@@ -214,6 +214,8 @@ function createEventSubHandler(client, channel) {
         streamIsLive = true;
         streamStartedAt = event?.started_at ? new Date(event.started_at).getTime() : Date.now();
         logger.info(`🔴 Stream online via EventSub`);
+        // FIX #2: notificar al handler de alertas para limpiar lurkerMap
+        try { require('./alerts/handler').onStreamOnline(); } catch {}
       }
 
       if (type === 'stream.offline') {

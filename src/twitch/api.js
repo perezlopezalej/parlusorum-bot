@@ -206,7 +206,39 @@ async function getChannelInfo(username) {
   }
 }
 
+// --- Crear stream marker --- FIX #10
+// Requiere scope user:edit:broadcast en el broadcaster token
+async function createStreamMarker(description = 'Momento epico') {
+  const broadcasterId = channelConfig.broadcaster_id;
+  try {
+    const res = await fetch(
+      'https://api.twitch.tv/helix/streams/markers',
+      {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: broadcasterId,
+          description: description.slice(0, 140)
+        })
+      }
+    );
+    const data = await res.json();
+    if (data.data && data.data[0] && data.data[0].id) {
+      logger.info('Marker creado: ' + data.data[0].id + ' - ' + description);
+      return data.data[0];
+    }
+    if (data.error) logger.warn('Marker error: ' + data.error + ' - ' + data.message);
+    return null;
+  } catch (e) {
+    logger.error('Error al crear marker: ' + e.message);
+    return null;
+  }
+}
+
 module.exports = {
   getStreamInfo, isStreamLive, getCurrentGame, getRecentGames,
-  createClip, getGameInfo, getFollowerCount, getChannelInfo
+  createClip, createStreamMarker, getGameInfo, getFollowerCount, getChannelInfo
 };

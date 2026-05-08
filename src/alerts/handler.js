@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const { loadUsers, saveUsers } = require('../utils/storage');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
 const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || 'parlusorum').toLowerCase();
@@ -12,36 +13,36 @@ const STREAMER_USERNAME = (channelConfig.streamer_username || 'parlusorum').toLo
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 const welcomeMessages = [
-  '👋 ¡Bienvenid@ @{username}! Es tu primer mensaje aquí 🎉 Si tienes alguna pregunta usa !dios_fua',
-  '🎊 ¡Ey @{username}! Primera vez por aquí, ¡qué alegría! 💜 ¡Pregúntame lo que quieras con !dios_fua!',
-  '✨ ¡@{username} entra al chat por primera vez! ¡Bienvenid@! 🔥 Usa !comandos para ver qué puedo hacer',
-  '🌟 ¡@{username} estrena su primer mensaje! ¡Bienvenid@! 👋 ¡El FUA te da la bienvenida! 💪',
+  '👋 Bienvenid@ @{username}! Es tu primer mensaje aqui 🎉 Si tienes alguna pregunta usa !dios_fua',
+  '🎊 Ey @{username}! Primera vez por aqui, que alegria! 💜 Preguntame lo que quieras con !dios_fua!',
+  '✨ @{username} entra al chat por primera vez! Bienvenid@! 🔥 Usa !comandos para ver que puedo hacer',
+  '🌟 @{username} estrena su primer mensaje! Bienvenid@! 👋 El FUA te da la bienvenida! 💪',
 ];
 
 const returnMessages = [
-  '🎊 ¡@{username} ha vuelto después de {days} días! ¡Bienvenid@ de nuevo! 🔥',
-  '👀 ¡@{username} resucita después de {days} días! ¡Cuánto tiempo! 🎉',
-  '🥳 ¡Ha vuelto @{username} después de {days} días! ¡El canal estaba incompleto sin ti! 💜',
+  '🎊 @{username} ha vuelto despues de {days} dias! Bienvenid@ de nuevo! 🔥',
+  '👀 @{username} resucita despues de {days} dias! Cuanto tiempo! 🎉',
+  '🥳 Ha vuelto @{username} despues de {days} dias! El canal estaba incompleto sin ti! 💜',
 ];
 
 const lurkerMessages = [
-  '👀 ¡@{username} ha salido del modo lurker! Gracias por seguir ahí 💜',
-  '🕵️ ¡@{username} sale de las sombras! Sabíamos que estabas ahí 😏',
-  '🐱 ¡@{username} vuelve al chat! El lurker ha hablado 🎉',
-  '🌙 ¡@{username} abandona el modo fantasma! ¡Bienvenid@ de vuelta! 👋',
+  '👀 @{username} ha salido del modo lurker! Gracias por seguir ahi 💜',
+  '🕵️ @{username} sale de las sombras! Sabiamos que estabas ahi 😏',
+  '🐱 @{username} vuelve al chat! El lurker ha hablado 🎉',
+  '🌙 @{username} abandona el modo fantasma! Bienvenid@ de vuelta! 👋',
 ];
 
 const subMessages = [
-  '🎉 ¡Muchísimas gracias @{username} por suscribirte! ¡Eres increíble! 💜',
-  '💜 ¡@{username} se ha suscrito! ¡La familia crece! ¡Gracias! 🎊',
-  '🥳 ¡@{username} acaba de suscribirse! ¡Eres un crack! 🔥',
-  '⭐ ¡Nuevo suscriptor! ¡Bienvenid@ al club @{username}! 💜🎉',
+  '🎉 Muchisimas gracias @{username} por suscribirte! Eres increible! 💜',
+  '💜 @{username} se ha suscrito! La familia crece! Gracias! 🎊',
+  '🥳 @{username} acaba de suscribirse! Eres un crack! 🔥',
+  '⭐ Nuevo suscriptor! Bienvenid@ al club @{username}! 💜🎉',
 ];
 
 const anniversaryCelebrated = new Set();
 const MAX_ANNIVERSARY_SET = 500;
 
-// --- Throttle de mensajes salientes (evitar ban de Twitch: 20msg/30s) ---
+// --- Throttle de mensajes salientes ---
 const messageQueue = [];
 let messageTimer = null;
 
@@ -54,7 +55,7 @@ function processMessageQueue() {
   if (messageQueue.length === 0) { messageTimer = null; return; }
   const { client, channel, msg } = messageQueue.shift();
   try { client.say(channel, msg); } catch {}
-  messageTimer = setTimeout(processMessageQueue, 1600); // ~20 msgs / 32s
+  messageTimer = setTimeout(processMessageQueue, 1600);
 }
 
 // --- Primer mensaje ---
@@ -63,7 +64,6 @@ async function checkFirstMessage(client, channel, tags) {
   const userId = tags['user-id'];
   const usernameLower = username.toLowerCase();
 
-  // Ignorar bot y streamer (no dar bienvenida al streamer en su propio canal)
   if (usernameLower === BOT_NAME || usernameLower === STREAMER_USERNAME) return;
 
   const users = await loadUsers();
@@ -113,13 +113,25 @@ function checkAnniversary(client, channel, username, userData, now) {
   const sameMonth = firstSeen.getMonth() === now.getMonth();
   const years = now.getFullYear() - firstSeen.getFullYear();
   if (sameDay && sameMonth && years > 0) {
-    throttleSay(client, channel, `🎂 ¡Hoy es el aniversario de @${username} en el canal! ¡Hace ${years} año(s) que estás aquí! 🥳`);
+    throttleSay(client, channel, `🎂 Hoy es el aniversario de @${username} en el canal! Hace ${years} año(s) que estas aqui! 🥳`);
   }
 }
 
-// --- Lurker Love ---
+// --- Lurker Love --- FIX #2: no disparar lurker en los primeros minutos del stream
 const lurkerMap = new Map();
 const LURKER_THRESHOLD = parseInt(process.env.LURKER_THRESHOLD_MS || String(15 * 60 * 1000), 10);
+
+// FIX #2: timestamp de inicio del stream actual
+let streamOnlineTimestamp = 0;
+
+// Llamar esto cuando EventSub detecta stream.online
+function onStreamOnline() {
+  streamOnlineTimestamp = Date.now();
+  // Limpiar el lurkerMap para que nadie dispare el lurker
+  // al hablar por primera vez nada mas empieza el stream
+  lurkerMap.clear();
+  logger.info('Lurker map limpiado por inicio de stream');
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -132,7 +144,16 @@ function trackLurker(client, channel, tags) {
   const userId = tags['user-id'];
   const username = tags['display-name'];
   if (username.toLowerCase() === BOT_NAME || username.toLowerCase() === STREAMER_USERNAME) return;
+
   const now = Date.now();
+
+  // FIX #2: no disparar lurker en los primeros LURKER_THRESHOLD ms del stream
+  // Si el stream acaba de arrancar, no contar como lurker
+  if (streamOnlineTimestamp > 0 && now - streamOnlineTimestamp < LURKER_THRESHOLD) {
+    lurkerMap.set(userId, now);
+    return;
+  }
+
   if (lurkerMap.has(userId) && now - lurkerMap.get(userId) >= LURKER_THRESHOLD) {
     throttleSay(client, channel, pick(lurkerMessages).replace('{username}', username));
   }
@@ -141,9 +162,9 @@ function trackLurker(client, channel, tags) {
 
 // --- Logros ---
 const achievementsList = [
-  { id: 'messages_10', condition: u => u.messageCount >= 10, message: '🏅 ¡@{username} ha conseguido el logro "Conversador"! (10 mensajes)' },
-  { id: 'messages_100', condition: u => u.messageCount >= 100, message: '🥈 ¡@{username} ha conseguido el logro "Habladín"! (100 mensajes)' },
-  { id: 'messages_500', condition: u => u.messageCount >= 500, message: '🥇 ¡@{username} ha conseguido el logro "Leyenda del chat"! (500 mensajes)' },
+  { id: 'messages_10', condition: u => u.messageCount >= 10, message: '🏅 @{username} ha conseguido el logro "Conversador"! (10 mensajes)' },
+  { id: 'messages_100', condition: u => u.messageCount >= 100, message: '🥈 @{username} ha conseguido el logro "Habladín"! (100 mensajes)' },
+  { id: 'messages_500', condition: u => u.messageCount >= 500, message: '🥇 @{username} ha conseguido el logro "Leyenda del chat"! (500 mensajes)' },
 ];
 
 function checkAchievements(client, channel, username, userData) {
@@ -161,22 +182,22 @@ function onSub(client, channel, username) {
 }
 
 function onBits(client, channel, username, bits) {
-  if (bits >= 1000) throttleSay(client, channel, `💎 ¡¡WOW!! ¡@${username} acaba de donar ${bits} bits! ¡INCREÍBLE! 🔥🔥🔥`);
-  else if (bits >= 100) throttleSay(client, channel, `💜 ¡@${username} ha donado ${bits} bits! ¡Muchas gracias! 🎉`);
-  else throttleSay(client, channel, `✨ ¡Gracias @${username} por los ${bits} bits! 💜`);
+  if (bits >= 1000) throttleSay(client, channel, `💎 WOW! @${username} acaba de donar ${bits} bits! INCREIBLE! 🔥🔥🔥`);
+  else if (bits >= 100) throttleSay(client, channel, `💜 @${username} ha donado ${bits} bits! Muchas gracias! 🎉`);
+  else throttleSay(client, channel, `✨ Gracias @${username} por los ${bits} bits! 💜`);
 }
 
 async function onRaid(client, channel, username, viewers) {
-  client.say(channel, `⚔️ ¡RAID de @${username} con ${viewers} viewers! ¡Bienvenidos a todos! 🔥`);
+  client.say(channel, `⚔️ RAID de @${username} con ${viewers} viewers! Bienvenidos a todos! 🔥`);
   try {
     const raidInfo = await getChannelInfo(username);
     const game = raidInfo?.game_name || null;
-    const context = game ? `Venían de streamear "${game}".` : '';
+    const context = game ? `Venian de streamear "${game}".` : '';
     const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile', max_tokens: 100,
+      model: GROQ_MODEL, max_tokens: 100,
       messages: [
-        { role: 'system', content: `Eres el bot del canal de ${channelConfig.streamer}. Responde SIEMPRE en español. Máximo 400 caracteres.` },
-        { role: 'user', content: `@${username} ha hecho raid con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado y gracioso. Máximo 1-2 frases.` }
+        { role: 'system', content: `Eres el bot del canal de ${channelConfig.streamer}. Responde SIEMPRE en espanol. Maximo 400 caracteres.` },
+        { role: 'user', content: `@${username} ha hecho raid con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado y gracioso. Maximo 1-2 frases.` }
       ]
     });
     const extra = response.choices[0].message.content.trim();
@@ -191,7 +212,7 @@ const milestones = channelConfig.milestones || [50, 100, 200, 500, 1000];
 async function initFollowerTracking(client, channel, id) {
   broadcasterId = id;
   lastFollowerCount = await getFollowerCount(broadcasterId);
-  logger.info(`👥 Seguidores actuales: ${lastFollowerCount}`);
+  logger.info(`Seguidores actuales: ${lastFollowerCount}`);
 }
 
 async function checkFollowerMilestones(client, channel) {
@@ -200,7 +221,7 @@ async function checkFollowerMilestones(client, channel) {
   if (current === null || current === lastFollowerCount) return;
   for (const milestone of milestones) {
     if (lastFollowerCount < milestone && current >= milestone) {
-      client.say(channel, `🎊 ¡¡EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! ¡INCREÍBLE! 🥳🔥`);
+      client.say(channel, `🎊 EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! INCREIBLE! 🥳🔥`);
     }
   }
   lastFollowerCount = current;
@@ -214,4 +235,7 @@ async function handleMessage(client, channel, tags) {
   trackLurker(client, channel, tags);
 }
 
-module.exports = { handleMessage, onSub, onBits, onRaid, initFollowerTracking, checkFollowerMilestones };
+module.exports = {
+  handleMessage, onSub, onBits, onRaid, initFollowerTracking,
+  checkFollowerMilestones, onStreamOnline
+};

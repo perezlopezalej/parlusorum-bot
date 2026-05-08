@@ -4,15 +4,23 @@ const { getCurrentGame, getGameInfo, getStreamInfo } = require('../twitch/api');
 const { isTriviaActive, isSilenced, setTriviaActive } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest } = require('../utils/ratelimit');
+const { searchWeb, needsWebSearch } = require('../utils/search');
 const logger = require('../utils/logger');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const TWITCH_MAX_LENGTH = 490;
-const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '180000', 10);
-const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.08');
-const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
-const MAX_QUESTION_LENGTH = 200;
 
+// FIX #3: modelo configurable via env var.
+// llama-4-maverick (meta-llama/llama-4-maverick-17b-128e-instruct) deprecado en Groq feb/2026.
+// Cambia GROQ_MODEL en .env si quieres probarlo, pero tiene la mitad de rate limit.
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+
+const TWITCH_MAX_LENGTH = 490;
+// FIX #5: cohost mas activo — probability 0.08->0.15, cooldown 180s->120s
+const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '120000', 10);
+const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.15');
+const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
+
+// FIX #1: roles claramente definidos
 const CREATOR_USERNAME = (channelConfig.creator_username || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || '').toLowerCase();
 
@@ -22,6 +30,7 @@ function truncate(msg) {
 }
 
 async function groqWithRetry(params, maxRetries = 2) {
+  params.model = GROQ_MODEL;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try { return await groq.chat.completions.create(params); }
     catch (err) {
@@ -34,16 +43,15 @@ async function groqWithRetry(params, maxRetries = 2) {
   }
 }
 
-// --- Estado live via EventSub (fuente fiable) ---
 function getEventSubLiveStatus() {
   try { return require('../eventsub').isLiveViaEventSub(); }
   catch { return false; }
 }
 
-// --- Contexto del canal ---
+// FIX #1: contexto con roles clarificados
 function getChannelContext() {
   const games = (channelConfig.games_played || []).slice(0, 4).join(', ');
-  return `Canal: ${channelConfig.streamer}. ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${channelConfig.inside_jokes || ''}`;
+  return `Canal: ${channelConfig.streamer} (streamer/host). Bot creado por: @${CREATOR_USERNAME} (amo creador, NO es el streamer). ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${channelConfig.inside_jokes || ''}`;
 }
 
 let fullContextCache = null;
@@ -62,12 +70,16 @@ async function getFullContext() {
     context += ` Juego actual: "${gameInfo.game}".`;
     try {
       const rawgInfo = await getGameInfo(gameInfo.game);
-      if (rawgInfo?.genres) context += ` Géneros: ${rawgInfo.genres}.`;
+      if (rawgInfo) {
+        if (rawgInfo.genres) context += ` Generos: ${rawgInfo.genres}.`;
+        if (rawgInfo.rating) context += ` Nota RAWG: ${rawgInfo.rating}/5.`;
+        if (rawgInfo.released) context += ` Anio: ${rawgInfo.released?.slice(0, 4)}.`;
+      }
     } catch {}
   }
 
   const isLive = getEventSubLiveStatus();
-  context += isLive ? ` El canal ESTÁ EN DIRECTO ahora mismo.` : ` El canal está offline ahora mismo.`;
+  context += isLive ? ` El canal ESTA EN DIRECTO ahora mismo.` : ` El canal esta offline ahora mismo.`;
 
   fullContextCache = context;
   lastContextCheck = now;
@@ -88,7 +100,6 @@ function getMinimalContext() {
 const chatHistory = [];
 const MAX_HISTORY = 40;
 let lastChatMessageTime = Date.now();
-// Límite de tamaño del mapa de conversaciones
 const MAX_CONVERSATION_USERS = 200;
 
 function addToHistory(username, message) {
@@ -101,7 +112,6 @@ function addToHistory(username, message) {
 function updateLastChatTime() { lastChatMessageTime = Date.now(); }
 
 function getRecentHistory(n = 6) {
-  // Solo mensajes de los últimos 10 minutos para evitar contexto viejo
   const cutoff = Date.now() - 10 * 60 * 1000;
   return chatHistory
     .filter(m => m.ts > cutoff)
@@ -110,7 +120,7 @@ function getRecentHistory(n = 6) {
     .join('\n');
 }
 
-// --- Memoria de conversación por usuario ---
+// --- Memoria de conversacion por usuario ---
 const userConversations = new Map();
 const sessionStart = Date.now();
 const MAX_CONV_TURNS = 5;
@@ -125,7 +135,6 @@ function getUserConversation(userId) {
 }
 
 function addToUserConversation(userId, role, content) {
-  // Evitar memory leak — si hay demasiados usuarios, limpiar los más viejos
   if (userConversations.size >= MAX_CONVERSATION_USERS) {
     const oldest = [...userConversations.entries()]
       .sort((a, b) => (a[1].at(-1)?.ts || 0) - (b[1].at(-1)?.ts || 0))
@@ -152,35 +161,37 @@ async function getPersonality(messageCount, userType = 'normal') {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
   const context = await getFullContext();
 
+  // FIX #1: nota especial con roles 100% claros
   let specialNote = '';
   if (userType === 'creator') {
-    specialNote = ` IMPORTANTE: estás hablando con tu amo creador (@${CREATOR_USERNAME}). Trátale con respeto y humor como "amo creador". Puedes ser ligeramente más servilmente gracioso con él.`;
+    specialNote = ` ATENCION: Hablas con @${CREATOR_USERNAME}, quien te PROGRAMO y CREO. Es tu amo creador. NO es el streamer del canal (eso es @${STREAMER_USERNAME}). Tratale con humor reverente como a tu creador literal.`;
   } else if (userType === 'streamer') {
-    specialNote = ` IMPORTANTE: estás hablando con el streamer del canal (@${STREAMER_USERNAME}). Trátale con respeto y complicidad, como el "jefe del canal".`;
+    specialNote = ` ATENCION: Hablas con @${STREAMER_USERNAME}, el streamer/host del canal. No es tu creador (eso es @${CREATOR_USERNAME}). Tratale con respeto y complicidad como el jefe del canal.`;
   }
 
-  const base = `Eres ${botName}, bot de ${channelConfig.streamer}. ${channelConfig.bot_personality || ''}
+  // FIX #4: prompt reforzado con experto en gaming + español forzado
+  const base = `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Nombre del bot viene del meme del FUA (Fuerza Universal Aplicada). Fuiste creado/programado por @${CREATOR_USERNAME}.
 ${context}${specialNote}
-Reglas IMPORTANTES:
-- Responde en español natural SIEMPRE.
-- Puedes hablar de CUALQUIER tema — no solo videojuegos. Cultura general, ciencia, historia, deportes, lo que sea.
-- El contexto del canal es tu identidad, no una limitación de conocimiento.
-- Máximo 2 frases (400 chars). No te presentes. Directo al grano.
-- Usa "FUA" cuando algo es épico.
-- Si no sabes algo: "ni idea" con humor. NUNCA inventes datos.
-- Sin "Lo siento". Sin formalismos.`;
 
-  if (messageCount >= 20) return `${base} Chat muy activo, sé enérgico.`;
-  if (messageCount >= 5) return `${base} Chat tranquilo, sé amigable.`;
-  return `${base} Chat tranquilo, sé acogedor.`;
+REGLAS ABSOLUTAS (no negociables):
+- SIEMPRE en espanol. NUNCA uses palabras en ingles si existe equivalente en espanol.
+- Eres EXPERTO en videojuegos: cualquier consola, PC, movil, genero y epoca. Responde con datos reales.
+- Puedes hablar de CUALQUIER tema: ciencia, historia, deportes, musica, cultura general.
+- Si no sabes algo: admitelo con humor ("ni idea") pero NUNCA inventes datos especificos.
+- Maximo 2 frases cortas (400 chars). Directo al grano. Sin presentarte ni saludar.
+- Usa "FUA" cuando algo es epico o impresionante.
+- Sin "Lo siento". Sin "como IA". Sin formalismos.`;
+
+  if (messageCount >= 20) return base + ' Chat muy activo, se energico y rapido.';
+  if (messageCount >= 5) return base + ' Chat tranquilo, se amigable.';
+  return base + ' Chat tranquilo, se acogedor.';
 }
 
 function getMinimalPersonality() {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
-  return `Eres ${botName}, bot gracioso del canal de ${channelConfig.streamer}. ${getMinimalContext()} Responde en español. Max 1-2 frases. Puedes usar "FUA" si es épico. Puedes hablar de cualquier tema.`;
+  return `Eres ${botName}, bot gracioso del canal de ${channelConfig.streamer}. ${getMinimalContext()} Responde SIEMPRE en espanol, sin palabras inglesas. Max 1-2 frases. Usa "FUA" si algo es epico. Experto en videojuegos y cultura general.`;
 }
 
-// --- Detectar tipo de usuario ---
 function getUserType(username) {
   const lower = username.toLowerCase();
   if (CREATOR_USERNAME && lower === CREATOR_USERNAME) return 'creator';
@@ -198,7 +209,7 @@ async function handleCohost(client, channel) {
   if (now - lastCohostTime < COHOST_COOLDOWN) return;
   if (Math.random() > COHOST_PROBABILITY) return;
   const recentContext = getRecentHistory(5);
-  if (!recentContext) return; // No comentar si no hay mensajes recientes
+  if (!recentContext) return;
   if (!canMakeRequest()) return;
 
   cohostRunning = true;
@@ -206,15 +217,15 @@ async function handleCohost(client, channel) {
 
   try {
     const gameInfo = await getCurrentGame();
-    const game = gameInfo?.game ? `Están jugando a "${gameInfo.game}".` : '';
+    const game = gameInfo?.game ? `Estan jugando a "${gameInfo.game}".` : '';
     const response = await groqWithRetry({
-      model: 'llama-3.3-70b-versatile', max_tokens: 70,
+      max_tokens: 70,
       messages: [
         {
           role: 'system',
-          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game} Haces comentarios espontáneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en español. A veces usas FUA cuando es épico.`
+          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game} Haces comentarios espontaneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en espanol, sin palabras en ingles. A veces usas FUA cuando es epico.`
         },
-        { role: 'user', content: `Chat reciente:\n${recentContext}\nComenta algo natural.` }
+        { role: 'user', content: `Chat reciente:\n${recentContext}\nComenta algo natural sobre lo que se habla.` }
       ]
     });
     client.say(channel, truncate(response.choices[0].message.content));
@@ -231,27 +242,27 @@ async function initStreamStatus() {
   if (isLive) {
     streamWasLive = true;
     streamStatusInitialized = true;
-    logger.info(`📺 Estado inicial: EN DIRECTO (EventSub)`);
+    logger.info(`Iniciando: EN DIRECTO (EventSub)`);
     return;
   }
   const info = await getStreamInfo().catch(() => null);
   streamWasLive = info?.live === true;
   streamStatusInitialized = true;
-  logger.info(`📺 Estado inicial: ${streamWasLive ? 'EN DIRECTO' : 'OFFLINE'}`);
+  logger.info(`Iniciando: ${streamWasLive ? 'EN DIRECTO' : 'OFFLINE'}`);
 }
 
 const streamStartMessages = [
-  '🔴 ¡El stream ha arrancado! ¡Bienvenidos todos! ¡FUA! 💪🔥',
-  '🎮 ¡El canal ha arrancado! ¡A disfrutar! ¡FUA! 🔥',
-  '🔴 ¡ESTAMOS EN DIRECTO! ¡El FUA nos convoca! 💪',
-  '🚀 ¡Arranca el stream! ¡Preparaos para el caos! ¡FUA! 🔥',
+  'LIVE! Bienvenidos todos! FUA! 💪🔥',
+  'El canal ha arrancado! A disfrutar! FUA! 🔥',
+  'ESTAMOS EN DIRECTO! El FUA nos convoca! 💪',
+  'Arranca el stream! Preparaos para el caos! FUA! 🔥',
 ];
 
 const streamEndMessages = [
-  '🎬 ¡Y hasta aquí el stream! ¡Gracias a todos! ¡FUA y hasta la próxima! 💜🔥',
-  '💜 ¡Stream terminado! ¡Gracias por acompañarnos! ¡FUA! 🔥',
-  '🎮 ¡Eso es todo por hoy! ¡Gracias a la comunidad! ¡FUA! 💜',
-  '🔴➡️⚫ ¡Se acabó! ¡FUA y nos vemos pronto! 🔥💪',
+  'Y hasta aqui el stream! Gracias a todos! FUA y hasta la proxima! 💜🔥',
+  'Stream terminado! Gracias por acompanarhos! FUA! 🔥',
+  'Eso es todo por hoy! Gracias a la comunidad! FUA! 💜',
+  'Se acabo! FUA y nos vemos pronto! 🔥💪',
 ];
 
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -271,7 +282,7 @@ async function checkStreamStatus(client, channel) {
   }
 }
 
-// --- Conversation hooks ---
+// --- Conversation hooks --- FIX #6: game hooks enriquecidos con RAWG
 let lastHookTime = 0;
 const HOOK_INTERVAL = parseInt(process.env.HOOK_INTERVAL_MS || '600000', 10);
 const HOOK_MIN_SILENCE = parseInt(process.env.HOOK_SILENCE_MS || '300000', 10);
@@ -283,7 +294,6 @@ async function checkChatHook(client, channel) {
   if (now - lastHookTime < HOOK_INTERVAL) return;
   if (now - lastChatMessageTime < HOOK_MIN_SILENCE) return;
 
-  // No lanzar hooks si hay muy pocos viewers
   try {
     const eventsub = require('../eventsub');
     const viewers = await eventsub.getViewersWithAppToken(channelConfig.broadcaster_id);
@@ -293,16 +303,41 @@ async function checkChatHook(client, channel) {
   lastHookTime = now;
   const gameInfo = await getCurrentGame().catch(() => null);
   const game = gameInfo?.game;
+
   const genericHooks = [
-    '¿Alguien tiene alguna pregunta? ¡Usad !dios_fua! 🤖',
-    '¿Sois más de cooperativo o en solitario? 💬',
-    '¡Chat! ¿Alguien se anima con un !trivia? 🧠',
-    '¿Cuántas muertes creéis que habrá hoy? 💀',
+    'Alguien tiene alguna pregunta? Usad !dios_fua! 🤖',
+    'Sois mas de cooperativo o en solitario? 💬',
+    'Chat! Alguien se anima con un !trivia? 🧠',
+    'Cuantas muertes creeis que habra hoy? 💀',
+    'Cual es vuestro juego favorito de todos los tiempos? 🎮',
+    'Usad !chiste para que cuente un chiste! 😂',
   ];
-  const gameHooks = game ? [
-    `¿Qué os parece ${game} hasta ahora? 🎮`,
-    `¿Alguien ha jugado ${game}? ¿Es difícil? 🤔`,
-  ] : [];
+
+  let gameHooks = [];
+  if (game) {
+    try {
+      const rawg = await getGameInfo(game);
+      if (rawg?.genres && rawg?.rating) {
+        const year = rawg.released?.slice(0, 4) || '';
+        gameHooks = [
+          `🎮 ${channelConfig.streamer} jugando a ${game} (${rawg.genres}${year ? ', ' + year : ''}) - ${rawg.rating}/5 en RAWG. Alguien lo ha jugado?`,
+          `Que os parece ${game} hasta ahora? Genero: ${rawg.genres} 🎮`,
+          `${game} - Nota ${rawg.rating}/5 en RAWG. Estais de acuerdo? 🤔`,
+        ];
+      } else {
+        gameHooks = [
+          `Que os parece ${game} hasta ahora? 🎮`,
+          `Alguien ha jugado ${game} antes? Es dificil? 🤔`,
+        ];
+      }
+    } catch {
+      gameHooks = [
+        `Que os parece ${game} hasta ahora? 🎮`,
+        `Alguien ha jugado ${game}? Que tal? 🤔`,
+      ];
+    }
+  }
+
   const allHooks = [...gameHooks, ...genericHooks];
   client.say(channel, allHooks[Math.floor(Math.random() * allHooks.length)]);
 }
@@ -330,7 +365,7 @@ function handleChiste(client, channel, tags) {
   client.say(channel, truncate(`😂 ${chistesDB[index]}`));
 }
 
-// --- !dios_fua ---
+// --- !dios_fua --- FIX #4 + #7: prompt mejorado + busqueda web Tavily
 const questionCooldowns = new Map();
 setInterval(() => { const now = Date.now(); for (const [k,v] of questionCooldowns) if (now > v) questionCooldowns.delete(k); }, 30 * 60 * 1000);
 
@@ -346,7 +381,7 @@ async function handleQuestion(client, channel, tags, args) {
   }
 
   const rawQuestion = args.slice(1).join(' ');
-  if (!rawQuestion) { client.say(channel, `@${username} escribe algo después de !dios_fua 😅`); return; }
+  if (!rawQuestion) { client.say(channel, `@${username} escribe algo despues de !dios_fua 😅`); return; }
   const question = sanitizeForAI(rawQuestion);
   if (!question) { client.say(channel, `@${username} esa pregunta no la puedo responder 🙅`); return; }
   if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones ⏳`); return; }
@@ -356,10 +391,27 @@ async function handleQuestion(client, channel, tags, args) {
   try {
     const personality = await getPersonality(trackMessage(), userType);
     const userConv = getUserConversation(userId);
+
+    // FIX #7: busqueda web con Tavily si la pregunta es factual
+    let searchContext = '';
+    if (needsWebSearch(question)) {
+      try {
+        const webResult = await searchWeb(question);
+        if (webResult) {
+          searchContext = `\n[Informacion web]: ${webResult}`;
+          logger.info(`Tavily busqueda: "${question.slice(0, 50)}"`);
+        }
+      } catch (err) {
+        logger.warn(`Tavily fallo: ${err.message}`);
+      }
+    }
+
+    const systemContent = `${personality}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. NUNCA inventes datos especificos. Sin "Lo siento". Responde SIEMPRE en espanol.${searchContext}`;
+
     const response = await groqWithRetry({
-      model: 'llama-3.3-70b-versatile', max_tokens: 150,
+      max_tokens: 150,
       messages: [
-        { role: 'system', content: `${personality}\nPuedes responder sobre CUALQUIER tema, no solo videojuegos. NUNCA inventes datos. Sin "Lo siento".` },
+        { role: 'system', content: systemContent },
         ...userConv,
         { role: 'user', content: `${username}: ${question}` }
       ]
@@ -377,9 +429,9 @@ async function handleQuestion(client, channel, tags, args) {
 
 // --- Comandos de personalidad ---
 const personalityPrompts = {
-  cita: 'Frase épica o inspiradora de videojuegos o de la vida. Solo frase y autor. 1 frase en español.',
-  consejo: 'Consejo random útil, absurdo o gracioso sobre cualquier tema. 1 frase en español. Puedes usar FUA.',
-  meme: 'Describe un meme de internet, gaming o cultura pop. 1 frase graciosa en español.'
+  cita: 'Frase epica o inspiradora de videojuegos o de la vida. Solo frase y autor. 1 frase en espanol.',
+  consejo: 'Consejo random util, absurdo o gracioso sobre cualquier tema. 1 frase en espanol. Puedes usar FUA.',
+  meme: 'Describe un meme de internet, gaming o cultura pop. 1 frase graciosa en espanol.'
 };
 const personalityCooldowns = new Map();
 setInterval(() => { const now = Date.now(); for (const [k,v] of personalityCooldowns) if (now > v) personalityCooldowns.delete(k); }, 30 * 60 * 1000);
@@ -397,7 +449,7 @@ async function handlePersonality(client, channel, tags, command) {
   if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones ⏳`); return; }
   try {
     const response = await groqWithRetry({
-      model: 'llama-3.3-70b-versatile', max_tokens: 90,
+      max_tokens: 90,
       messages: [
         { role: 'system', content: getMinimalPersonality() },
         { role: 'user', content: personalityPrompts[command] }
@@ -415,29 +467,69 @@ async function handleShoutout(client, channel, tags, targetUsername) {
   if (!targetUsername) { client.say(channel, `Uso: !so @usuario`); return; }
 
   const target = targetUsername.replace('@', '');
-  // Mensaje inmediato mientras la IA prepara el shoutout
-  client.say(channel, `📢 Preparando shoutout para @${target}...`);
+  client.say(channel, `Preparando shoutout para @${target}...`);
 
   const { getChannelInfo } = require('../twitch/api');
   try {
     const info = await getChannelInfo(target);
-    const game = info?.game_name ? `Su último juego: "${info.game_name}".` : '';
+    const game = info?.game_name ? `Su ultimo juego: "${info.game_name}".` : '';
     const response = await groqWithRetry({
-      model: 'llama-3.3-70b-versatile', max_tokens: 80,
+      max_tokens: 80,
       messages: [
-        { role: 'system', content: `Shoutout para @${target}. ${game} En español. 1 frase cálida y graciosa. Anima a visitarle.` },
+        { role: 'system', content: `Shoutout para @${target}. ${game} En espanol, sin palabras inglesas. 1 frase calida y graciosa. Anima a visitarle.` },
         { role: 'user', content: `Shoutout para @${target}` }
       ]
     });
     client.say(channel, truncate(`📢 ${response.choices[0].message.content.trim()} twitch.tv/${target}`));
   } catch (err) {
     logger.error(`!so: ${err.message}`);
-    client.say(channel, `📢 ¡Echad un ojo a @${target}! 💜 twitch.tv/${target}`);
+    client.say(channel, `📢 Echad un ojo a @${target}! 💜 twitch.tv/${target}`);
+  }
+}
+
+// --- Deteccion de highlights para stream markers --- FIX #10
+const highlightKeywords = [
+  'clip', 'clipa', 'clipalo', 'marca', 'wtf', 'wow', 'fua',
+  'increible', 'brutal', 'epico', 'epica', 'locura', 'boom', 'gg', 'no puede ser'
+];
+const recentHighlightMsgs = [];
+const HIGHLIGHT_WINDOW = 15 * 1000;
+const HIGHLIGHT_THRESHOLD = 4;
+let lastMarkerTime = 0;
+const MARKER_COOLDOWN = 3 * 60 * 1000;
+
+async function checkForHighlight(client, channel, message) {
+  if (!getEventSubLiveStatus()) return;
+  const now = Date.now();
+  if (now - lastMarkerTime < MARKER_COOLDOWN) return;
+
+  const lower = message.toLowerCase();
+  if (!highlightKeywords.some(kw => lower.includes(kw))) return;
+
+  recentHighlightMsgs.push(now);
+  while (recentHighlightMsgs.length > 0 && recentHighlightMsgs[0] < now - HIGHLIGHT_WINDOW) {
+    recentHighlightMsgs.shift();
+  }
+
+  if (recentHighlightMsgs.length >= HIGHLIGHT_THRESHOLD) {
+    recentHighlightMsgs.length = 0;
+    lastMarkerTime = now;
+
+    try {
+      const { createStreamMarker } = require('../twitch/api');
+      const markerResult = await createStreamMarker('Momento epico detectado por el chat');
+      if (markerResult) {
+        logger.info(`Stream marker creado automaticamente`);
+        client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
+      }
+    } catch (err) {
+      logger.warn(`No se pudo crear marker: ${err.message}`);
+    }
   }
 }
 
 module.exports = {
   handleCohost, handleChiste, handleQuestion, handlePersonality, handleShoutout,
   addToHistory, updateLastChatTime, checkChatHook, checkStreamStatus, initStreamStatus,
-  invalidateContextCache
+  invalidateContextCache, checkForHighlight
 };
