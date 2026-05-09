@@ -311,6 +311,7 @@ const MIN_VIEWERS_FOR_HOOKS = 3;
 
 async function checkChatHook(client, channel) {
   if (isSilenced() || isTriviaActive()) return;
+  if (!getEventSubLiveStatus()) return; // No enviar hooks si el stream está offline
   const now = Date.now();
   if (now - lastHookTime < HOOK_INTERVAL) return;
   if (now - lastChatMessageTime < HOOK_MIN_SILENCE) return;
