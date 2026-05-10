@@ -22,35 +22,6 @@ const ai = require('./src/ai/handler');
 const { getStreamInfo } = require('./src/twitch/api');
 const { trackMessage, updatePeakViewers } = require('./src/utils/metrics');
 
-// --- Refresh automático del broadcaster token ---
-async function refreshBroadcasterToken() {
-  try {
-    const res = await fetch('https://id.twitch.tv/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: process.env.CLIENT_ID,
-        client_secret: process.env.CLIENT_SECRET,
-        grant_type: 'refresh_token',
-        refresh_token: process.env.BROADCASTER_REFRESH_TOKEN || ''
-      })
-    });
-    const data = await res.json();
-    if (data.access_token) {
-      process.env.BROADCASTER_TOKEN = `oauth:${data.access_token}`;
-      if (data.refresh_token) process.env.BROADCASTER_REFRESH_TOKEN = data.refresh_token;
-      logger.info(`✅ Broadcaster token refrescado automáticamente`);
-    } else {
-      logger.warn(`⚠️ No se pudo refrescar el broadcaster token: ${data.message || 'sin motivo'}`);
-    }
-  } catch (e) {
-    logger.error(`Error refrescando broadcaster token: ${e.message}`);
-  }
-}
-
-// Refrescar cada 30 días
-setInterval(refreshBroadcasterToken, 30 * 24 * 60 * 60 * 1000);
-
 const PORT = process.env.PORT || 3000;
 const CHANNEL = `#${process.env.CHANNEL}`;
 const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
@@ -124,13 +95,12 @@ client.on('connected', async (addr, port) => {
 
     await validateBroadcasterToken();
 
-    // FIX #4: migración automática npoint → Supabase (solo si Supabase está configurado)
+    // Migración automática npoint → Supabase
     if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
       const { migrateFromNpoint } = require('./src/utils/supabase');
       await migrateFromNpoint().catch(e => logger.warn(`Migración: ${e.message}`));
     }
 
-    // Inicializar estado del stream con app token (fiable)
     await initStreamState();
     await ai.initStreamStatus();
 
@@ -144,7 +114,6 @@ client.on('connected', async (addr, port) => {
       } catch (err) { logger.error(`Error init: ${err.message}`); }
     }
 
-    // Trivia reset al reconectar (fix: trivia quedaba activa tras desconexión)
     const { setTriviaActive } = require('./src/utils/state');
     setTriviaActive(false);
 
@@ -160,13 +129,11 @@ client.on('connected', async (addr, port) => {
 
 client.on('disconnected', (reason) => {
   logger.warn(`⚠️ Desconectado: ${reason || 'sin motivo'}`);
-  // Reset trivia al desconectar para evitar que quede activa
   const { setTriviaActive } = require('./src/utils/state');
   setTriviaActive(false);
 });
 
 client.on('message', async (channel, tags, message, self) => {
-  // Triple filtro anti-auto-mensaje
   if (self) return;
   if (tags['username']?.toLowerCase() === BOT_NAME) return;
   if (tags['display-name']?.toLowerCase() === BOT_NAME) return;
@@ -181,7 +148,6 @@ client.on('message', async (channel, tags, message, self) => {
   ai.updateLastChatTime();
   alerts.handleMessage(client, channel, tags);
 
-  // FIX #10: detección automática de highlights para stream markers
   if (!msg.startsWith(process.env.PREFIX)) {
     ai.checkForHighlight(client, channel, msg);
     ai.handleCohost(client, channel);
