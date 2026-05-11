@@ -73,6 +73,10 @@ client.connect().catch(console.error);
 let timersStarted = false;
 let lastMessageTime = Date.now();
 
+// BUG FIX #1: deduplicación de mensajes para evitar doble respuesta en reconexiones
+const processedMessages = new Set();
+setInterval(() => processedMessages.clear(), 60 * 1000);
+
 // --- Watchdog ---
 const WATCHDOG_TIMEOUT = parseInt(process.env.WATCHDOG_TIMEOUT_MS || '1800000', 10);
 setInterval(async () => {
@@ -137,6 +141,15 @@ client.on('message', async (channel, tags, message, self) => {
   if (self) return;
   if (tags['username']?.toLowerCase() === BOT_NAME) return;
   if (tags['display-name']?.toLowerCase() === BOT_NAME) return;
+  // Fix doble respuesta: el bot a veces recibe sus propios mensajes sin self=true
+  if ((tags['username'] || '').toLowerCase().includes(BOT_NAME)) return;
+
+  // BUG FIX #1: ignorar mensajes ya procesados (evita doble respuesta en reconexiones)
+  const msgId = tags['id'];
+  if (msgId) {
+    if (processedMessages.has(msgId)) return;
+    processedMessages.add(msgId);
+  }
 
   lastMessageTime = Date.now();
   trackMessage();

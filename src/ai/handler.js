@@ -124,6 +124,8 @@ const MAX_CONVERSATION_USERS = 200;
 
 function addToHistory(username, message) {
   if (message.startsWith('!')) return;
+  // No guardar mensajes del propio bot en el historial
+  if ((username || '').toLowerCase() === (process.env.BOT_USERNAME || '').toLowerCase()) return;
   chatHistory.push({ username, message, ts: Date.now() });
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
   lastChatMessageTime = Date.now();
@@ -402,7 +404,8 @@ setInterval(() => { const now = Date.now(); for (const [k,v] of chisteCooldowns)
 function handleChiste(client, channel, tags) {
   if (isSilenced()) return;
   const username = tags['display-name'];
-  const userId = tags['user-id'];
+  // BUG FIX #2: fallback si user-id es undefined (evita cooldown compartido)
+  const userId = tags['user-id'] || tags['username'] || username;
   const key = `chiste-${userId}`;
   const now = Date.now();
   if (chisteCooldowns.has(key) && now < chisteCooldowns.get(key)) {
@@ -423,7 +426,8 @@ setInterval(() => { const now = Date.now(); for (const [k,v] of questionCooldown
 async function handleQuestion(client, channel, tags, args) {
   if (isSilenced()) return;
   const username = tags['display-name'];
-  const userId = tags['user-id'];
+  // BUG FIX #2: fallback si user-id es undefined
+  const userId = tags['user-id'] || tags['username'] || username;
   const now = Date.now();
 
   if (questionCooldowns.has(userId) && now < questionCooldowns.get(userId)) {
