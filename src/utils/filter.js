@@ -18,24 +18,11 @@ const BLOCKED_PATTERNS = [
   'follar', 'coger', 'mamada', 'corrida',
   // Extremismo
   'terroris', 'yihad', 'isis',
-  // Inyección de prompt — inglés
+  // Inyección de prompt
   'ignore previous', 'ignore all', 'ignore your',
   'forget your instructions', 'new instructions',
   'system prompt', 'jailbreak', 'dan mode',
-  'pretend you are', 'act as if', 'you are now',
-  'disregard', 'override', 'bypass', 'roleplay as',
-  'from now on you', 'your new instructions',
-  // Inyección de prompt — español
-  'ignora tus instrucciones', 'ignora todas', 'ignora todo lo anterior',
-  'olvida tus instrucciones', 'olvida lo anterior', 'olvida todo',
-  'nuevas instrucciones', 'nueva instruccion', 'nuevo rol',
-  'a partir de ahora eres', 'ahora eres', 'eres ahora',
-  'actua como si', 'finge que eres', 'finge ser',
-  'comportate como', 'comportarte como',
-  'sin restricciones', 'sin limites', 'modo libre',
-  'modo sin filtros', 'modo sin censura',
-  'instruccion del sistema', 'prompt del sistema',
-  'sal del personaje', 'rompe el personaje',
+  'pretend you are', 'act as if',
 ];
 
 // Normalizar texto: quitar acentos, pasar a minúsculas
