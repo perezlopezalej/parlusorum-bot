@@ -26,8 +26,9 @@ const CREATOR_USERNAME = (channelConfig.creator_username || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || '').toLowerCase();
 
 function truncate(msg) {
-  if (msg.length <= TWITCH_MAX_LENGTH) return msg;
-  return msg.slice(0, TWITCH_MAX_LENGTH - 3) + '...';
+  const clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
+  if (clean.length <= TWITCH_MAX_LENGTH) return clean;
+  return clean.slice(0, TWITCH_MAX_LENGTH - 3) + '...';
 }
 
 async function groqWithRetry(params, maxRetries = 2) {
@@ -36,7 +37,11 @@ async function groqWithRetry(params, maxRetries = 2) {
     try { return await groq.chat.completions.create(params); }
     catch (err) {
       if ((err.status === 429 || err.message?.includes('rate')) && attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
+        const retryAfterSec = parseInt(err.headers?.['retry-after'] || '0');
+        const delay = retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : 2 ** attempt * 1000 + Math.random() * 500;
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
       throw err;
@@ -190,6 +195,8 @@ async function getPersonality(messageCount, userType = 'normal') {
     specialNote = ` ATENCION: Hablas con @${CREATOR_USERNAME}, quien te PROGRAMO y CREO. Es tu amo creador. NO es el streamer del canal (eso es @${STREAMER_USERNAME}). Tratale con humor reverente como a tu creador literal.`;
   } else if (userType === 'streamer') {
     specialNote = ` ATENCION: Hablas con @${STREAMER_USERNAME}, el streamer/host del canal. No es tu creador (eso es @${CREATOR_USERNAME}). Tratale con respeto y complicidad como el jefe del canal.`;
+  } else if (userType === 'sub') {
+    specialNote = ` ATENCION: Hablas con un suscriptor del canal. Agradecele su apoyo con naturalidad si viene a cuento, sin ser forzado.`;
   }
 
   // FIX #4: prompt reforzado con experto en gaming + español forzado
@@ -203,6 +210,7 @@ REGLAS ABSOLUTAS (no negociables):
 - Si no sabes algo: admitelo con humor ("ni idea") pero NUNCA inventes datos especificos.
 - Maximo 2 frases cortas (400 chars). Directo al grano. Sin presentarte ni saludar.
 - Usa "FUA" cuando algo es epico o impresionante.
+- Emotes que puedes usar (maximo 1-2 por respuesta, solo si encaja natural): Del canal: parlus1PORELPODERDELFUAAAAA (momento epico/FUA extremo), parlus1Alataqueel (cuando atacan o hay accion), parlus1Esteeselrollo (cuando algo es el rollo/vibe), parlus1Kelokekelowa (incredulidad/meme). Globales: KEKW (risa fuerte/meme), Pog (sorpresa/hype), LUL (risa), monkaS (nervios/susto), Kappa (sarcasmo), OMEGALUL (risa extrema).
 - Sin "Lo siento". Sin "como IA". Sin formalismos.`;
 
   if (messageCount >= 20) return base + ' Chat muy activo, se energico y rapido.';
@@ -215,10 +223,11 @@ function getMinimalPersonality() {
   return `Eres ${botName}, bot gracioso del canal de ${channelConfig.streamer}. ${getMinimalContext()} Responde SIEMPRE en espanol, sin palabras inglesas. Max 1-2 frases. Usa "FUA" si algo es epico. Experto en videojuegos y cultura general.`;
 }
 
-function getUserType(username) {
+function getUserType(username, tags) {
   const lower = username.toLowerCase();
   if (CREATOR_USERNAME && lower === CREATOR_USERNAME) return 'creator';
   if (STREAMER_USERNAME && lower === STREAMER_USERNAME) return 'streamer';
+  if (tags?.subscriber || tags?.badges?.subscriber || tags?.badges?.founder) return 'sub';
   return 'normal';
 }
 
@@ -441,7 +450,7 @@ async function handleQuestion(client, channel, tags, args) {
   if (!question) { client.say(channel, `@${username} esa pregunta no la puedo responder 🙅`); return; }
   if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones globales ⏳`); return; }
 
-  const userType = getUserType(username);
+  const userType = getUserType(username, tags);
   if (!canUserMakeRequest(userId, userType)) { client.say(channel, `@${username} espera un momento antes de volver a preguntar ⏳`); return; }
 
   try {

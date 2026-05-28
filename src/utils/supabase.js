@@ -8,6 +8,7 @@ const logger = require('./logger');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const SUPABASE_POOLER_URL = process.env.SUPABASE_POOLER_URL;
 
 let supabase = null;
 
@@ -17,9 +18,19 @@ function getClient() {
       logger.warn('⚠️ SUPABASE_URL o SUPABASE_KEY no configurados.');
       return null;
     }
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    const url = SUPABASE_POOLER_URL || SUPABASE_URL;
+    supabase = createClient(url, SUPABASE_KEY, {
+      db: { schema: 'public' }
+    });
   }
   return supabase;
+}
+
+// ─── LOG DE INICIO ───────────────────────────────────────────────────────────
+if (SUPABASE_POOLER_URL) {
+  logger.info('💾 Supabase: pooler configurado (puerto 6543)');
+} else if (SUPABASE_URL) {
+  logger.info('💾 Supabase: conexion directa (SUPABASE_POOLER_URL no configurada)');
 }
 
 // ─── USUARIOS ────────────────────────────────────────────────────────────────

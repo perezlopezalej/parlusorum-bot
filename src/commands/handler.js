@@ -3,6 +3,7 @@ const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
 const { getSummary, trackCommand } = require('../utils/metrics');
+const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
@@ -26,6 +27,7 @@ function getUserTitle(messageCount) {
 
 // --- Textos de ayuda actualizados ---
 const helpTexts = {
+  'lurk': 'Anúnciate como lurker. El bot te despide con estilo.',
   'comandos': 'Lista de comandos disponibles.',
   'chiste': 'Chiste real del banco de 169 chistes.',
   'trivia': 'Pregunta de trivia. Responde directamente en el chat.',
@@ -68,6 +70,7 @@ async function handle(client, channel, tags, command, args, config) {
   }
 
   switch (command) {
+    case 'lurk': return handleLurk(client, channel, tags);
     case 'uptime': return handleUptime(client, channel);
     case 'juego': return await handleJuego(client, channel);
     case 'estadisticas': return await handleEstadisticas(client, channel);
@@ -96,11 +99,38 @@ async function handle(client, channel, tags, command, args, config) {
   }
 }
 
+const lurkMessages = [
+  '👀 @{username} entra en modo lurker. ¡El FUA te acompaña en las sombras! 🌙',
+  '🕵️ @{username} activa el modo espía. ¡Te vemos aunque no hables! 👀',
+  '🌙 @{username} se funde con la oscuridad del lurk. ¡Gracias por quedarte! 💜',
+  '🐱 @{username} en modo fantasma. El canal te da las gracias por estar aquí! 🔥',
+  '😴 @{username} se va al lurk. ¡El FUA cuida de los lurkers! 💪',
+];
+
+function handleLurk(client, channel, tags) {
+  const username = tags['display-name'];
+  const userId = tags['user-id'] || tags['username'] || username;
+  const key = `lurk-${userId}`;
+  const now = Date.now();
+  if (cooldowns.has(key) && now < cooldowns.get(key)) {
+    client.say(channel, `@${username} ya estás en modo lurk, ¡te vemos! 👀`);
+    return;
+  }
+  cooldowns.set(key, now + 60000);
+  const msg = lurkMessages[Math.floor(Math.random() * lurkMessages.length)];
+  client.say(channel, msg.replace('{username}', username));
+}
+
 const botStartTime = Date.now();
 function handleUptime(client, channel) {
-  const e = Date.now() - botStartTime;
-  const h = Math.floor(e / 3600000), m = Math.floor((e % 3600000) / 60000), s = Math.floor((e % 60000) / 1000);
-  client.say(channel, `⏱️ Bot activo: ${h > 0 ? h + 'h ' : ''}${m > 0 ? m + 'm ' : ''}${s}s`);
+  const streamUptime = isLiveViaEventSub() ? getStreamUptime() : null;
+  if (streamUptime) {
+    client.say(channel, `⏱️ Stream activo: ${streamUptime}`);
+  } else {
+    const e = Date.now() - botStartTime;
+    const h = Math.floor(e / 3600000), m = Math.floor((e % 3600000) / 60000), s = Math.floor((e % 60000) / 1000);
+    client.say(channel, `⏱️ Bot activo: ${h > 0 ? h + 'h ' : ''}${m > 0 ? m + 'm ' : ''}${s}s (canal offline)`);
+  }
 }
 
 async function handleJuego(client, channel) {
