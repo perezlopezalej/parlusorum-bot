@@ -1,4 +1,5 @@
 const { loadUsers } = require('../utils/storage');
+const { getChannelStats, incrementChannelStat } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
@@ -10,6 +11,10 @@ const logger = require('../utils/logger');
 // --- Contador de muertes --- FIX #1: exportado para que eventsub lo use
 let deathCount = 0;
 function getDeathCount() { return deathCount; }
+
+// --- Contador win/loss ---
+let sessionWins = 0;
+let sessionLosses = 0;
 
 // --- Cooldowns ---
 const cooldowns = new Map();
@@ -41,6 +46,9 @@ const helpTexts = {
   'brb': '(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min.',
   'so': '(Mods) Shoutout con IA. Uso: !so @usuario',
   'muertes': 'Contador de muertes. Mods: !muertes +1 / !muertes reset',
+  'win': '(Mods) Suma una victoria al marcador.',
+  'loss': '(Mods) Suma una derrota al marcador.',
+  'score': 'Marcador de victorias/derrotas. Session actual + total histórico.',
   'clip': '(Mods) Crea un clip del momento actual.',
   'marker': '(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]',
   'resumen': '(Mods) Resumen completo del stream actual.',
@@ -76,6 +84,13 @@ async function handle(client, channel, tags, command, args, config) {
     case 'estadisticas': return await handleEstadisticas(client, channel);
     case 'titulo': return await handleTitulo(client, channel, tags);
     case 'muertes': return handleMuertes(client, channel, args, isMod);
+    case 'win':
+      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
+      return await handleWin(client, channel);
+    case 'loss':
+      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
+      return await handleLoss(client, channel);
+    case 'score': return await handleScore(client, channel);
     case 'brb':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return handleBrb(client, channel, username);
@@ -173,6 +188,28 @@ async function handleEstadisticas(client, channel) {
   } catch (err) {
     logger.error(`!estadisticas: ${err.message}`);
     client.say(channel, `No puedo obtener stats ahora.`);
+  }
+}
+
+async function handleWin(client, channel) {
+  sessionWins++;
+  incrementChannelStat('total_wins').catch(() => {});
+  client.say(channel, `🏆 ¡Victoria! ${sessionWins}W / ${sessionLosses}L este stream FUA! 💪`);
+}
+
+async function handleLoss(client, channel) {
+  sessionLosses++;
+  incrementChannelStat('total_losses').catch(() => {});
+  client.say(channel, `💀 Derrota... ${sessionWins}W / ${sessionLosses}L este stream 😅`);
+}
+
+async function handleScore(client, channel) {
+  const stats = await getChannelStats().catch(() => null);
+  const session = `🎮 Este stream: ${sessionWins}W / ${sessionLosses}L`;
+  if (stats) {
+    client.say(channel, `${session} | All-time: ${stats.total_wins}W / ${stats.total_losses}L`);
+  } else {
+    client.say(channel, session);
   }
 }
 

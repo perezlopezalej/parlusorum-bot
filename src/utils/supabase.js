@@ -216,6 +216,44 @@ async function saveHighlight(triggerMessages, markerId, description) {
   }
 }
 
+// ─── ESTADÍSTICAS DEL CANAL ──────────────────────────────────────────────────
+
+let channelStatsCache = null;
+
+async function getChannelStats() {
+  const db = getClient();
+  if (!db) return null;
+  try {
+    const { data, error } = await db.from('channel_stats').select('*').eq('id', 1).single();
+    if (error) throw error;
+    channelStatsCache = data;
+    return data;
+  } catch (e) {
+    logger.error(`Error obteniendo channel_stats: ${e.message}`);
+    return channelStatsCache;
+  }
+}
+
+async function incrementChannelStat(field) {
+  const db = getClient();
+  if (!db) return;
+  try {
+    const current = channelStatsCache || await getChannelStats() || { total_wins: 0, total_losses: 0 };
+    const updated = {
+      id: 1,
+      total_wins: current.total_wins || 0,
+      total_losses: current.total_losses || 0,
+      updated_at: new Date().toISOString()
+    };
+    updated[field] = (updated[field] || 0) + 1;
+    channelStatsCache = { ...updated };
+    const { error } = await db.from('channel_stats').upsert(updated, { onConflict: 'id' });
+    if (error) throw error;
+  } catch (e) {
+    logger.error(`Error incrementando ${field}: ${e.message}`);
+  }
+}
+
 // ─── MIGRACIÓN DESDE NPOINT ───────────────────────────────────────────────────
 
 /**
@@ -285,5 +323,7 @@ module.exports = {
   saveStreamMemory,
   getRecentStreamMemory,
   saveHighlight,
-  migrateFromNpoint
+  migrateFromNpoint,
+  getChannelStats,
+  incrementChannelStat
 };
