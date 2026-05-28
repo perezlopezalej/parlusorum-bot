@@ -4,3 +4,4 @@ data/users.json
 data/todo.json
 *.code-workspace
 logs/
+.claude/settings.local.json
