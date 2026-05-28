@@ -1,7 +1,7 @@
 const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
 const { getCurrentGame, getGameInfo, getStreamInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { searchWeb, needsWebSearch } = require('../utils/search');
@@ -250,12 +250,15 @@ async function handleCohost(client, channel) {
   try {
     const gameInfo = await getCurrentGame();
     const game = gameInfo?.game ? `Estan jugando a "${gameInfo.game}".` : '';
+    const raidNote = isRaidActive()
+      ? ` Acaba de llegar una raid de @${getRaidUsername()}, hay nuevos viewers en el canal. Si encaja con el chat, menciona la raid con energia.`
+      : '';
     const response = await groqWithRetry({
       max_tokens: 70,
       messages: [
         {
           role: 'system',
-          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game} Haces comentarios espontaneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en espanol, sin palabras en ingles. A veces usas FUA cuando es epico.`
+          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game}${raidNote} Haces comentarios espontaneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en espanol, sin palabras en ingles. A veces usas FUA cuando es epico.`
         },
         { role: 'user', content: `Chat reciente:\n${recentContext}\nComenta algo natural sobre lo que se habla.` }
       ]
@@ -327,6 +330,14 @@ async function checkChatHook(client, channel) {
   if (now - lastHookTime < HOOK_INTERVAL) return;
 
   const silenceTime = now - lastChatMessageTime;
+
+  // Si hay raid activa y el chat lleva al menos 1 min sin actividad, dar bienvenida a raiders
+  if (isRaidActive() && silenceTime >= 60000) {
+    lastHookTime = now;
+    client.say(channel, `👋 Bienvenidos a los raiders de @${getRaidUsername()}! Si tenéis preguntas sobre el canal usad !dios_fua, y si os apetece un desafío probad !trivia 🔥`);
+    return;
+  }
+
   if (silenceTime < HOOK_MIN_SILENCE) return;
   // Si el chat lleva más de 10 min muerto, no forzar — no hay nadie
   try {

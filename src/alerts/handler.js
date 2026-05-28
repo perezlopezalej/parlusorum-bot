@@ -3,6 +3,7 @@ const { getChannelInfo, getFollowerCount } = require('../twitch/api');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 const { loadUsers, saveUsers } = require('../utils/storage');
+const { setRaidActive } = require('../utils/state');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
@@ -203,6 +204,8 @@ async function onRaid(client, channel, username, viewers) {
     const extra = response.choices[0].message.content.trim();
     if (extra) client.say(channel, extra.slice(0, 490));
   } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
+
+  setRaidActive(username);
 }
 
 let broadcasterId = null;

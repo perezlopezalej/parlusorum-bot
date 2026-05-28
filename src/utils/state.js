@@ -39,8 +39,22 @@ function getBrbDuration() {
   return Math.floor((Date.now() - brbStart) / 60000);
 }
 
+// --- Raid ---
+let raidActiveUntil = 0;
+let raidUsername = null;
+const RAID_DURATION_MS = 5 * 60 * 1000;
+
+function setRaidActive(username, durationMs = RAID_DURATION_MS) {
+  raidActiveUntil = Date.now() + durationMs;
+  raidUsername = username;
+}
+
+function isRaidActive() { return Date.now() < raidActiveUntil; }
+function getRaidUsername() { return raidUsername; }
+
 module.exports = {
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,
-  setBrbMode, isBrb, getBrbDuration
+  setBrbMode, isBrb, getBrbDuration,
+  setRaidActive, isRaidActive, getRaidUsername
 };
