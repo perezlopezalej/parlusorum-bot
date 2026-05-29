@@ -1,7 +1,7 @@
 {
   "commands": {
     "comandos": {
-      "response": "📋 Comandos: !dios_fua !chiste !trivia !moneda !juego !estadisticas !titulo !uptime !ayuda | Mods: !so !brb !silencio !muertes !clip !marker !resumen !metricas",
+      "response": "📋 Comandos: !lurk !dios_fua !chiste !trivia !moneda !juego !estadisticas !titulo !uptime !score !ayuda | Mods: !so !brb !silencio !muertes !win !loss !clip !marker !resumen !metricas",
       "cooldown": 10
     }
   },

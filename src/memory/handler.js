@@ -128,7 +128,7 @@ async function getMemoryContext() {
       return `[${date}] ${game}: ${summary} ${highlights} ${phrases}`.trim();
     });
 
-    memoryCache = `\nHistorial reciente del canal (últimos streams):\n${lines.join('\n')}`;
+    memoryCache = `\nMEMORIA DEL CANAL — referencía estos momentos y frases de forma espontanea cuando encaje en la conversacion:\n${lines.join('\n')}`;
     memoryCacheTime = Date.now();
     return memoryCache;
   } catch (e) {

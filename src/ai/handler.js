@@ -200,7 +200,7 @@ async function getPersonality(messageCount, userType = 'normal') {
   }
 
   // FIX #4: prompt reforzado con experto en gaming + español forzado
-  const base = `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Nombre del bot viene del meme del FUA (Fuerza Universal Aplicada). Fuiste creado/programado por @${CREATOR_USERNAME}.
+  const base = `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" El FUA no es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}.
 ${context}${specialNote}
 
 REGLAS ABSOLUTAS (no negociables):
@@ -209,9 +209,10 @@ REGLAS ABSOLUTAS (no negociables):
 - Puedes hablar de CUALQUIER tema: ciencia, historia, deportes, musica, cultura general.
 - Si no sabes algo: admitelo con humor ("ni idea") pero NUNCA inventes datos especificos.
 - Maximo 2 frases cortas (400 chars). Directo al grano. Sin presentarte ni saludar.
-- Usa "FUA" cuando algo es epico o impresionante.
+- El FUA se usa con caracter real, no de relleno. El momento exacto es DURANTE la dificultad, cuando el streamer esta a punto de rendirse — "¡FUAAA, carácter!" — no despues de superarlo. Tambien: cuando alguien llega con energia ("¡Trae el FUA!"), cuando el chat muerto necesita despertar, o en epica genuina. Ocasionalmente puedes hacer referencias absurdas con humor: "con suficiente FUA hasta los muertos reviven". Si el juego tiene transformaciones epicas o momentos Ki (Dragon Ball, accion intensa): el FUA y el Ki son lo mismo. Variantes: FUA, FUAAA, "el FUA", "sacar el FUA", "tienes el FUA". Solo cuando hay momento real — no en cada mensaje.
 - Emotes que puedes usar (maximo 1-2 por respuesta, solo si encaja natural): Del canal: parlus1PORELPODERDELFUAAAAA (momento epico/FUA extremo), parlus1Alataqueel (cuando atacan o hay accion), parlus1Esteeselrollo (cuando algo es el rollo/vibe), parlus1Kelokekelowa (incredulidad/meme). Globales: KEKW (risa fuerte/meme), Pog (sorpresa/hype), LUL (risa), monkaS (nervios/susto), Kappa (sarcasmo), OMEGALUL (risa extrema).
-- Sin "Lo siento". Sin "como IA". Sin formalismos.`;
+- Sin "Lo siento". Sin "como IA". Sin formalismos.
+- Si tu contexto incluye MEMORIA DEL CANAL con frases recurrentes o momentos epicos de streams anteriores, mencionalos de forma espontanea y natural cuando encaje — el canal tiene historia propia y el chat lo aprecia.`;
 
   if (messageCount >= 20) return base + ' Chat muy activo, se energico y rapido.';
   if (messageCount >= 5) return base + ' Chat tranquilo, se amigable.';
@@ -258,7 +259,7 @@ async function handleCohost(client, channel) {
       messages: [
         {
           role: 'system',
-          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game}${raidNote} Haces comentarios espontaneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en espanol, sin palabras en ingles. A veces usas FUA cuando es epico.`
+          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game}${raidNote} Haces comentarios espontaneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en espanol, sin palabras en ingles. Usas FUA con caracter real: el momento exacto es DURANTE la dificultad, cuando el streamer esta a punto de rendirse — ese es el impulso, no la celebracion despues. No en cada mensaje.`
         },
         { role: 'user', content: `Chat reciente:\n${recentContext}\nComenta algo natural sobre lo que se habla.` }
       ]
@@ -271,6 +272,7 @@ async function handleCohost(client, channel) {
 // --- Stream status ---
 let streamWasLive = false;
 let streamStatusInitialized = false;
+let streamEndPostedByEventSub = false;
 
 async function initStreamStatus() {
   const isLive = getEventSubLiveStatus();
@@ -308,12 +310,54 @@ async function checkStreamStatus(client, channel) {
 
   if (!streamWasLive && isLive) {
     streamWasLive = true;
+    streamEndPostedByEventSub = false;
     invalidateContextCache();
     client.say(channel, pickRandom(streamStartMessages));
   } else if (streamWasLive && !isLive) {
     streamWasLive = false;
     invalidateContextCache();
-    client.say(channel, pickRandom(streamEndMessages));
+    // EventSub ya posteó el resumen IA; solo usar fallback si no lo hizo
+    if (!streamEndPostedByEventSub) {
+      client.say(channel, pickRandom(streamEndMessages));
+    }
+  }
+}
+
+// Llamado desde eventsub.js cuando arrancan con pocos viewers
+async function onWarmupMode(client, channel, game) {
+  if (!canMakeRequest()) return;
+  try {
+    const gameContext = game ? ` El juego de hoy: "${game}".` : '';
+    const response = await groqWithRetry({
+      max_tokens: 100,
+      messages: [
+        {
+          role: 'system',
+          content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. El stream acaba de empezar y hay pocos viewers — momento ideal para calentar el chat.${gameContext} Genera un mensaje de calentamiento: una bienvenida energetica + UNA pregunta directa al chat sobre ${game ? 'el juego de hoy' : 'lo que se viene'} que invite a responder. SIEMPRE en espanol. Max 2 frases. Usa FUA. Sin presentarte.`
+        },
+        { role: 'user', content: `Calienta el chat` }
+      ]
+    });
+    client.say(channel, truncate(response.choices[0].message.content));
+    logger.info(`🔥 Warmup mode activado`);
+  } catch (err) {
+    logger.warn(`Warmup mode: ${err.message}`);
+  }
+}
+
+// Llamado desde eventsub.js tras generar la memoria del stream
+function postStreamEnd(client, channel, aiSummary) {
+  streamWasLive = false;
+  streamEndPostedByEventSub = true;
+  invalidateContextCache();
+  const msg = aiSummary
+    ? `🎬 ¡Fin del stream! ${aiSummary} ¡Hasta la próxima! FUA! 💜🔥`
+    : pickRandom(streamEndMessages);
+  try {
+    require('../alerts/handler').throttleSay(client, channel, truncate(msg));
+  } catch (e) {
+    logger.warn(`postStreamEnd throttleSay fallback: ${e.message}`);
+    client.say(channel, truncate(msg));
   }
 }
 
@@ -363,9 +407,9 @@ async function checkChatHook(client, channel) {
         messages: [
           {
             role: 'system',
-            content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. El chat lleva unos minutos callado. Haz UN comentario espontáneo e interesante sobre el juego "${gameContext}". Puede ser una curiosidad real, una opinion, o una pregunta al chat. SIEMPRE en espanol. Sin presentarte. Max 1-2 frases. A veces usa FUA si es epico.`
+            content: `Eres dios_fua, narrador en directo del canal de ${channelConfig.streamer}. Estilo: comentarista deportivo — dramatico, energetico, como si narraras un partido en vivo. El chat lleva unos minutos en silencio y tu llenas el aire. Juego: "${gameContext}". Haz UN comentario narrativo: tension del momento, una jugada que el chat no vio, una prediccion epica, o un dato del juego que ponga en contexto lo que pasa en pantalla. SIEMPRE en espanol. Sin presentarte. Max 1-2 frases. Usa FUA cuando algo merece epica. Se dramatico.`
           },
-          { role: 'user', content: `Comenta algo sobre ${game} para animar el chat.` }
+          { role: 'user', content: `Narra algo sobre ${game} para llenar el silencio.` }
         ]
       });
       client.say(channel, truncate(response.choices[0].message.content));
@@ -559,16 +603,257 @@ async function checkForHighlight(client, channel, message) {
     recentHighlightMsgs.length = 0;
     lastMarkerTime = now;
 
-    try {
-      const { createStreamMarker } = require('../twitch/api');
-      const markerResult = await createStreamMarker('Momento epico detectado por el chat');
-      if (markerResult) {
-        logger.info(`Stream marker creado automaticamente`);
-        client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
+    const { createStreamMarker } = require('../twitch/api');
+    const markerResult = await createStreamMarker('Momento epico detectado por el chat');
+    const markerCreated = markerResult !== null;
+    if (markerCreated) logger.info(`Stream marker creado automaticamente`);
+
+    if (canMakeRequest()) {
+      try {
+        const gameInfo = await getCurrentGame().catch(() => null);
+        const game = gameInfo?.game ? ` Juego: "${gameInfo.game}".` : '';
+        const response = await groqWithRetry({
+          max_tokens: 70,
+          messages: [
+            { role: 'system', content: `Eres dios_fua, narrador en directo del canal de ${channelConfig.streamer}. Estilo: comentarista deportivo.${game} El chat acaba de explotar — todos reaccionando a algo epico. Narra este momento en directo. SIEMPRE en espanol. Max 1-2 frases. Usa FUA. Se dramatico.` },
+            { role: 'user', content: `El chat acaba de explotar con hype` }
+          ]
+        });
+        const prefix = markerCreated ? '🏁' : '🔥';
+        client.say(channel, truncate(`${prefix} ${response.choices[0].message.content}`));
+      } catch {
+        if (markerCreated) {
+          client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
+        } else {
+          client.say(channel, `🔥 QUÉ MOMENTO FUA! 💜`);
+        }
       }
-    } catch (err) {
-      logger.warn(`No se pudo crear marker: ${err.message}`);
+    } else if (markerCreated) {
+      client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
+    } else {
+      client.say(channel, `🔥 QUÉ MOMENTO FUA! 💜`);
     }
+  }
+}
+
+// --- Emote spam detection ---
+const recentEmoteUse = new Map(); // emoteToken → [{user, ts}]
+const EMOTE_WINDOW_MS = 20 * 1000;
+const EMOTE_SPAM_THRESHOLD = 8;
+let lastEmoteCommentTime = 0;
+const EMOTE_COMMENT_COOLDOWN = 90 * 1000;
+
+function extractEmoteTokens(tags, message) {
+  const tokens = new Set();
+
+  // 1. Emotes nativos de Twitch via tags.emotes: { emoteId: ['start-end', ...] }
+  if (tags.emotes && typeof tags.emotes === 'object') {
+    for (const positions of Object.values(tags.emotes)) {
+      if (positions && positions.length > 0) {
+        const [start, end] = positions[0].split('-').map(Number);
+        const name = message.slice(start, end + 1);
+        if (name) tokens.add(name);
+      }
+    }
+  }
+
+  // 2. Fallback BTTV/FFZ: tokens CamelCase o ALL_CAPS de 3+ chars
+  if (tokens.size === 0) {
+    for (const word of message.split(/\s+/)) {
+      if (/^[A-Z][A-Za-z0-9]{2,}$/.test(word) || /^[A-Z]{3,}$/.test(word)) {
+        tokens.add(word);
+      }
+    }
+  }
+
+  return [...tokens];
+}
+
+async function checkEmoteSpam(client, channel, tags, message) {
+  if (!getEventSubLiveStatus() || isSilenced()) return;
+  const now = Date.now();
+  if (now - lastEmoteCommentTime < EMOTE_COMMENT_COOLDOWN) return;
+
+  const username = tags['display-name'];
+  const tokens = extractEmoteTokens(tags, message);
+
+  for (const token of tokens) {
+    if (!recentEmoteUse.has(token)) recentEmoteUse.set(token, []);
+    const entries = recentEmoteUse.get(token);
+    entries.push({ user: username, ts: now });
+    const fresh = entries.filter(e => e.ts > now - EMOTE_WINDOW_MS);
+    recentEmoteUse.set(token, fresh);
+
+    const uniqueUsers = new Set(fresh.map(e => e.user)).size;
+    if (uniqueUsers >= EMOTE_SPAM_THRESHOLD && canMakeRequest()) {
+      lastEmoteCommentTime = now;
+      recentEmoteUse.delete(token);
+      try {
+        const response = await groqWithRetry({
+          max_tokens: 60,
+          messages: [
+            { role: 'system', content: `Eres dios_fua, narrador del canal de ${channelConfig.streamer}. El chat acaba de inundarse con "${token}" — reaccion masiva y sincronizada. Narra este momento de reaccion colectiva con energia de comentarista deportivo. SIEMPRE en espanol. Max 1 frase. Usa FUA si merece epica.` },
+            { role: 'user', content: `El chat spamea "${token}"` }
+          ]
+        });
+        client.say(channel, truncate(response.choices[0].message.content));
+      } catch {}
+      return;
+    }
+  }
+
+  // Limpieza ocasional del mapa
+  if (Math.random() < 0.03) {
+    for (const [k, v] of recentEmoteUse) {
+      const fresh = v.filter(e => e.ts > now - EMOTE_WINDOW_MS);
+      if (fresh.length === 0) recentEmoteUse.delete(k);
+      else recentEmoteUse.set(k, fresh);
+    }
+  }
+}
+
+// --- CAPS rage detection ---
+const capsMessages = []; // {user, ts}
+const CAPS_WINDOW_MS = 15 * 1000;
+const CAPS_THRESHOLD = 5;
+let lastCapsCommentTime = 0;
+const CAPS_COMMENT_COOLDOWN = 120 * 1000;
+
+function isCapsMessage(msg) {
+  // \p{L} = cualquier letra Unicode (incluye Á É Í Ó Ú Ñ)
+  // \p{Lu} = letras mayúsculas Unicode
+  // Nota: regex Unicode es ~3x más lento que ASCII pero
+  // necesario para chats en español
+  const letters = [...msg].filter(c => /\p{L}/u.test(c));
+  if (letters.length < 8) return false;
+  return letters.filter(c => /\p{Lu}/u.test(c)).length / letters.length >= 0.7;
+}
+
+async function checkCapsRage(client, channel, tags, message) {
+  if (!getEventSubLiveStatus() || isSilenced()) return;
+  if (!isCapsMessage(message)) return;
+  const now = Date.now();
+  if (now - lastCapsCommentTime < CAPS_COMMENT_COOLDOWN) return;
+
+  const username = tags['display-name'];
+  capsMessages.push({ user: username, ts: now });
+  while (capsMessages.length > 0 && capsMessages[0].ts < now - CAPS_WINDOW_MS) capsMessages.shift();
+
+  const uniqueUsers = new Set(capsMessages.map(e => e.user)).size;
+  if (uniqueUsers >= CAPS_THRESHOLD && canMakeRequest()) {
+    lastCapsCommentTime = now;
+    capsMessages.length = 0;
+    try {
+      const gameInfo = await getCurrentGame().catch(() => null);
+      const game = gameInfo?.game ? ` Juego: "${gameInfo.game}".` : '';
+      const response = await groqWithRetry({
+        max_tokens: 60,
+        messages: [
+          { role: 'system', content: `Eres dios_fua, narrador del canal de ${channelConfig.streamer}.${game} El chat ha entrado en MODO CAPS — todos gritando a la vez. Narra este momento de locura colectiva con energia de comentarista deportivo. SIEMPRE en espanol. Max 1 frase. Usa FUA.` },
+          { role: 'user', content: `El chat entra en modo CAPS RAGE` }
+        ]
+      });
+      client.say(channel, truncate(response.choices[0].message.content));
+    } catch {}
+  }
+}
+
+// --- Pattern matcher: preguntas naturales sin ! ---
+
+// Menciones directas: cooldown propio (8s global + 10s por usuario)
+// Separadas para permitir conversación fluida sin bloquear el global de patrones generales
+const DIRECT_MENTION_PATTERNS = [
+  /@dios_fua\b/i,
+  /\bdios\s*fua\b/i,
+];
+const DIRECT_MENTION_GLOBAL_COOLDOWN = 8 * 1000;
+const DIRECT_MENTION_USER_COOLDOWN = 10 * 1000;
+let lastDirectMentionTime = 0;
+const directMentionUserCooldowns = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of directMentionUserCooldowns) if (now > v) directMentionUserCooldowns.delete(k);
+}, 15 * 60 * 1000);
+
+const NATURAL_PATTERNS = [
+  // Preguntas sobre el juego
+  /qu[eé]\s+juego/i,
+  /c[oó]mo\s+se\s+llama\s+el\s+juego/i,
+  /de\s+qu[eé]\s+va\s+(el\s+)?(juego|esto)/i,
+  /qu[eé]\s+(est[aá]n?\s+)?jugando/i,
+  // Duración del stream
+  /cu[aá]nto\s+(tiempo\s+)?(llevas?|lleva)\b/i,
+  // Identidad del bot
+  /eres\s+(un\s+)?(bot|ia|inteligencia\s+artificial|robot|real|humano)/i,
+  /c[oó]mo\s+te\s+llamas/i,
+  /qui[eé]n\s+eres/i,
+  // Dificultad del juego
+  /es\s+(muy\s+)?(dif[ií]cil|complicado|f[aá]cil)\b/i,
+  /qu[eé]\s+(tan\s+)?(dif[ií]cil|f[aá]cil)/i,
+];
+
+const PATTERN_GLOBAL_COOLDOWN = 45 * 1000;
+const PATTERN_USER_COOLDOWN = 30 * 1000;
+let lastPatternTime = 0;
+const patternUserCooldowns = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of patternUserCooldowns) if (now > v) patternUserCooldowns.delete(k);
+}, 15 * 60 * 1000);
+
+async function checkPatternMatch(client, channel, tags, message) {
+  if (isSilenced() || isTriviaActive()) return false;
+  if (!canMakeRequest()) return false;
+
+  const now = Date.now();
+  const userId = tags['user-id'] || tags['username'];
+
+  const isDirect = DIRECT_MENTION_PATTERNS.some(re => re.test(message));
+
+  if (isDirect) {
+    // 8s global entre usuarios distintos + 10s por usuario
+    if (now - lastDirectMentionTime < DIRECT_MENTION_GLOBAL_COOLDOWN) return false;
+    if (directMentionUserCooldowns.has(userId) && now < directMentionUserCooldowns.get(userId)) return false;
+  } else {
+    if (!NATURAL_PATTERNS.some(re => re.test(message))) return false;
+    if (now - lastPatternTime < PATTERN_GLOBAL_COOLDOWN) return false;
+    if (patternUserCooldowns.has(userId) && now < patternUserCooldowns.get(userId)) return false;
+  }
+
+  const username = tags['display-name'];
+  const question = sanitizeForAI(message);
+  if (!question) return false;
+
+  if (isDirect) {
+    lastDirectMentionTime = now;
+    directMentionUserCooldowns.set(userId, now + DIRECT_MENTION_USER_COOLDOWN);
+  } else {
+    lastPatternTime = now;
+    patternUserCooldowns.set(userId, now + PATTERN_USER_COOLDOWN);
+  }
+
+  try {
+    const userType = getUserType(username, tags);
+    const personality = await getPersonality(trackMessage(), userType);
+    const userConv = getUserConversation(userId);
+
+    const response = await groqWithRetry({
+      max_tokens: 120,
+      messages: [
+        { role: 'system', content: `${personality}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol.` },
+        ...userConv,
+        { role: 'user', content: `${username}: ${question}` }
+      ]
+    });
+
+    const answer = response.choices[0].message.content;
+    client.say(channel, truncate(`@${username} ${answer}`));
+    addToUserConversation(userId, 'user', `${username}: ${question}`);
+    addToUserConversation(userId, 'assistant', answer);
+    return true;
+  } catch (err) {
+    logger.warn(`Pattern matcher: ${err.message}`);
+    return false;
   }
 }
 
@@ -576,5 +861,7 @@ module.exports = {
   handleCohost, handleChiste, handleQuestion, handleShoutout,
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
   initStreamStatus, invalidateContextCache, checkForHighlight,
-  getActiveUsers, resetActiveUsers
+  checkEmoteSpam, checkCapsRage, checkPatternMatch,
+  getActiveUsers, resetActiveUsers, onWarmupMode, postStreamEnd,
+  groqWithRetry, truncate
 };

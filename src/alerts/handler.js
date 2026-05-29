@@ -1,12 +1,11 @@
-const Groq = require('groq-sdk');
-const { getChannelInfo, getFollowerCount } = require('../twitch/api');
+const { getChannelInfo, getFollowerCount, getCurrentGame } = require('../twitch/api');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 const { loadUsers, saveUsers } = require('../utils/storage');
 const { setRaidActive } = require('../utils/state');
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const { canMakeRequest } = require('../utils/ratelimit');
+const { sanitizeForAI } = require('../utils/filter');
+const { groqWithRetry, truncate } = require('../ai/handler');
 
 const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || 'parlusorum').toLowerCase();
@@ -79,7 +78,29 @@ async function checkFirstMessage(client, channel, tags) {
       achievements: []
     };
     saveUsers(users);
-    throttleSay(client, channel, pick(welcomeMessages).replace('{username}', username));
+
+    if (canMakeRequest()) {
+      try {
+        const gameInfo = await getCurrentGame().catch(() => null);
+        const game = gameInfo?.game ? ` Estan jugando a "${gameInfo.game}".` : '';
+        const safeUsername = sanitizeForAI(username) || 'usuario';
+        const response = await groqWithRetry({
+          max_tokens: 60,
+          messages: [
+            {
+              role: 'system',
+              content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}.${game} @${safeUsername} acaba de escribir su PRIMER mensaje en el canal. Dale la bienvenida de forma unica, calida y con personalidad.${game ? ' Menciona el juego de forma natural si encaja.' : ''} Sin presentarte. SIEMPRE en espanol. Max 1 frase corta.`
+            },
+            { role: 'user', content: `Bienvenida para @${safeUsername}` }
+          ]
+        });
+        throttleSay(client, channel, truncate(response.choices[0].message.content));
+      } catch {
+        throttleSay(client, channel, pick(welcomeMessages).replace('{username}', username));
+      }
+    } else {
+      throttleSay(client, channel, pick(welcomeMessages).replace('{username}', username));
+    }
     return;
   }
 
@@ -190,19 +211,20 @@ function onBits(client, channel, username, bits) {
 
 async function onRaid(client, channel, username, viewers) {
   client.say(channel, `⚔️ RAID de @${username} con ${viewers} viewers! Bienvenidos a todos! 🔥`);
+  if (!canMakeRequest()) { setRaidActive(username); return; }
   try {
     const raidInfo = await getChannelInfo(username);
     const game = raidInfo?.game_name || null;
     const context = game ? `Venian de streamear "${game}".` : '';
-    const response = await groq.chat.completions.create({
-      model: GROQ_MODEL, max_tokens: 100,
+    const response = await groqWithRetry({
+      max_tokens: 100,
       messages: [
         { role: 'system', content: `Eres el bot del canal de ${channelConfig.streamer}. Responde SIEMPRE en espanol. Maximo 400 caracteres.` },
         { role: 'user', content: `@${username} ha hecho raid con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado y gracioso. Maximo 1-2 frases.` }
       ]
     });
     const extra = response.choices[0].message.content.trim();
-    if (extra) client.say(channel, extra.slice(0, 490));
+    if (extra) client.say(channel, truncate(extra));
   } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
 
   setRaidActive(username);
@@ -240,5 +262,5 @@ async function handleMessage(client, channel, tags) {
 
 module.exports = {
   handleMessage, onSub, onBits, onRaid, initFollowerTracking,
-  checkFollowerMilestones, onStreamOnline
+  checkFollowerMilestones, onStreamOnline, throttleSay
 };

@@ -19,6 +19,8 @@ if (!EVENTSUB_SECRET) {
 // --- Estado del stream via EventSub ---
 let streamStartedAt = null;
 let streamIsLive = false;
+// Serializa startStreamSession y onStreamEnd para evitar carrera online/offline
+let _sessionStarting = null;
 
 function getStreamUptime() {
   if (!streamStartedAt) return null;
@@ -201,6 +203,10 @@ function createEventSubHandler(client, channel) {
     }
 
     if (messageType === MESSAGE_TYPE_NOTIFICATION) {
+      // Responder a Twitch antes de procesar: Twitch exige 2xx en <10s o reintenta con backoff.
+      // Trade-off: si el setImmediate falla silenciosamente, Twitch no reenviará la notificación.
+      res.writeHead(204); res.end();
+
       const type = body.subscription?.type;
       const event = body.event;
 
@@ -211,23 +217,44 @@ function createEventSubHandler(client, channel) {
       }
 
       if (type === 'stream.online') {
+        // Cambios de estado en memoria: síncronos e inmediatos
         streamIsLive = true;
         streamStartedAt = event?.started_at ? new Date(event.started_at).getTime() : Date.now();
         logger.info(`🔴 Stream online via EventSub`);
-        // FIX #2: notificar al handler de alertas para limpiar lurkerMap
         try { require('./alerts/handler').onStreamOnline(); } catch {}
-        // Iniciar sesión en Supabase
-        try {
-          const { getCurrentGame } = require('../twitch/api');
-          const { startStreamSession } = require('../utils/supabase');
-          const { invalidateMemoryCache } = require('../memory/handler');
-          const gameInfo = await getCurrentGame().catch(() => null);
-          await startStreamSession(gameInfo?.game || null);
-          invalidateMemoryCache();
-        } catch (e) { logger.warn(`Supabase session start: ${e.message}`); }
+        // I/O asíncrono en background — no bloquea la respuesta a Twitch
+        setImmediate(async () => {
+          _sessionStarting = (async () => {
+            try {
+              const { getCurrentGame } = require('../twitch/api');
+              const { startStreamSession } = require('../utils/supabase');
+              const { invalidateMemoryCache } = require('../memory/handler');
+              const gameInfo = await getCurrentGame().catch(() => null);
+              await startStreamSession(gameInfo?.game || null);
+              invalidateMemoryCache();
+
+              // Warmup mode: una sola consulta a los 60s — activa si < 5 viewers
+              const warmupGame = gameInfo?.game || null;
+              setTimeout(async () => {
+                try {
+                  if (!isLiveViaEventSub()) return;
+                  if (streamStartedAt && Date.now() - streamStartedAt > 10 * 60 * 1000) return;
+                  if (client.readyState() !== 'OPEN') return;
+                  const viewers = await getViewersWithAppToken(channelConfig.broadcaster_id);
+                  if (viewers !== null && viewers < 5) {
+                    const { onWarmupMode } = require('../ai/handler');
+                    await onWarmupMode(client, channel, warmupGame);
+                  }
+                } catch (e) { logger.warn(`Warmup check: ${e.message}`); }
+              }, 60 * 1000);
+            } catch (e) { logger.warn(`Supabase session start: ${e.message}`); }
+          })();
+          await _sessionStarting.finally(() => { _sessionStarting = null; });
+        });
       }
 
       if (type === 'stream.offline') {
+        // Cambios de estado en memoria: síncronos e inmediatos
         streamIsLive = false;
         const endedAt = Date.now();
         const durationMinutes = streamStartedAt
@@ -235,40 +262,52 @@ function createEventSubHandler(client, channel) {
           : 0;
         streamStartedAt = null;
         logger.info(`⚫ Stream offline via EventSub`);
-        // Cerrar sesión y guardar memoria en Supabase
-        try {
-          const { getCurrentGame } = require('../twitch/api');
-          const { getSummary } = require('../utils/metrics');
-          const { onStreamEnd } = require('../memory/handler');
-          const { getDeathCount } = require('../commands/handler');
-          const gameInfo = await getCurrentGame().catch(() => null);
-          const metrics = getSummary();
-          const { getRecentHistory, getActiveUsers, resetActiveUsers } = require('../ai/handler');
-          const chatSample = typeof getRecentHistory === 'function' ? getRecentHistory(10) : '';
-          const activeUsers = getActiveUsers();
-          resetActiveUsers();
-          await onStreamEnd({
-            game: gameInfo?.game || null,
-            durationMinutes,
-            deathCount: getDeathCount(),
-            peakViewers: metrics.peakViewers || 0,
-            totalMessages: metrics.messagesLastHour || 0,
-            topCommands: Object.fromEntries(
-              (metrics.topCommands || '')
-                .split(' ')
-                .filter(Boolean)
-                .map(s => {
-                  const m = s.match(/!(\w+)\((\d+)\)/);
-                  return m ? [m[1], parseInt(m[2])] : null;
-                })
-                .filter(Boolean)
-            ),
-            activeUsers: activeUsers
-          }, chatSample);
-        } catch (e) { logger.warn(`Supabase session end: ${e.message}`); }
+        // I/O asíncrono en background — no bloquea la respuesta a Twitch
+        setImmediate(async () => {
+          if (_sessionStarting) await _sessionStarting.catch(() => {});
+          const { postStreamEnd } = require('../ai/handler');
+          try {
+            const { getCurrentGame } = require('../twitch/api');
+            const { getSummary } = require('../utils/metrics');
+            const { onStreamEnd } = require('../memory/handler');
+            const { getDeathCount } = require('../commands/handler');
+            const gameInfo = await getCurrentGame().catch(() => null);
+            const metrics = getSummary();
+            const { getRecentHistory, getActiveUsers, resetActiveUsers } = require('../ai/handler');
+            const chatSample = typeof getRecentHistory === 'function' ? getRecentHistory(10) : '';
+            const activeUsers = getActiveUsers();
+            resetActiveUsers();
+            const memory = await onStreamEnd({
+              game: gameInfo?.game || null,
+              durationMinutes,
+              deathCount: getDeathCount(),
+              peakViewers: metrics.peakViewers || 0,
+              totalMessages: metrics.messagesLastHour || 0,
+              topCommands: Object.fromEntries(
+                (metrics.topCommands || '')
+                  .split(' ')
+                  .filter(Boolean)
+                  .map(s => {
+                    const m = s.match(/!(\w+)\((\d+)\)/);
+                    return m ? [m[1], parseInt(m[2])] : null;
+                  })
+                  .filter(Boolean)
+              ),
+              activeUsers: activeUsers
+            }, chatSample);
+            postStreamEnd(client, channel, memory?.summary || null);
+          } catch (e) {
+            logger.warn(`Supabase session end: ${e.message}`);
+            try {
+              postStreamEnd(client, channel, null);
+            } catch (e2) {
+              logger.warn(`postStreamEnd fallback failed: ${e2.message}`);
+            }
+          }
+        });
       }
 
-      res.writeHead(204); res.end(); return;
+      return;
     }
 
     if (messageType === MESSAGE_TYPE_REVOCATION) {

@@ -161,16 +161,24 @@ client.on('message', async (channel, tags, message, self) => {
   ai.updateLastChatTime();
   alerts.handleMessage(client, channel, tags);
 
-  if (!msg.startsWith(process.env.PREFIX)) {
+  const PREFIX = process.env.PREFIX || '!';
+  if (!msg.startsWith(PREFIX)) {
     ai.checkForHighlight(client, channel, msg);
-    ai.handleCohost(client, channel);
+    const patternHandled = await ai.checkPatternMatch(client, channel, tags, msg);
+    if (!patternHandled) {
+      ai.handleCohost(client, channel).catch(err =>
+        logger.warn(`handleCohost error: ${err.message}`)
+      );
+    }
+    ai.checkEmoteSpam(client, channel, tags, msg);
+    ai.checkCapsRage(client, channel, tags, msg);
   }
 
   games.checkTriviaAnswer(client, channel, tags, msg);
 
-  if (!msg.startsWith(process.env.PREFIX)) return;
+  if (!msg.startsWith(PREFIX)) return;
 
-  const args = msg.slice(1).split(' ');
+  const args = msg.slice(PREFIX.length).split(' ');
   const command = args[0].toLowerCase();
 
   logger.debug(`💬 [${username}] !${command}`);

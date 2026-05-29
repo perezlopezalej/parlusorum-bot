@@ -1,8 +1,9 @@
+const { canMakeRequest } = require('../utils/ratelimit');
 const { loadUsers } = require('../utils/storage');
 const { getChannelStats, incrementChannelStat } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
-const { handleShoutout } = require('../ai/handler');
+const { handleShoutout, groqWithRetry, truncate } = require('../ai/handler');
 const { getSummary, trackCommand } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
@@ -122,7 +123,7 @@ const lurkMessages = [
   '😴 @{username} se va al lurk. ¡El FUA cuida de los lurkers! 💪',
 ];
 
-function handleLurk(client, channel, tags) {
+async function handleLurk(client, channel, tags) {
   const username = tags['display-name'];
   const userId = tags['user-id'] || tags['username'] || username;
   const key = `lurk-${userId}`;
@@ -132,8 +133,31 @@ function handleLurk(client, channel, tags) {
     return;
   }
   cooldowns.set(key, now + 60000);
-  const msg = lurkMessages[Math.floor(Math.random() * lurkMessages.length)];
-  client.say(channel, msg.replace('{username}', username));
+
+  if (!canMakeRequest()) {
+    const msg = lurkMessages[Math.floor(Math.random() * lurkMessages.length)];
+    client.say(channel, msg.replace('{username}', username));
+    return;
+  }
+
+  try {
+    const gameInfo = await getCurrentGame().catch(() => null);
+    const game = gameInfo?.game ? ` Están streameando "${gameInfo.game}".` : '';
+    const response = await groqWithRetry({
+      max_tokens: 60,
+      messages: [
+        {
+          role: 'system',
+          content: `Eres dios_fua, bot del canal de ParLusorum.${game} @${username} activa el modo lurker. Genera UNA despedida única, graciosa y cálida para @${username}. Sin presentarte. SIEMPRE en español. Max 1 frase corta.`
+        },
+        { role: 'user', content: `Despide a @${username} en modo lurk` }
+      ]
+    });
+    client.say(channel, truncate(response.choices[0].message.content));
+  } catch {
+    const msg = lurkMessages[Math.floor(Math.random() * lurkMessages.length)];
+    client.say(channel, msg.replace('{username}', username));
+  }
 }
 
 const botStartTime = Date.now();
@@ -306,7 +330,7 @@ function handleAyuda(client, channel, args) {
   if (sub && helpTexts[sub]) {
     client.say(channel, `❓ !${sub}: ${helpTexts[sub]}`);
   } else {
-    client.say(channel, `❓ Comandos: !chiste !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime | Mods: !so !brb !silencio !muertes !clip !marker !resumen | !ayuda [cmd] para más info`);
+    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime !score | Mods: !so !brb !silencio !muertes !win !loss !clip !marker !resumen | !ayuda [cmd] para más info`);
   }
 }
 

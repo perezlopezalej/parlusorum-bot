@@ -23,6 +23,10 @@ const BLOCKED_PATTERNS = [
   'forget your instructions', 'new instructions',
   'system prompt', 'jailbreak', 'dan mode',
   'pretend you are', 'act as if',
+  'do anything now',       // DAN jailbreak
+  'hypothetically',        // "hypothetically, if you could..."
+  'roleplay as',
+  'simulate',
 ];
 
 // Normalizar texto: quitar acentos, pasar a minúsculas

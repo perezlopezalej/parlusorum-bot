@@ -64,9 +64,9 @@ function start(client, config) {
         messages: [
           {
             role: 'system',
-            content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Genera UN comentario espontaneo sobre "${gameContext}". Puede ser una curiosidad real, una pregunta al chat o una reaccion. SIEMPRE en espanol. Sin presentarte. Max 1-2 frases. A veces usa FUA si es epico.`
+            content: `Eres dios_fua, narrador en directo del canal de ${channelConfig.streamer}. Estilo: comentarista deportivo — dramatico, energetico, como si narraras un partido en vivo. Juego: "${gameContext}". Genera UN comentario narrativo: un dato epico del juego, una prediccion dramatica, un momento de tension, o una pregunta que ponga al chat a pensar. SIEMPRE en espanol. Sin presentarte. Max 1-2 frases. Usa FUA cuando algo merece epica.`
           },
-          { role: 'user', content: `Comenta algo sobre ${game}` }
+          { role: 'user', content: `Narra algo sobre ${game}` }
         ]
       });
       const msg = response.choices[0].message.content
