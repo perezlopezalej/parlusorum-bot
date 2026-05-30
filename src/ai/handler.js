@@ -657,10 +657,11 @@ function extractEmoteTokens(tags, message) {
     }
   }
 
-  // 2. Fallback BTTV/FFZ: tokens CamelCase o ALL_CAPS de 3+ chars
+  // 2. Fallback BTTV/FFZ: ALL_CAPS de 4+ chars o CamelCase con uppercase interno
+  // 4 chars mínimo para evitar falsos positivos como FUA, GTA, LOL, GG
   if (tokens.size === 0) {
     for (const word of message.split(/\s+/)) {
-      if (/^[A-Z][A-Za-z0-9]{2,}$/.test(word) || /^[A-Z]{3,}$/.test(word)) {
+      if (/^[A-Z]{4,}$/.test(word) || /^[A-Z][a-z]+[A-Z][A-Za-z0-9]*$/.test(word)) {
         tokens.add(word);
       }
     }
@@ -678,7 +679,13 @@ async function checkEmoteSpam(client, channel, tags, message) {
   const tokens = extractEmoteTokens(tags, message);
 
   for (const token of tokens) {
-    if (!recentEmoteUse.has(token)) recentEmoteUse.set(token, []);
+    if (!recentEmoteUse.has(token)) {
+      // Cap máximo de 100 tokens para evitar memory leak en streams largos
+      if (recentEmoteUse.size >= 100) {
+        recentEmoteUse.delete(recentEmoteUse.keys().next().value);
+      }
+      recentEmoteUse.set(token, []);
+    }
     const entries = recentEmoteUse.get(token);
     entries.push({ user: username, ts: now });
     const fresh = entries.filter(e => e.ts > now - EMOTE_WINDOW_MS);
@@ -834,7 +841,7 @@ async function checkPatternMatch(client, channel, tags, message) {
 
   try {
     const userType = getUserType(username, tags);
-    const personality = await getPersonality(trackMessage(), userType);
+    const personality = await getPersonality(recentMessages.length, userType);
     const userConv = getUserConversation(userId);
 
     const response = await groqWithRetry({

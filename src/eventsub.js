@@ -22,6 +22,9 @@ let streamIsLive = false;
 // Serializa startStreamSession y onStreamEnd para evitar carrera online/offline
 let _sessionStarting = null;
 
+// Deduplicación de notificaciones — Twitch puede reenviar el mismo evento
+const processedEventIds = new Set();
+
 function getStreamUptime() {
   if (!streamStartedAt) return null;
   const mins = Math.floor((Date.now() - streamStartedAt) / 60000);
@@ -184,7 +187,23 @@ async function getViewersWithAppToken(broadcasterId) {
 }
 
 // --- Handler del webhook ---
-function createEventSubHandler(client, channel) {
+// deps evita dependencias circulares: estas funciones se pasan desde index.js donde ya están cargadas
+function createEventSubHandler(client, channel, deps) {
+  const {
+    getCurrentGame,
+    startStreamSession,
+    invalidateMemoryCache,
+    onWarmupMode,
+    postStreamEnd,
+    getSummary,
+    onStreamEnd,
+    getDeathCount,
+    getRecentHistory,
+    getActiveUsers,
+    resetActiveUsers,
+    onStreamOnline
+  } = deps;
+
   return async function handleEventSub(req, res, rawBody) {
     const messageType = req.headers[MESSAGE_TYPE];
 
@@ -207,6 +226,16 @@ function createEventSubHandler(client, channel) {
       // Trade-off: si el setImmediate falla silenciosamente, Twitch no reenviará la notificación.
       res.writeHead(204); res.end();
 
+      // Deduplicar por message ID — Twitch puede reenviar la misma notificación
+      const eventMsgId = req.headers[TWITCH_MESSAGE_ID];
+      if (eventMsgId) {
+        if (processedEventIds.has(eventMsgId)) return;
+        processedEventIds.add(eventMsgId);
+        if (processedEventIds.size > 10) {
+          processedEventIds.delete(processedEventIds.keys().next().value);
+        }
+      }
+
       const type = body.subscription?.type;
       const event = body.event;
 
@@ -221,14 +250,11 @@ function createEventSubHandler(client, channel) {
         streamIsLive = true;
         streamStartedAt = event?.started_at ? new Date(event.started_at).getTime() : Date.now();
         logger.info(`🔴 Stream online via EventSub`);
-        try { require('./alerts/handler').onStreamOnline(); } catch {}
+        try { onStreamOnline(); } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
           _sessionStarting = (async () => {
             try {
-              const { getCurrentGame } = require('../twitch/api');
-              const { startStreamSession } = require('../utils/supabase');
-              const { invalidateMemoryCache } = require('../memory/handler');
               const gameInfo = await getCurrentGame().catch(() => null);
               await startStreamSession(gameInfo?.game || null);
               invalidateMemoryCache();
@@ -242,7 +268,6 @@ function createEventSubHandler(client, channel) {
                   if (client.readyState() !== 'OPEN') return;
                   const viewers = await getViewersWithAppToken(channelConfig.broadcaster_id);
                   if (viewers !== null && viewers < 5) {
-                    const { onWarmupMode } = require('../ai/handler');
                     await onWarmupMode(client, channel, warmupGame);
                   }
                 } catch (e) { logger.warn(`Warmup check: ${e.message}`); }
@@ -265,15 +290,9 @@ function createEventSubHandler(client, channel) {
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
           if (_sessionStarting) await _sessionStarting.catch(() => {});
-          const { postStreamEnd } = require('../ai/handler');
           try {
-            const { getCurrentGame } = require('../twitch/api');
-            const { getSummary } = require('../utils/metrics');
-            const { onStreamEnd } = require('../memory/handler');
-            const { getDeathCount } = require('../commands/handler');
             const gameInfo = await getCurrentGame().catch(() => null);
             const metrics = getSummary();
-            const { getRecentHistory, getActiveUsers, resetActiveUsers } = require('../ai/handler');
             const chatSample = typeof getRecentHistory === 'function' ? getRecentHistory(10) : '';
             const activeUsers = getActiveUsers();
             resetActiveUsers();

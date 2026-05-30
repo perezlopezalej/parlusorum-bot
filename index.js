@@ -19,8 +19,10 @@ const games = require('./src/games/handler');
 const alerts = require('./src/alerts/handler');
 const timers = require('./src/timers/handler');
 const ai = require('./src/ai/handler');
-const { getStreamInfo } = require('./src/twitch/api');
-const { trackMessage, updatePeakViewers } = require('./src/utils/metrics');
+const { getStreamInfo, getCurrentGame } = require('./src/twitch/api');
+const { trackMessage, updatePeakViewers, getSummary } = require('./src/utils/metrics');
+const { startStreamSession } = require('./src/utils/supabase');
+const memory = require('./src/memory/handler');
 
 const PORT = process.env.PORT || 3000;
 const CHANNEL = `#${process.env.CHANNEL}`;
@@ -63,7 +65,7 @@ async function validateBroadcasterToken() {
 // --- Cliente Twitch ---
 const client = new tmi.Client({
   options: { debug: process.env.NODE_ENV !== 'production' },
-  connection: { reconnect: true },
+  connection: { reconnect: true, secure: true, port: 443 },
   identity: { username: process.env.BOT_USERNAME, password: process.env.BOT_TOKEN },
   channels: [process.env.CHANNEL]
 });
@@ -91,7 +93,20 @@ setInterval(async () => {
 
 client.on('connected', async (addr, port) => {
   logger.info(`✅ Bot conectado a #${process.env.CHANNEL}`);
-  eventSubHandler = createEventSubHandler(client, CHANNEL);
+  eventSubHandler = createEventSubHandler(client, CHANNEL, {
+    getCurrentGame,
+    startStreamSession,
+    invalidateMemoryCache: memory.invalidateMemoryCache,
+    onWarmupMode: ai.onWarmupMode,
+    postStreamEnd: ai.postStreamEnd,
+    getSummary,
+    onStreamEnd: memory.onStreamEnd,
+    getDeathCount: commands.getDeathCount,
+    getRecentHistory: ai.getRecentHistory,
+    getActiveUsers: ai.getActiveUsers,
+    resetActiveUsers: ai.resetActiveUsers,
+    onStreamOnline: alerts.onStreamOnline
+  });
 
   if (!timersStarted) {
     timers.start(client, config);
