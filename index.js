@@ -143,6 +143,20 @@ client.on('connected', async (addr, port) => {
     }, 60 * 1000);
 
     setInterval(() => ai.checkChatHook(client, CHANNEL), 60 * 1000);
+
+    // Railway mata conexiones WebSocket inactivas; este ping las mantiene vivas.
+    // Las desconexiones por proxy cycling de Railway son inevitables sin Cloudflare Tunnel,
+    // pero tmi.js reconnect:true las recupera automáticamente en segundos.
+    setInterval(() => {
+      try {
+        if (client.readyState() === 'OPEN') {
+          client.ping();
+          logger.info('💓 Heartbeat enviado');
+        }
+      } catch (err) {
+        logger.warn(`Heartbeat error: ${err.message}`);
+      }
+    }, 25 * 1000);
   }
 });
 
