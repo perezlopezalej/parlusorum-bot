@@ -1,13 +1,10 @@
-const Groq = require('groq-sdk');
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
 const { isSilenced } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const { groqWithRetry, truncate } = require('../ai/handler');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
 
 const timerRefs = [];
@@ -58,8 +55,7 @@ function start(client, config) {
         ? `${game}${rawg.genres ? ` (${rawg.genres})` : ''}${rawg.rating ? `, ${rawg.rating}/5 en RAWG` : ''}`
         : game;
 
-      const response = await groq.chat.completions.create({
-        model: GROQ_MODEL,
+      const response = await groqWithRetry({
         max_tokens: 80,
         messages: [
           {
@@ -69,8 +65,7 @@ function start(client, config) {
           { role: 'user', content: `Narra algo sobre ${game}` }
         ]
       });
-      const msg = response.choices[0].message.content
-        .replace(/\*+/g, '').replace(/  +/g, ' ').trim().slice(0, 490);
+      const msg = truncate(response.choices[0].message.content);
       if (msg) client.say(`#${process.env.CHANNEL}`, msg);
     } catch (err) {
       logger.warn(`Timer IA: ${err.message}`);

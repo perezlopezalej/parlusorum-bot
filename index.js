@@ -15,6 +15,7 @@ if (missing.length > 0) {
 
 const { createEventSubHandler, registerSubscriptions, initStreamState } = require('./src/eventsub');
 const commands = require('./src/commands/handler');
+const { resetSessionCounters } = commands;
 const games = require('./src/games/handler');
 const alerts = require('./src/alerts/handler');
 const timers = require('./src/timers/handler');
@@ -23,6 +24,7 @@ const { getStreamInfo, getCurrentGame } = require('./src/twitch/api');
 const { trackMessage, updatePeakViewers, getSummary } = require('./src/utils/metrics');
 const { startStreamSession } = require('./src/utils/supabase');
 const memory = require('./src/memory/handler');
+const { wrapClientSay } = require('./src/utils/irc-ratelimit');
 
 const PORT = process.env.PORT || 3000;
 const CHANNEL = `#${process.env.CHANNEL}`;
@@ -70,7 +72,8 @@ const client = new tmi.Client({
   channels: [process.env.CHANNEL]
 });
 
-client.connect().catch(console.error);
+wrapClientSay(client);
+client.connect().catch(err => logger.error(`IRC connect error: ${err.message || err}`));
 
 let timersStarted = false;
 let lastMessageTime = Date.now();
@@ -102,6 +105,7 @@ client.on('connected', async (addr, port) => {
     getSummary,
     onStreamEnd: memory.onStreamEnd,
     getDeathCount: commands.getDeathCount,
+    resetSessionCounters,
     getRecentHistory: ai.getRecentHistory,
     getActiveUsers: ai.getActiveUsers,
     resetActiveUsers: ai.resetActiveUsers,
@@ -143,20 +147,6 @@ client.on('connected', async (addr, port) => {
     }, 60 * 1000);
 
     setInterval(() => ai.checkChatHook(client, CHANNEL), 60 * 1000);
-
-    // Railway mata conexiones WebSocket inactivas; este ping las mantiene vivas.
-    // Las desconexiones por proxy cycling de Railway son inevitables sin Cloudflare Tunnel,
-    // pero tmi.js reconnect:true las recupera automáticamente en segundos.
-    setInterval(() => {
-      try {
-        if (client.readyState() === 'OPEN') {
-          client.ping();
-          logger.info('💓 Heartbeat enviado');
-        }
-      } catch (err) {
-        logger.warn(`Heartbeat error: ${err.message}`);
-      }
-    }, 25 * 1000);
   }
 });
 
@@ -186,37 +176,49 @@ client.on('message', async (channel, tags, message, self) => {
   const msg = message.trim();
   const username = tags['display-name'];
 
-  ai.addToHistory(username, msg);
-  ai.updateLastChatTime();
-  alerts.handleMessage(client, channel, tags);
+  try {
+    ai.addToHistory(username, msg);
+    ai.updateLastChatTime();
+    alerts.handleMessage(client, channel, tags).catch(err =>
+      logger.warn(`alerts.handleMessage error: ${err.message}`)
+    );
 
-  const PREFIX = process.env.PREFIX || '!';
-  if (!msg.startsWith(PREFIX)) {
-    ai.checkForHighlight(client, channel, msg);
-    const patternHandled = await ai.checkPatternMatch(client, channel, tags, msg);
-    if (!patternHandled) {
-      ai.handleCohost(client, channel).catch(err =>
-        logger.warn(`handleCohost error: ${err.message}`)
+    const PREFIX = process.env.PREFIX || '!';
+    if (!msg.startsWith(PREFIX)) {
+      ai.checkForHighlight(client, channel, msg).catch(err =>
+        logger.warn(`checkForHighlight error: ${err.message}`)
+      );
+      const patternHandled = await ai.checkPatternMatch(client, channel, tags, msg);
+      if (!patternHandled) {
+        ai.handleCohost(client, channel).catch(err =>
+          logger.warn(`handleCohost error: ${err.message}`)
+        );
+      }
+      ai.checkEmoteSpam(client, channel, tags, msg).catch(err =>
+        logger.warn(`checkEmoteSpam error: ${err.message}`)
+      );
+      ai.checkCapsRage(client, channel, tags, msg).catch(err =>
+        logger.warn(`checkCapsRage error: ${err.message}`)
       );
     }
-    ai.checkEmoteSpam(client, channel, tags, msg);
-    ai.checkCapsRage(client, channel, tags, msg);
+
+    games.checkTriviaAnswer(client, channel, tags, msg);
+
+    if (!msg.startsWith(PREFIX)) return;
+
+    const args = msg.slice(PREFIX.length).split(' ');
+    const command = args[0].toLowerCase();
+
+    logger.debug(`💬 [${username}] !${command}`);
+
+    if (['trivia', 'moneda'].includes(command)) return games.handle(client, channel, tags, command, args);
+    if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
+    if (command === 'chiste') return ai.handleChiste(client, channel, tags);
+
+    await commands.handle(client, channel, tags, command, args, config);
+  } catch (err) {
+    logger.error(`Message handler error [${username}]: ${err.message}`);
   }
-
-  games.checkTriviaAnswer(client, channel, tags, msg);
-
-  if (!msg.startsWith(PREFIX)) return;
-
-  const args = msg.slice(PREFIX.length).split(' ');
-  const command = args[0].toLowerCase();
-
-  logger.debug(`💬 [${username}] !${command}`);
-
-  if (['trivia', 'moneda'].includes(command)) return games.handle(client, channel, tags, command, args);
-  if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
-  if (command === 'chiste') return ai.handleChiste(client, channel, tags);
-
-  await commands.handle(client, channel, tags, command, args, config);
 });
 
 client.on('subscription', (channel, username) => alerts.onSub(client, channel, username));

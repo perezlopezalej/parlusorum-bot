@@ -201,7 +201,8 @@ function createEventSubHandler(client, channel, deps) {
     getRecentHistory,
     getActiveUsers,
     resetActiveUsers,
-    onStreamOnline
+    onStreamOnline,
+    resetSessionCounters
   } = deps;
 
   return async function handleEventSub(req, res, rawBody) {
@@ -231,7 +232,7 @@ function createEventSubHandler(client, channel, deps) {
       if (eventMsgId) {
         if (processedEventIds.has(eventMsgId)) return;
         processedEventIds.add(eventMsgId);
-        if (processedEventIds.size > 10) {
+        if (processedEventIds.size > 200) {
           processedEventIds.delete(processedEventIds.keys().next().value);
         }
       }
@@ -251,6 +252,7 @@ function createEventSubHandler(client, channel, deps) {
         streamStartedAt = event?.started_at ? new Date(event.started_at).getTime() : Date.now();
         logger.info(`🔴 Stream online via EventSub`);
         try { onStreamOnline(); } catch {}
+        try { resetSessionCounters(); } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
           _sessionStarting = (async () => {

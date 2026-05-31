@@ -16,6 +16,15 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
 const TWITCH_MAX_LENGTH = 490;
+
+// Regex para separar emotes del canal de puntuación adyacente.
+// Construida una vez al cargar el módulo para no repetirla en cada mensaje.
+const _channelEmotes = channelConfig.channel_emotes || [];
+const _emotePattern = _channelEmotes.length > 0
+  ? _channelEmotes.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  : null;
+const _emoteBeforeRe = _emotePattern ? new RegExp(`(\\S)(${_emotePattern})`, 'g') : null;
+const _emoteAfterRe  = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g') : null;
 // FIX #5: cohost mas activo — probability 0.08->0.15, cooldown 180s->120s
 const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '120000', 10);
 const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.25');
@@ -26,7 +35,10 @@ const CREATOR_USERNAME = (channelConfig.creator_username || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || '').toLowerCase();
 
 function truncate(msg) {
-  const clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
+  let clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
+  if (_emoteBeforeRe) clean = clean.replace(_emoteBeforeRe, '$1 $2');
+  if (_emoteAfterRe)  clean = clean.replace(_emoteAfterRe,  '$1 $2');
+  clean = clean.replace(/  +/g, ' ').trim();
   if (clean.length <= TWITCH_MAX_LENGTH) return clean;
   return clean.slice(0, TWITCH_MAX_LENGTH - 3) + '...';
 }
@@ -131,7 +143,9 @@ function addToHistory(username, message) {
   if (message.startsWith('!')) return;
   // No guardar mensajes del propio bot en el historial
   if ((username || '').toLowerCase() === (process.env.BOT_USERNAME || '').toLowerCase()) return;
-  chatHistory.push({ username, message, ts: Date.now() });
+  const safe = sanitizeForAI(message);
+  if (!safe) return;
+  chatHistory.push({ username, message: safe, ts: Date.now() });
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
   lastChatMessageTime = Date.now();
   trackActiveUser(username);
@@ -210,7 +224,8 @@ REGLAS ABSOLUTAS (no negociables):
 - Si no sabes algo: admitelo con humor ("ni idea") pero NUNCA inventes datos especificos.
 - Maximo 2 frases cortas (400 chars). Directo al grano. Sin presentarte ni saludar.
 - El FUA se usa con caracter real, no de relleno. El momento exacto es DURANTE la dificultad, cuando el streamer esta a punto de rendirse — "¡FUAAA, carácter!" — no despues de superarlo. Tambien: cuando alguien llega con energia ("¡Trae el FUA!"), cuando el chat muerto necesita despertar, o en epica genuina. Ocasionalmente puedes hacer referencias absurdas con humor: "con suficiente FUA hasta los muertos reviven". Si el juego tiene transformaciones epicas o momentos Ki (Dragon Ball, accion intensa): el FUA y el Ki son lo mismo. Variantes: FUA, FUAAA, "el FUA", "sacar el FUA", "tienes el FUA". Solo cuando hay momento real — no en cada mensaje.
-- Emotes que puedes usar (maximo 1-2 por respuesta, solo si encaja natural): Del canal: parlus1PORELPODERDELFUAAAAA (momento epico/FUA extremo), parlus1Alataqueel (cuando atacan o hay accion), parlus1Esteeselrollo (cuando algo es el rollo/vibe), parlus1Kelokekelowa (incredulidad/meme). Globales: KEKW (risa fuerte/meme), Pog (sorpresa/hype), LUL (risa), monkaS (nervios/susto), Kappa (sarcasmo), OMEGALUL (risa extrema).
+- Emotes que puedes usar (maximo 1-2 por respuesta, solo si encaja natural): Del canal: parlus1FUA (FUA/epic), parlus1PORELPODERDELFUAAAAA (momento epico/FUA extremo), parlus1Alataqueel (cuando atacan o hay accion), parlus1Esteeselrollo (cuando algo es el rollo/vibe), parlus1Kelokekelowa (incredulidad/meme). Globales: KEKW (risa fuerte/meme), Pog (sorpresa/hype), LUL (risa), monkaS (nervios/susto), Kappa (sarcasmo), OMEGALUL (risa extrema).
+- CRITICO — espaciado de emotes: los emotes del canal SIEMPRE van separados por espacios. NUNCA pegados a puntuacion. MAL: "¡ESO ES FUA! parlus1FUA." o "parlus1FUA," BIEN: "parlus1FUA" o "texto parlus1FUA texto". Un emote pegado a un punto o coma NO se renderiza en Twitch.
 - Sin "Lo siento". Sin "como IA". Sin formalismos.
 - Si tu contexto incluye MEMORIA DEL CANAL con frases recurrentes o momentos epicos de streams anteriores, mencionalos de forma espontanea y natural cuando encaje — el canal tiene historia propia y el chat lo aprecia.`;
 
@@ -559,6 +574,10 @@ async function handleShoutout(client, channel, tags, targetUsername) {
 
   const { getChannelInfo } = require('../twitch/api');
   try {
+    if (!canMakeRequest()) {
+      client.say(channel, `📢 Échad un ojo a @${target}! 💜 twitch.tv/${target}`);
+      return;
+    }
     const info = await getChannelInfo(target);
     const game = info?.game_name ? `Su ultimo juego: "${info.game_name}".` : '';
     const response = await groqWithRetry({

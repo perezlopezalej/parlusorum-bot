@@ -12,6 +12,7 @@ const logger = require('../utils/logger');
 // --- Contador de muertes --- FIX #1: exportado para que eventsub lo use
 let deathCount = 0;
 function getDeathCount() { return deathCount; }
+function resetSessionCounters() { deathCount = 0; sessionWins = 0; sessionLosses = 0; }
 
 // --- Contador win/loss ---
 let sessionWins = 0;
@@ -334,4 +335,4 @@ function handleAyuda(client, channel, args) {
   }
 }
 
-module.exports = { handle, getDeathCount };
+module.exports = { handle, getDeathCount, resetSessionCounters };
