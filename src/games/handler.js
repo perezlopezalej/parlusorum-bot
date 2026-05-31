@@ -153,37 +153,11 @@ function checkTriviaAnswer(client, channel, tags, message) {
   }
 }
 
-// --- Moneda ---
-const monedaCooldowns = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, expiry] of monedaCooldowns) {
-    if (now > expiry) monedaCooldowns.delete(key);
-  }
-}, 30 * 60 * 1000);
-
-function handleMoneda(client, channel, tags) {
-  const username = tags['display-name'];
-  const userId = tags['user-id'];
-  const now = Date.now();
-
-  if (monedaCooldowns.has(userId) && now < monedaCooldowns.get(userId)) {
-    const remaining = Math.ceil((monedaCooldowns.get(userId) - now) / 1000);
-    client.say(channel, `@${username} espera ${remaining}s para lanzar la moneda de nuevo.`);
-    return;
-  }
-
-  monedaCooldowns.set(userId, now + 30000);
-  const result = Math.random() < 0.5 ? '🌕 CARA' : '🌑 CRUZ';
-  client.say(channel, `🪙 @${username} ha lanzado la moneda... ¡${result}!`);
-}
-
 function handle(client, channel, tags, command, args) {
   switch (command) {
     case 'trivia':
       handleTrivia(client, channel).catch(err => logger.error(`Trivia: ${err.message}`));
       return;
-    case 'moneda': return handleMoneda(client, channel, tags);
   }
 }
 

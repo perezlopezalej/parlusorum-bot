@@ -1,5 +1,4 @@
 const { canMakeRequest } = require('../utils/ratelimit');
-const { loadUsers } = require('../utils/storage');
 const { getChannelStats, incrementChannelStat } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
@@ -12,25 +11,14 @@ const logger = require('../utils/logger');
 // --- Contador de muertes --- FIX #1: exportado para que eventsub lo use
 let deathCount = 0;
 function getDeathCount() { return deathCount; }
-function resetSessionCounters() { deathCount = 0; sessionWins = 0; sessionLosses = 0; }
+function resetSessionCounters() { deathCount = 0; sessionWins = 0; }
 
 // --- Contador win/loss ---
 let sessionWins = 0;
-let sessionLosses = 0;
 
 // --- Cooldowns ---
 const cooldowns = new Map();
 setInterval(() => { const now = Date.now(); for (const [k,v] of cooldowns) if (now > v) cooldowns.delete(k); }, 30 * 60 * 1000);
-
-// --- Títulos por participación ---
-function getUserTitle(messageCount) {
-  if (messageCount >= 500) return '🏆 Leyenda del FUA';
-  if (messageCount >= 100) return '⭐ Veterano';
-  if (messageCount >= 50) return '🔥 Habitual del canal';
-  if (messageCount >= 10) return '💬 Chatero';
-  if (messageCount >= 1) return '👤 Lurker del FUA';
-  return '👤 Nuevo';
-}
 
 // --- Textos de ayuda actualizados ---
 const helpTexts = {
@@ -38,23 +26,19 @@ const helpTexts = {
   'comandos': 'Lista de comandos disponibles.',
   'chiste': 'Chiste real del banco de 169 chistes.',
   'trivia': 'Pregunta de trivia. Responde directamente en el chat.',
-  'moneda': 'Cara o cruz.',
   'dios_fua': 'Preguntame cualquier cosa. Uso: !dios_fua [pregunta]',
   'juego': 'Juego actual del canal con info de RAWG.',
   'estadisticas': 'Stats del stream en tiempo real.',
   'uptime': 'Tiempo que lleva activo el bot.',
-  'titulo': 'Tu titulo en el canal segun mensajes enviados.',
   'silencio': '(Mods) Activa/desactiva todos los mensajes automaticos del bot.',
   'brb': '(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min.',
   'so': '(Mods) Shoutout con IA. Uso: !so @usuario',
   'muertes': 'Contador de muertes. Mods: !muertes +1 / !muertes reset',
-  'win': '(Mods) Suma una victoria al marcador.',
-  'loss': '(Mods) Suma una derrota al marcador.',
-  'score': 'Marcador de victorias/derrotas. Session actual + total histórico.',
+  'boss': '(Mods) Suma un boss eliminado al marcador.',
+  'score': 'Marcador de bosses y muertes. Session actual + total histórico.',
   'clip': '(Mods) Crea un clip del momento actual.',
   'marker': '(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]',
   'resumen': '(Mods) Resumen completo del stream actual.',
-  'metricas': '(Mods) Metricas de actividad del chat.',
 };
 
 // --- Handler principal ---
@@ -84,14 +68,10 @@ async function handle(client, channel, tags, command, args, config) {
     case 'uptime': return handleUptime(client, channel);
     case 'juego': return await handleJuego(client, channel);
     case 'estadisticas': return await handleEstadisticas(client, channel);
-    case 'titulo': return await handleTitulo(client, channel, tags);
     case 'muertes': return handleMuertes(client, channel, args, isMod);
-    case 'win':
+    case 'boss':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
-      return await handleWin(client, channel);
-    case 'loss':
-      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
-      return await handleLoss(client, channel);
+      return await handleBoss(client, channel);
     case 'score': return await handleScore(client, channel);
     case 'brb':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
@@ -109,10 +89,13 @@ async function handle(client, channel, tags, command, args, config) {
     case 'resumen':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return await handleResumen(client, channel);
-    case 'metricas':
-      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
-      return handleMetricas(client, channel);
     case 'ayuda': return handleAyuda(client, channel, args);
+    case 'moneda':
+    case 'titulo':
+    case 'loss':
+    case 'metricas':
+      client.say(channel, `@${username} ese comando ya no existe. Usa !comandos para ver los disponibles.`);
+      return;
   }
 }
 
@@ -216,23 +199,17 @@ async function handleEstadisticas(client, channel) {
   }
 }
 
-async function handleWin(client, channel) {
+async function handleBoss(client, channel) {
   sessionWins++;
   incrementChannelStat('total_wins').catch(() => {});
-  client.say(channel, `🏆 ¡Victoria! ${sessionWins}W / ${sessionLosses}L este stream FUA! 💪`);
-}
-
-async function handleLoss(client, channel) {
-  sessionLosses++;
-  incrementChannelStat('total_losses').catch(() => {});
-  client.say(channel, `💀 Derrota... ${sessionWins}W / ${sessionLosses}L este stream 😅`);
+  client.say(channel, `¡Boss eliminado! 💀 ${sessionWins} boss${sessionWins !== 1 ? 'es' : ''} este stream`);
 }
 
 async function handleScore(client, channel) {
   const stats = await getChannelStats().catch(() => null);
-  const session = `🎮 Este stream: ${sessionWins}W / ${sessionLosses}L`;
+  const session = `💀 Bosses: ${sessionWins} | Muertes: ${deathCount}`;
   if (stats) {
-    client.say(channel, `${session} | All-time: ${stats.total_wins}W / ${stats.total_losses}L`);
+    client.say(channel, `${session} | All-time: ${stats.total_wins} bosses`);
   } else {
     client.say(channel, session);
   }
@@ -307,31 +284,12 @@ async function handleResumen(client, channel) {
   }
 }
 
-function handleMetricas(client, channel) {
-  const s = getSummary();
-  client.say(channel, `📊 Activo: ${s.uptime} | 💬 Msgs/hora: ${s.messagesLastHour} | 👁️ Pico: ${s.peakViewers} | Top: ${s.topCommands || 'ninguno'}`);
-}
-
-async function handleTitulo(client, channel, tags) {
-  const username = tags['display-name'];
-  try {
-    const users = await loadUsers();
-    const userData = users[tags['user-id']];
-    if (userData) {
-      const title = getUserTitle(userData.messageCount || 0);
-      client.say(channel, `🏅 @${username} — ${title} (${userData.messageCount || 0} msgs)`);
-      return;
-    }
-  } catch {}
-  client.say(channel, `🏅 @${username} — 👤 Nuevo`);
-}
-
 function handleAyuda(client, channel, args) {
   const sub = args[1]?.toLowerCase();
   if (sub && helpTexts[sub]) {
     client.say(channel, `❓ !${sub}: ${helpTexts[sub]}`);
   } else {
-    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !moneda !dios_fua !juego !estadisticas !titulo !uptime !score | Mods: !so !brb !silencio !muertes !win !loss !clip !marker !resumen | !ayuda [cmd] para más info`);
+    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !dios_fua !juego !estadisticas !uptime !score | Mods: !so !brb !silencio !muertes !boss !clip !marker !resumen | !ayuda [cmd] para más info`);
   }
 }
 
