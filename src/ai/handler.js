@@ -7,6 +7,7 @@ const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { searchWeb, needsWebSearch } = require('../utils/search');
 const { getMemoryContext } = require('../memory/handler');
 const logger = require('../utils/logger');
+const { saveHighlight } = require('../utils/storage');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -613,12 +614,13 @@ async function checkForHighlight(client, channel, message) {
   const lower = message.toLowerCase();
   if (!highlightKeywords.some(kw => lower.includes(kw))) return;
 
-  recentHighlightMsgs.push(now);
-  while (recentHighlightMsgs.length > 0 && recentHighlightMsgs[0] < now - HIGHLIGHT_WINDOW) {
+  recentHighlightMsgs.push({ ts: now, message });
+  while (recentHighlightMsgs.length > 0 && recentHighlightMsgs[0].ts < now - HIGHLIGHT_WINDOW) {
     recentHighlightMsgs.shift();
   }
 
   if (recentHighlightMsgs.length >= HIGHLIGHT_THRESHOLD) {
+    const triggerMessages = recentHighlightMsgs.map(e => e.message);
     recentHighlightMsgs.length = 0;
     lastMarkerTime = now;
 
@@ -638,16 +640,28 @@ async function checkForHighlight(client, channel, message) {
             { role: 'user', content: `El chat acaba de explotar con hype` }
           ]
         });
+        const aiDesc = response.choices[0].message.content;
         const prefix = markerCreated ? '🏁' : '🔥';
-        client.say(channel, truncate(`${prefix} ${response.choices[0].message.content}`));
+        client.say(channel, truncate(`${prefix} ${aiDesc}`));
+        if (markerCreated) {
+          saveHighlight(triggerMessages, markerResult.id, aiDesc)
+            .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
+            .catch(() => {});
+        }
       } catch {
         if (markerCreated) {
+          saveHighlight(triggerMessages, markerResult.id, 'Momento epico detectado por el chat')
+            .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
+            .catch(() => {});
           client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
         } else {
           client.say(channel, `🔥 QUÉ MOMENTO FUA! 💜`);
         }
       }
     } else if (markerCreated) {
+      saveHighlight(triggerMessages, markerResult.id, 'Momento epico detectado por el chat')
+        .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
+        .catch(() => {});
       client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
     } else {
       client.say(channel, `🔥 QUÉ MOMENTO FUA! 💜`);

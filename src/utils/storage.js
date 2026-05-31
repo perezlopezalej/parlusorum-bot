@@ -81,4 +81,14 @@ if (USE_SUPABASE) {
   logger.info('💾 Storage: npoint.io (fallback)');
 }
 
-module.exports = { loadUsers, saveUsers };
+async function saveHighlight(triggerMessages, markerId, description) {
+  if (USE_SUPABASE) {
+    const result = await getSupabase().saveHighlight(triggerMessages, markerId, description);
+    if (result?.error) {
+      logger.warn(`saveHighlight error: ${result.error.message}`);
+    }
+    return result;
+  }
+}
+
+module.exports = { loadUsers, saveUsers, saveHighlight };

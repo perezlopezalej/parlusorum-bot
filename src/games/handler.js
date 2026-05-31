@@ -1,3 +1,7 @@
+const { groqWithRetry } = require('../ai/handler');
+const { getCurrentGame } = require('../twitch/api');
+const { canMakeRequest } = require('../utils/ratelimit');
+const logger = require('../utils/logger');
 const { setTriviaActive } = require('../utils/state');
 
 // --- Trivia (general + canal) ---
@@ -40,49 +44,111 @@ const triviaQuestions = [
 
 let activeTriviaQuestion = null;
 let triviaTimeout = null;
+let triviaHintStage = 0;
 const askedQuestions = new Set();
 
-function handleTrivia(client, channel) {
+// Evita llamar a Groq más de una vez cada 2 min para el mismo juego
+let lastGeneratedQuestion = null; // { question, answer, pistas, game, ts }
+const GENERATED_TTL = 2 * 60 * 1000;
+
+async function handleTrivia(client, channel) {
   if (activeTriviaQuestion) {
     client.say(channel, `❓ Ya hay una pregunta activa: "${activeTriviaQuestion.question}"`);
     return;
   }
 
-  if (askedQuestions.size >= triviaQuestions.length) askedQuestions.clear();
+  let q = null;
 
-  let q;
-  do {
-    q = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-  } while (askedQuestions.has(q.question));
+  if (canMakeRequest()) {
+    try {
+      const gameInfo = await getCurrentGame();
+      const game = gameInfo?.game;
+      if (game) {
+        if (lastGeneratedQuestion && lastGeneratedQuestion.game === game &&
+            Date.now() - lastGeneratedQuestion.ts < GENERATED_TTL) {
+          q = lastGeneratedQuestion;
+        } else {
+          const response = await groqWithRetry({
+            max_tokens: 200,
+            response_format: { type: 'json_object' },
+            messages: [{
+              role: 'user',
+              content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nResponde con JSON:\n{"pregunta":"...","respuesta":"...","pistas":["pista1","pista2"]}\n- "respuesta": en minúsculas, 1-3 palabras\n- "pistas": 2 pistas que ayuden sin revelar la respuesta\n- La pregunta debe ser concreta y verificable`
+            }]
+          });
+          const parsed = JSON.parse(response.choices[0].message.content);
+          if (parsed.pregunta && parsed.respuesta) {
+            q = {
+              question: parsed.pregunta,
+              answer: parsed.respuesta.toLowerCase(),
+              pistas: Array.isArray(parsed.pistas) ? parsed.pistas.slice(0, 2) : [],
+              game,
+              ts: Date.now()
+            };
+            lastGeneratedQuestion = q;
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn(`Trivia Groq: ${err.message}`);
+    }
+  }
 
-  askedQuestions.add(q.question);
+  if (!q) {
+    if (askedQuestions.size >= triviaQuestions.length) askedQuestions.clear();
+    let candidate;
+    do {
+      candidate = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
+    } while (askedQuestions.has(candidate.question));
+    askedQuestions.add(candidate.question);
+    q = { question: candidate.question, answer: candidate.answer, pistas: [] };
+  }
+
   activeTriviaQuestion = q;
+  triviaHintStage = 0;
   setTriviaActive(true);
 
-  client.say(channel, `🧠 TRIVIA: ${q.question} (30 segundos para responder)`);
+  const hasPistas = q.pistas.length > 0;
+  client.say(channel, `🧠 TRIVIA: ${q.question} (${hasPistas ? '15s — habrá pistas si nadie responde' : '30 segundos para responder'})`);
+  scheduleNextTriviaPhase(client, channel);
+}
+
+// Gestiona las fases: pista 1 (15s) → pista 2 (15s) → respuesta (15s).
+// Sin pistas (banco estático): una sola fase de 30s, igual que antes.
+function scheduleNextTriviaPhase(client, channel) {
+  const q = activeTriviaQuestion;
+  if (!q) return;
+  const pistas = q.pistas || [];
 
   triviaTimeout = setTimeout(() => {
-    if (activeTriviaQuestion) {
-      client.say(channel, `⏰ ¡Tiempo! La respuesta era: ${q.answer}`);
+    if (!activeTriviaQuestion) return;
+    if (triviaHintStage < pistas.length) {
+      client.say(channel, `💡 Pista ${triviaHintStage + 1}: ${pistas[triviaHintStage]}`);
+      triviaHintStage++;
+      scheduleNextTriviaPhase(client, channel);
+    } else {
+      client.say(channel, `⏰ ¡Tiempo! La respuesta era: ${activeTriviaQuestion.answer}`);
       activeTriviaQuestion = null;
+      triviaHintStage = 0;
       setTriviaActive(false);
     }
-  }, 30000);
+  }, pistas.length > 0 ? 15000 : 30000);
 }
 
 function checkTriviaAnswer(client, channel, tags, message) {
   if (!activeTriviaQuestion) return;
 
   const normalizedMsg = message.toLowerCase().trim()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
   const normalizedAnswer = activeTriviaQuestion.answer.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
 
   if (normalizedMsg === normalizedAnswer) {
     const username = tags['display-name'];
     clearTimeout(triviaTimeout);
     client.say(channel, `🎉 ¡@${username} ha acertado! ¡Enhorabuena! 🏆`);
     activeTriviaQuestion = null;
+    triviaHintStage = 0;
     setTriviaActive(false);
   }
 }
@@ -114,7 +180,9 @@ function handleMoneda(client, channel, tags) {
 
 function handle(client, channel, tags, command, args) {
   switch (command) {
-    case 'trivia': return handleTrivia(client, channel);
+    case 'trivia':
+      handleTrivia(client, channel).catch(err => logger.error(`Trivia: ${err.message}`));
+      return;
     case 'moneda': return handleMoneda(client, channel, tags);
   }
 }

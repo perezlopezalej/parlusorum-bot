@@ -133,11 +133,26 @@ async function createClip() {
 }
 
 // --- Info del juego via RAWG ---
-const gameInfoCache = new Map();
+// 24h: los datos de RAWG (géneros, rating) son estables pero pueden actualizarse ocasionalmente
+const RAWG_CACHE_TTL = 24 * 60 * 60 * 1000;
+const gameInfoCache = new Map(); // valores: { data, ts }
+
+// Purga entradas expiradas cada 6h para evitar memory leak de juegos que ya no se streamean
+const rawgCacheCleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [key, cached] of gameInfoCache) {
+    if (now - cached.ts > RAWG_CACHE_TTL) gameInfoCache.delete(key);
+  }
+}, 6 * 60 * 60 * 1000);
+rawgCacheCleanupInterval.unref();
 
 async function getGameInfo(gameName) {
   if (!gameName) return null;
-  if (gameInfoCache.has(gameName)) return gameInfoCache.get(gameName);
+  if (gameInfoCache.has(gameName)) {
+    const cached = gameInfoCache.get(gameName);
+    if (Date.now() - cached.ts <= RAWG_CACHE_TTL) return cached.data;
+    gameInfoCache.delete(gameName);
+  }
 
   const apiKey = process.env.RAWG_API_KEY;
   if (!apiKey) return null;
@@ -160,7 +175,7 @@ async function getGameInfo(gameName) {
       rating: game.rating || null
     };
 
-    gameInfoCache.set(gameName, info);
+    gameInfoCache.set(gameName, { data: info, ts: Date.now() });
     return info;
   } catch (e) {
     logger.error(`Error RAWG: ${e.message}`);

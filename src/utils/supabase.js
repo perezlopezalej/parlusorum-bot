@@ -200,7 +200,7 @@ async function getRecentStreamMemory(limit = 5) {
 
 async function saveHighlight(triggerMessages, markerId, description) {
   const db = getClient();
-  if (!db) return;
+  if (!db) return null;
 
   try {
     const { error } = await db.from('stream_highlights').insert({
@@ -209,10 +209,9 @@ async function saveHighlight(triggerMessages, markerId, description) {
       marker_id: markerId || null,
       description: description || null
     });
-
-    if (error) throw error;
+    return { error: error || null };
   } catch (e) {
-    logger.error(`Error guardando highlight: ${e.message}`);
+    return { error: e };
   }
 }
 
