@@ -199,7 +199,8 @@ function createEventSubHandler(client, channel, deps) {
     getSummary,
     onStreamEnd,
     getDeathCount,
-    getRecentHistory,
+    getStreamChatBuffer,
+    resetStreamChatBuffer,
     getActiveUsers,
     resetActiveUsers,
     onStreamOnline,
@@ -254,6 +255,7 @@ function createEventSubHandler(client, channel, deps) {
         logger.info(`🔴 Stream online via EventSub`);
         try { onStreamOnline(); } catch {}
         try { resetSessionCounters(); } catch {}
+        try { resetStreamChatBuffer(); } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
           _sessionStarting = (async () => {
@@ -296,7 +298,7 @@ function createEventSubHandler(client, channel, deps) {
           try {
             const gameInfo = await getCurrentGame().catch(() => null);
             const metrics = getSummary();
-            const chatSample = typeof getRecentHistory === 'function' ? getRecentHistory(10) : '';
+            const chatSample = typeof getStreamChatBuffer === 'function' ? getStreamChatBuffer() : '';
             const activeUsers = getActiveUsers();
             resetActiveUsers();
             const memory = await onStreamEnd({
@@ -304,7 +306,7 @@ function createEventSubHandler(client, channel, deps) {
               durationMinutes,
               deathCount: getDeathCount(),
               peakViewers: metrics.peakViewers || 0,
-              totalMessages: metrics.messagesLastHour || 0,
+              totalMessages: metrics.totalMessages || 0,
               topCommands: Object.fromEntries(
                 (metrics.topCommands || '')
                   .split(' ')

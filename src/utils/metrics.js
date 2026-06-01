@@ -3,12 +3,14 @@ const metrics = {
   messagesPerHour: [],
   commandsUsed: new Map(),
   peakViewers: 0,
+  streamMessageCount: 0,
   sessionStart: Date.now()
 };
 
 function trackMessage() {
   const now = Date.now();
   metrics.messagesPerHour.push(now);
+  metrics.streamMessageCount++;
   // Mantener solo la última hora
   const oneHourAgo = now - 3600000;
   while (metrics.messagesPerHour.length > 0 && metrics.messagesPerHour[0] < oneHourAgo) {
@@ -39,6 +41,12 @@ function getTopCommands(n = 5) {
     .join(' ');
 }
 
+function resetStreamMetrics() {
+  metrics.peakViewers = 0;
+  metrics.streamMessageCount = 0;
+  metrics.commandsUsed.clear();
+}
+
 function getSummary() {
   const uptime = Math.floor((Date.now() - metrics.sessionStart) / 60000);
   const hours = Math.floor(uptime / 60);
@@ -46,9 +54,10 @@ function getSummary() {
   return {
     uptime: hours > 0 ? `${hours}h ${mins}m` : `${mins}m`,
     messagesLastHour: getMessagesPerHour(),
+    totalMessages: metrics.streamMessageCount,
     peakViewers: metrics.peakViewers,
     topCommands: getTopCommands()
   };
 }
 
-module.exports = { trackMessage, trackCommand, updatePeakViewers, getSummary, getMessagesPerHour };
+module.exports = { trackMessage, trackCommand, updatePeakViewers, getSummary, getMessagesPerHour, resetStreamMetrics };

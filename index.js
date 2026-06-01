@@ -125,7 +125,8 @@ client.on('connected', async (addr, port) => {
     onStreamEnd: memory.onStreamEnd,
     getDeathCount: commands.getDeathCount,
     resetSessionCounters,
-    getRecentHistory: ai.getRecentHistory,
+    getStreamChatBuffer: ai.getStreamChatBuffer,
+    resetStreamChatBuffer: ai.resetStreamChatBuffer,
     getActiveUsers: ai.getActiveUsers,
     resetActiveUsers: ai.resetActiveUsers,
     onStreamOnline: alerts.onStreamOnline

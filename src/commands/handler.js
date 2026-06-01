@@ -3,7 +3,7 @@ const { getChannelStats, incrementChannelStat } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
 const { handleShoutout, groqWithRetry, truncate } = require('../ai/handler');
-const { getSummary, trackCommand } = require('../utils/metrics');
+const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
@@ -11,7 +11,7 @@ const logger = require('../utils/logger');
 // --- Contador de muertes --- FIX #1: exportado para que eventsub lo use
 let deathCount = 0;
 function getDeathCount() { return deathCount; }
-function resetSessionCounters() { deathCount = 0; sessionWins = 0; }
+function resetSessionCounters() { deathCount = 0; sessionWins = 0; resetStreamMetrics(); }
 
 // --- Contador win/loss ---
 let sessionWins = 0;

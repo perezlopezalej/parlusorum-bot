@@ -140,6 +140,8 @@ function resetActiveUsers() {
 }
 const chatHistory = [];
 const MAX_HISTORY = 40;
+const streamChatBuffer = [];
+const MAX_STREAM_BUFFER = 50;
 let lastChatMessageTime = Date.now();
 const MAX_CONVERSATION_USERS = 200;
 
@@ -151,6 +153,8 @@ function addToHistory(username, message) {
   if (!safe) return;
   chatHistory.push({ username, message: safe, ts: Date.now() });
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
+  streamChatBuffer.push({ username, message: safe });
+  if (streamChatBuffer.length > MAX_STREAM_BUFFER) streamChatBuffer.shift();
   lastChatMessageTime = Date.now();
   trackActiveUser(username);
 }
@@ -900,11 +904,20 @@ async function checkPatternMatch(client, channel, tags, message) {
   }
 }
 
+function getStreamChatBuffer() {
+  return streamChatBuffer.map(m => `${m.username}: ${m.message}`).join('\n');
+}
+
+function resetStreamChatBuffer() {
+  streamChatBuffer.length = 0;
+}
+
 module.exports = {
   handleCohost, handleChiste, handleQuestion, handleShoutout,
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
   initStreamStatus, invalidateContextCache, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,
   getActiveUsers, resetActiveUsers, onWarmupMode, postStreamEnd,
-  groqWithRetry, truncate
+  groqWithRetry, truncate,
+  getStreamChatBuffer, resetStreamChatBuffer
 };
