@@ -20,7 +20,7 @@ const games = require('./src/games/handler');
 const alerts = require('./src/alerts/handler');
 const timers = require('./src/timers/handler');
 const ai = require('./src/ai/handler');
-const { getStreamInfo, getCurrentGame } = require('./src/twitch/api');
+const { getStreamInfo, getCurrentGame, loadBroadcasterTokens } = require('./src/twitch/api');
 const { trackMessage, updatePeakViewers, getSummary } = require('./src/utils/metrics');
 const { startStreamSession } = require('./src/utils/supabase');
 const memory = require('./src/memory/handler');
@@ -116,6 +116,7 @@ client.on('connected', async (addr, port) => {
     timers.start(client, config);
     timersStarted = true;
 
+    await loadBroadcasterTokens();
     await validateBroadcasterToken();
 
     // Migración automática npoint → Supabase

@@ -253,6 +253,42 @@ async function incrementChannelStat(field) {
   }
 }
 
+// ─── TOKENS ──────────────────────────────────────────────────────────────────
+
+async function saveTokens({ broadcaster_token, broadcaster_refresh_token }) {
+  const db = getClient();
+  if (!db) return;
+  try {
+    const { error } = await db.from('channel_config').upsert({
+      id: 'broadcaster',
+      broadcaster_token,
+      broadcaster_refresh_token,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+    if (error) throw error;
+    logger.info('💾 Tokens persistidos en Supabase');
+  } catch (e) {
+    logger.error(`Error guardando tokens: ${e.message}`);
+  }
+}
+
+async function loadTokens() {
+  const db = getClient();
+  if (!db) return null;
+  try {
+    const { data, error } = await db
+      .from('channel_config')
+      .select('broadcaster_token, broadcaster_refresh_token')
+      .eq('id', 'broadcaster')
+      .single();
+    if (error) return null;
+    return data;
+  } catch (e) {
+    logger.error(`Error cargando tokens: ${e.message}`);
+    return null;
+  }
+}
+
 // ─── MIGRACIÓN DESDE NPOINT ───────────────────────────────────────────────────
 
 /**
@@ -324,5 +360,7 @@ module.exports = {
   saveHighlight,
   migrateFromNpoint,
   getChannelStats,
-  incrementChannelStat
+  incrementChannelStat,
+  saveTokens,
+  loadTokens,
 };
