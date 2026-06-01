@@ -73,7 +73,12 @@ async function validateBroadcasterToken() {
     const res = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { 'Authorization': `OAuth ${token}` } });
     const data = await res.json();
     if (data.status === 401) logger.warn('⚠️ BROADCASTER_TOKEN caducado. Regenera el token.');
-    else logger.info(`✅ Token broadcaster válido. Expira en ${Math.floor(data.expires_in / 86400)} días.`);
+    else {
+      const hours = Math.floor(data.expires_in / 3600);
+      const days = Math.floor(hours / 24);
+      const timeMsg = hours < 48 ? `${hours} horas` : `${days} días`;
+      logger.info(`✅ Token broadcaster válido. Expira en ${timeMsg}.`);
+    }
   } catch (e) { logger.error(`No se pudo validar el token: ${e.message}`); }
 }
 
