@@ -53,6 +53,19 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => logger.info(`🌐 Servidor HTTP en puerto ${PORT}`));
 
+// Self-ping to keep Render free tier alive
+const SELF_PING_URL = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL;
+if (SELF_PING_URL) {
+  setInterval(async () => {
+    try {
+      const res = await fetch(`${SELF_PING_URL}/health`);
+      if (!res.ok) logger.warn(`Self-ping failed: HTTP ${res.status}`);
+    } catch (e) {
+      logger.warn(`Self-ping error: ${e.message}`);
+    }
+  }, 10 * 60 * 1000);
+}
+
 // --- Validar token broadcaster ---
 async function validateBroadcasterToken() {
   const token = (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
