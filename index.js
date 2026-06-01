@@ -25,6 +25,7 @@ const { trackMessage, updatePeakViewers, getSummary } = require('./src/utils/met
 const { startStreamSession } = require('./src/utils/supabase');
 const memory = require('./src/memory/handler');
 const { wrapClientSay } = require('./src/utils/irc-ratelimit');
+const { checkNewUser } = require('./src/moderation/bot-detector');
 
 const PORT = process.env.PORT || 3000;
 const CHANNEL = `#${process.env.CHANNEL}`;
@@ -190,6 +191,7 @@ client.on('message', async (channel, tags, message, self) => {
   }
 
   lastMessageTime = Date.now();
+  checkNewUser(tags);
   trackMessage();
 
   const msg = message.trim();
