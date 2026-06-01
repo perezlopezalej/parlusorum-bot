@@ -4,7 +4,6 @@
  * Al arrancar el siguiente stream, inyecta ese historial en el prompt.
  */
 
-const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
 const {
   saveStreamMemory,
@@ -12,9 +11,8 @@ const {
   endStreamSession
 } = require('../utils/supabase');
 const logger = require('../utils/logger');
+const { containsBlockedContent } = require('../utils/filter');
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
 // ─── GENERAR RESUMEN AL ACABAR EL STREAM ─────────────────────────────────────
 
@@ -43,8 +41,8 @@ Responde SOLO en JSON con este formato exacto:
   "recurringPhrases": ["frase1", "frase2"]
 }`;
 
-    const response = await groq.chat.completions.create({
-      model: GROQ_MODEL,
+    const { groqWithRetry } = require('../ai/handler');
+    const response = await groqWithRetry({
       max_tokens: 300,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -94,6 +92,12 @@ async function onStreamEnd(streamStats, chatSample) {
   }
 }
 
+function sanitizeMemoryField(text, maxLen = 500) {
+  if (!text || typeof text !== 'string') return '';
+  if (containsBlockedContent(text)) return '';
+  return text.slice(0, maxLen).replace(/[\r\n]/g, ' ').replace(/[<>{}]/g, '').trim();
+}
+
 // ─── OBTENER CONTEXTO DE MEMORIA PARA LA IA ──────────────────────────────────
 
 let memoryCache = null;
@@ -118,12 +122,12 @@ async function getMemoryContext() {
     const lines = memories.map(m => {
       const date = m.stream_date;
       const game = m.game || 'sin juego';
-      const summary = m.summary || '';
+      const summary = sanitizeMemoryField(m.summary);
       const highlights = m.highlights?.length
-        ? `Momentos: ${m.highlights.slice(0, 2).join(', ')}.`
+        ? `Momentos: ${m.highlights.slice(0, 2).map(h => sanitizeMemoryField(h, 150)).filter(Boolean).join(', ')}.`
         : '';
       const phrases = m.recurring_phrases?.length
-        ? `Frases del chat: "${m.recurring_phrases[0]}".`
+        ? `Frases del chat: "${sanitizeMemoryField(m.recurring_phrases[0], 150)}".`
         : '';
       return `[${date}] ${game}: ${summary} ${highlights} ${phrases}`.trim();
     });

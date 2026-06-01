@@ -236,7 +236,7 @@ async function getGameInfo(gameName) {
     gameInfoCache.set(gameName, { data: info, ts: Date.now() });
     return info;
   } catch (e) {
-    logger.error(`Error RAWG: ${e.message}`);
+    logger.error(`Error RAWG: ${e.message.replace(apiKey, '[REDACTED]')}`);
     return null;
   }
 }

@@ -6,7 +6,7 @@ const channelConfig = require('./config/channel.json');
 const logger = require('./src/utils/logger');
 
 // --- Validar variables de entorno obligatorias ---
-const REQUIRED_ENV = ['BOT_USERNAME', 'BOT_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET', 'CHANNEL', 'GROQ_API_KEY', 'BROADCASTER_TOKEN'];
+const REQUIRED_ENV = ['BOT_USERNAME', 'BOT_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET', 'CHANNEL', 'GROQ_API_KEY', 'BROADCASTER_TOKEN', 'EVENTSUB_SECRET'];
 const missing = REQUIRED_ENV.filter(v => !process.env[v]);
 if (missing.length > 0) {
   console.error(`❌ Variables de entorno faltantes: ${missing.join(', ')}`);
@@ -85,7 +85,7 @@ async function validateBroadcasterToken() {
 
 // --- Cliente Twitch ---
 const client = new tmi.Client({
-  options: { debug: process.env.NODE_ENV !== 'production' },
+  options: { debug: false },
   connection: { reconnect: true, secure: true, port: 443 },
   identity: { username: process.env.BOT_USERNAME, password: process.env.BOT_TOKEN },
   channels: [process.env.CHANNEL]

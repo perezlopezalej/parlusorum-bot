@@ -10,11 +10,8 @@ const MESSAGE_TYPE_VERIFICATION = 'webhook_callback_verification';
 const MESSAGE_TYPE_NOTIFICATION = 'notification';
 const MESSAGE_TYPE_REVOCATION = 'revocation';
 
-// EVENTSUB_SECRET es obligatorio — sin fallback hardcodeado (seguridad)
+// EVENTSUB_SECRET es obligatorio — validado en index.js (process.exit si falta)
 const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
-if (!EVENTSUB_SECRET) {
-  logger.warn('⚠️ EVENTSUB_SECRET no configurado. EventSub no verificará firmas correctamente.');
-}
 
 // --- Estado del stream via EventSub ---
 let streamStartedAt = null;
@@ -101,7 +98,7 @@ async function initStreamState() {
 
 // --- Verificar firma ---
 function verifySignature(req, body) {
-  if (!EVENTSUB_SECRET) return true; // Sin secreto configurado, aceptar todo (advertido al inicio)
+  if (!EVENTSUB_SECRET) return false;
   const messageId = req.headers[TWITCH_MESSAGE_ID];
   const timestamp = req.headers[TWITCH_MESSAGE_TIMESTAMP];
   const signature = req.headers[TWITCH_MESSAGE_SIGNATURE];
@@ -125,6 +122,10 @@ const followMessages = [
 
 // --- Registrar suscripciones EventSub ---
 async function registerSubscriptions(broadcasterId) {
+  if (!EVENTSUB_SECRET) {
+    logger.warn('⚠️ EventSub: EVENTSUB_SECRET no configurado — suscripciones no registradas.');
+    return false;
+  }
   const callbackUrl = `${process.env.PUBLIC_URL}/eventsub`;
   if (!callbackUrl || callbackUrl.startsWith('undefined')) {
     logger.warn('⚠️ EventSub: PUBLIC_URL no configurada.');
@@ -157,7 +158,7 @@ async function registerSubscriptions(broadcasterId) {
     for (const sub of subscriptions) {
       const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
         method: 'POST', headers,
-        body: JSON.stringify({ ...sub, transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET || 'fallback' } })
+        body: JSON.stringify({ ...sub, transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET } })
       });
       const data = await res.json();
       if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {

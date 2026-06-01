@@ -86,15 +86,18 @@ async function getFullContext() {
   let context = base;
 
   if (gameInfo?.game) {
-    context += ` Juego actual: "${gameInfo.game}".`;
-    try {
-      const rawgInfo = await getGameInfo(gameInfo.game);
-      if (rawgInfo) {
-        if (rawgInfo.genres) context += ` Generos: ${rawgInfo.genres}.`;
-        if (rawgInfo.rating) context += ` Nota RAWG: ${rawgInfo.rating}/5.`;
-        if (rawgInfo.released) context += ` Anio: ${rawgInfo.released?.slice(0, 4)}.`;
-      }
-    } catch {}
+    const safeGame = sanitizeForAI(gameInfo.game);
+    if (safeGame) {
+      context += ` Juego actual: "${safeGame}".`;
+      try {
+        const rawgInfo = await getGameInfo(gameInfo.game);
+        if (rawgInfo) {
+          if (rawgInfo.genres) context += ` Generos: ${rawgInfo.genres}.`;
+          if (rawgInfo.rating) context += ` Nota RAWG: ${rawgInfo.rating}/5.`;
+          if (rawgInfo.released) context += ` Anio: ${rawgInfo.released?.slice(0, 4)}.`;
+        }
+      } catch {}
+    }
   }
 
   const isLive = getEventSubLiveStatus();

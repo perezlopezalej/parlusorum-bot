@@ -47,7 +47,7 @@ function sanitizeForAI(text) {
   if (!text || typeof text !== 'string') return null;
   if (containsBlockedContent(text)) return null;
   // Limitar longitud y eliminar caracteres peligrosos
-  return text.slice(0, 200).replace(/[<>{}]/g, '').trim() || null;
+  return text.slice(0, 200).replace(/[<>{}]/g, '').replace(/[\r\n]/g, ' ').trim() || null;
 }
 
 module.exports = { containsBlockedContent, sanitizeForAI };
