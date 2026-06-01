@@ -67,6 +67,7 @@ async function _drain() {
 function wrapClientSay(client) {
   const _say = client.say.bind(client);
   client.say = (channel, msg) => {
+    logger.info(`[DIAG-SAY] queued: "${String(msg).slice(0, 60)}" stack=${new Error().stack.split('\n')[2]?.trim()}`);
     if (_queue.length >= MAX_QUEUE) {
       logger.warn(`IRC queue llena (${MAX_QUEUE}), mensaje descartado: "${String(msg).slice(0, 60)}"`);
       return;
