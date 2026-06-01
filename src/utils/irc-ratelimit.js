@@ -18,7 +18,7 @@ function _scheduleDrain(delayMs) {
   _timer = setTimeout(_drain, delayMs);
 }
 
-function _drain() {
+async function _drain() {
   _timer = null;
   if (_queue.length === 0) return;
 
@@ -42,9 +42,18 @@ function _drain() {
   }
 
   // Enviar siguiente mensaje de la cola
-  const { sayFn, channel, msg } = _queue.shift();
+  const { sayFn, channel, msg, client } = _queue.shift();
+  if (client && client.readyState() !== 'OPEN') {
+    logger.warn('IRC: mensaje descartado — cliente no conectado');
+    if (_queue.length > 0) _scheduleDrain(MIN_GAP_MS);
+    return;
+  }
   _window.push(Date.now());
-  try { sayFn(channel, msg); } catch (e) { logger.warn(`IRC say error: ${e.message}`); }
+  try {
+    await sayFn(channel, msg);
+  } catch (e) {
+    logger.warn(`IRC say error: ${e.message}`);
+  }
 
   if (_queue.length > 0) _scheduleDrain(MIN_GAP_MS);
 }
@@ -62,7 +71,7 @@ function wrapClientSay(client) {
       logger.warn(`IRC queue llena (${MAX_QUEUE}), mensaje descartado: "${String(msg).slice(0, 60)}"`);
       return;
     }
-    _queue.push({ sayFn: _say, channel, msg });
+    _queue.push({ sayFn: _say, channel, msg, client });
     _scheduleDrain(0);
   };
 }

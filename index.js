@@ -228,3 +228,11 @@ client.on('cheer', (channel, userstate) => {
   if (username && bits > 0) alerts.onBits(client, channel, username, bits);
 });
 client.on('raided', (channel, username, viewers) => alerts.onRaid(client, channel, username, viewers));
+
+process.on('unhandledRejection', (reason) => {
+  if (reason?.message === 'Not connected to server.') {
+    logger.warn('IRC: mensaje descartado por reconexión en curso');
+    return;
+  }
+  logger.error(`UnhandledRejection: ${reason}`);
+});
