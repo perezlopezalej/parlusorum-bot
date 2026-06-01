@@ -185,9 +185,8 @@ client.on('message', async (channel, tags, message, self) => {
 
   // BUG FIX #1: ignorar mensajes ya procesados (evita doble respuesta en reconexiones)
   const msgId = tags['id'];
-  logger.info(`[DIAG] msg id=${msgId ?? 'undefined'} user=${tags['username']} text=${message.slice(0, 40)}`);
   if (msgId) {
-    if (processedMessages.has(msgId)) { logger.info(`[DIAG] DUPLICADO bloqueado id=${msgId}`); return; }
+    if (processedMessages.has(msgId)) return;
     processedMessages.add(msgId);
   }
 
