@@ -91,27 +91,29 @@ const isMod = tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaste
 | Comando | Tipo | Permisos | Descripción |
 |---------|------|----------|-------------|
 | `!comandos` | config.json | público | Lista de comandos |
-| `!uptime` | switch | público | Tiempo activo del bot |
-| `!juego` | switch | público | Juego actual + info RAWG |
+| `!lurk` | switch | público | Anúnciate como lurker (con IA si hay rate limit) |
+| `!uptime` | switch | público | Tiempo de stream activo o uptime del bot |
+| `!juego` | switch | público | Juego actual + info RAWG (año, géneros, rating) |
 | `!estadisticas` | switch | público | Stats del stream en tiempo real |
-| `!titulo` | switch | público | Título del usuario según mensajes |
-| `!muertes` | switch | público/mod | Contador de muertes |
-| `!brb` | switch | mod | Toggle modo ausencia |
+| `!muertes` | switch | público/mod | Contador de muertes (+1 y reset solo mods) |
+| `!boss` | switch | mod | Suma un boss eliminado al marcador de sesión |
+| `!score` | switch | público | Marcador de bosses y muertes (sesión + all-time) |
+| `!brb` | switch | mod | Toggle modo ausencia con recordatorio cada 5 min |
 | `!silencio` | switch | mod | Toggle modo silencio del bot |
 | `!so` | switch→ai | mod | Shoutout con IA |
-| `!clip` | switch | mod | Crear clip |
-| `!marker` | switch | mod | Marcar momento en VOD |
-| `!resumen` | switch | mod | Resumen del stream |
-| `!metricas` | switch | mod | Métricas de actividad |
-| `!ayuda` | switch | público | Ayuda de comandos |
-| `!dios_fua` | ai handler | público | Pregunta a la IA |
-| `!chiste` | ai handler | público | Chiste del banco de datos |
-| `!trivia` | games | público | Trivia |
-| `!moneda` | games | público | Cara o cruz |
+| `!clip` | switch | mod | Crear clip del momento actual |
+| `!marker` | switch | mod | Marcar momento en el VOD |
+| `!resumen` | switch | mod | Resumen del stream (2 mensajes) |
+| `!ayuda` | switch | público | Ayuda de comandos (`!ayuda [cmd]` para detalle) |
+| `!dios_fua` | ai handler | público | Pregunta a la IA con búsqueda web opcional |
+| `!chiste` | ai handler | público | Chiste del banco de 169 chistes |
+| `!trivia` | games | público | Trivia con pregunta generada por IA o banco estático |
+
+**Comandos eliminados** (`!titulo`, `!moneda`, `!metricas`, `!loss` responden con mensaje de deprecación).
 
 ## Dispatch en index.js
 
-El dispatch ocurre en `index.js:178-182`. Si añades un comando nuevo que no es trivia/moneda/dios_fua/chiste, **no hace falta tocar index.js** — el switch en `commands/handler.js` lo captura automáticamente.
+El dispatch ocurre en `index.js`. Si añades un comando nuevo que no es trivia/dios_fua/chiste, **no hace falta tocar index.js** — el switch en `commands/handler.js` lo captura automáticamente.
 
 Si el nuevo comando necesita ser procesado ANTES que `commands.handle()` (como trivia que captura respuestas sin prefix), añadirlo en index.js antes de la línea de dispatch.
 

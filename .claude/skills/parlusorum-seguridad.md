@@ -80,7 +80,9 @@ Twitch limita los bots a:
 - **No-mod:** 20 mensajes cada 30 segundos
 - **Mod en el canal:** 100 mensajes cada 30 segundos
 
-El proyecto usa `throttleSay()` en `src/alerts/handler.js:49-58` con delay de 1600ms entre mensajes para alerts. Para el resto de respuestas (comandos, IA), la defensa es el sistema de cooldowns.
+El proyecto usa `src/utils/irc-ratelimit.js` — `wrapClientSay(client)` se llama al arrancar en `index.js` y reemplaza `client.say()` globalmente con una versión throttleada (máx 18/30s, gap mínimo 1.1s, cola de 50). **Todos los módulos** quedan protegidos automáticamente, sin cambios en el código de cada handler.
+
+`throttleSay()` en `src/alerts/handler.js` existe también como capa adicional para alerts de alta concurrencia (raids, múltiples seguidores seguidos).
 
 Si el bot empieza a recibir timeouts de Twitch, reducir la frecuencia en `timers` (aumentar `interval` en `config/commands.json`).
 

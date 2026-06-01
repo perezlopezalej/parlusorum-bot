@@ -5,28 +5,29 @@ Arquitectura del proyecto y patrones recomendados para bots Twitch persistentes.
 ## Estructura real del proyecto
 
 ```
-index.js                    ← entrada: env, HTTP server, tmi.js client, wiring
+index.js                    ← entrada: env, wrapClientSay(), HTTP server, tmi.js client, wiring
 src/
   commands/handler.js       ← dispatch de !comandos, cooldowns, permisos
-  ai/handler.js             ← Groq, cohost, historial, stream hooks
+  ai/handler.js             ← Groq, cohost, historial, emote/caps/pattern detection, stream hooks
   alerts/handler.js         ← subs, bits, raids, lurker, logros, seguidores
-  games/handler.js          ← trivia, moneda
-  timers/handler.js         ← mensajes recurrentes
+  games/handler.js          ← trivia (solo)
+  timers/handler.js         ← mensajes recurrentes + AI game commentary
   eventsub.js               ← webhook HTTP, HMAC, estado del stream
-  twitch/api.js             ← Helix API, cache de tokens y respuestas
+  twitch/api.js             ← Helix API, RAWG, cache de tokens y respuestas
   memory/handler.js         ← memoria entre streams (Supabase)
   utils/
     storage.js              ← abstracción Supabase / npoint.io
-    supabase.js             ← cliente Supabase, sesiones, memoria
-    state.js                ← estado global mutable (triviaActive, silenced, brb)
+    supabase.js             ← cliente Supabase, sesiones, memoria, channel_stats
+    state.js                ← estado global mutable (triviaActive, silenced, brb, raid)
     ratelimit.js            ← rate limiter global + por usuario para Groq
+    irc-ratelimit.js        ← throttle IRC global: wraps client.say() (max 18/30s, gap 1.1s)
     filter.js               ← sanitización y anti-prompt-injection
     metrics.js              ← contadores de actividad del chat
-    logger.js               ← consola + archivo logs/bot.log
+    logger.js               ← consola + archivo logs/bot.log (rota en 5 MB)
     search.js               ← búsqueda web Tavily para contexto IA
 config/
   commands.json             ← respuestas y cooldowns de comandos simples + timers
-  channel.json              ← metadatos: broadcaster_id, personalidad, juegos, milestones
+  channel.json              ← metadatos: broadcaster_id, personalidad, juegos, milestones, emotes
 ```
 
 ## Flujo de mensajes (index.js:140-183)
@@ -70,12 +71,22 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 ```
 
+## Throttling IRC global
+
+`src/utils/irc-ratelimit.js` — `wrapClientSay(client)` se llama **una sola vez** en `index.js` al crear el cliente, antes del `client.connect()`. Reemplaza `client.say` con una versión que:
+- Respeta un máximo de 18 mensajes en cualquier ventana de 30s
+- Impone un gap mínimo de 1.1s entre mensajes
+- Encola hasta 50 mensajes pendientes
+
+Todos los módulos usan `client.say()` normalmente — el throttle es transparente.
+
 ## Gestión de estado global
 
 `src/utils/state.js` exporta getters/setters para:
 - `isSilenced()` / `setSilenceMode(bool)` — modo silencio de mods
 - `isTriviaActive()` / `setTriviaActive(bool)` — bloquea cohost y hooks durante trivia
-- `isBrb()` / `setBrbMode(bool, client, channel)` — modo ausencia con recordatorio
+- `isBrb()` / `setBrbMode(bool, client, channel)` — modo ausencia con recordatorio cada 5 min
+- `isRaidActive()` / `setRaidActive(bool, username)` — raid activo durante 5 min
 
 ## Reconexión automática con tmi.js
 

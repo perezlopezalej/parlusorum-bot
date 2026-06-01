@@ -106,11 +106,7 @@ Verificar:
 - Toda llamada a la API de Groq está precedida por `if (!canMakeRequest()) return`.
 - No hay rutas que llamen a Groq directamente sin pasar por el rate limiter.
 
-**Retry con backoff**: Si Groq responde 429, el bot debe respetar el header `retry-after` si está presente antes de reintentar.
-
-Verificar:
-- El código de manejo de errores 429 lee `response.headers.get('retry-after')`.
-- El backoff no es un `setTimeout` fijo que ignora el header del servidor.
+**Retry con backoff**: `groqWithRetry()` ya lee `err.headers?.['retry-after']` y usa backoff exponencial con jitter si el header no está. Al añadir un nuevo caller de Groq, verificar que usa `groqWithRetry()` y no `groq.chat.completions.create()` directamente.
 
 **Estimación de llamadas por hora**: Con todos los sistemas activos simultáneamente, estimar el peor caso:
 

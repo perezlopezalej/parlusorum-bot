@@ -33,7 +33,12 @@ SUPABASE_KEY        eyJ...
 NPOINT_BIN_ID       id del bin de npoint.io (fallback si no hay Supabase)
 GROQ_MODEL          llama-3.3-70b-versatile  (por defecto)
 NODE_ENV            production
-AI_MAX_RPM          20
+TAVILY_API_KEY      búsqueda web en !dios_fua (factual context)
+RAWG_API_KEY        info de juegos en !juego (géneros, rating, año)
+AI_MAX_RPM          20  (límite global de llamadas a Groq por minuto)
+WATCHDOG_TIMEOUT_MS 1800000  (30 min; reconecta si stream live sin mensajes)
+AI_TIMER_INTERVAL_MS 1500000 (25 min; timer de comentario IA del juego)
+COHOST_PROBABILITY  0.25  (probabilidad de mensaje espontáneo del bot)
 ```
 
 ### 3. Obtener la URL pública

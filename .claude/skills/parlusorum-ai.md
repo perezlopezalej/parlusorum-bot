@@ -21,7 +21,7 @@ const TWITCH_MAX_LENGTH = 490;  // límite real de Twitch son 500 chars
 
 ## Retry con backoff exponencial
 
-`src/ai/handler.js:33-45`:
+`src/ai/handler.js:47-63`:
 ```js
 async function groqWithRetry(params, maxRetries = 2) {
   params.model = GROQ_MODEL;
@@ -29,7 +29,11 @@ async function groqWithRetry(params, maxRetries = 2) {
     try { return await groq.chat.completions.create(params); }
     catch (err) {
       if ((err.status === 429 || err.message?.includes('rate')) && attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
+        const retryAfterSec = parseInt(err.headers?.['retry-after'] || '0');
+        const delay = retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : 2 ** attempt * 1000 + Math.random() * 500;
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
       throw err;
@@ -37,7 +41,7 @@ async function groqWithRetry(params, maxRetries = 2) {
   }
 }
 ```
-Delays: 2s → 4s. Siempre usar `groqWithRetry()` para llamadas a Groq, nunca `groq.chat.completions.create()` directamente.
+Lee el header `retry-after` del 429 si está presente; si no, usa backoff exponencial con jitter. Siempre usar `groqWithRetry()` para llamadas a Groq, nunca `groq.chat.completions.create()` directamente.
 
 ## Rate limiting diferenciado por usuario
 
@@ -140,23 +144,53 @@ Los roles están claramente separados en `channel.json`:
 El bot trata a cada uno diferente. Nunca confundir ambos roles en el prompt.
 Si alguien añade un nuevo tipo de usuario especial, añadirlo en `getUserType()` y `getPersonality()`.
 
+## Detección de comportamientos del chat
+
+### Emote spam (`checkEmoteSpam`)
+Detecta cuando 8+ usuarios únicos usan el mismo token en 20s. Usa los emotes Twitch nativos del payload (`tags.emotes`) + heurísticas: ALL_CAPS ≥4 chars, CamelCase. Llama a Groq para comentar la reacción del chat. Cooldown: 60s.
+
+### CAPS rage (`checkCapsRage`)
+Detecta mensajes con >70% letras en mayúsculas (mínimo 8 letras). Cuando 5+ usuarios únicos en CAPS en 15s, Groq comenta la explosión del chat. Cooldown: 60s.
+
+### Pattern matching natural (`checkPatternMatch`)
+Responde a preguntas sin prefijo `!`:
+- **Menciones directas** (`@dios_fua` o "dios fua"): cooldown 8s global + 10s por usuario
+- **Patrones naturales** (~11 regex): "que juego", "cuanto tiempo", "eres un bot", "quien eres", "cuántos seguidores", etc.: cooldown 45s global + 30s por usuario
+- Mantiene conversación por usuario igual que `!dios_fua`
+- Desactivado si `isSilenced()`, `isTriviaActive()`, o sin rate limit disponible
+
+## Stream lifecycle
+
+### Warmup mode (`onWarmupMode`)
+Se llama 60s después de `stream.online` si hay <5 viewers. Groq genera un mensaje de bienvenida al stream.
+
+### Post stream end (`postStreamEnd`)
+Se llama desde eventsub en `stream.offline`. Recibe el resumen AI generado por `memory/handler.js` y lo postea en el chat.
+
 ## Funciones exportadas
 
 ```js
 module.exports = {
-  handleCohost,       // mensaje espontáneo basado en el chat reciente
-  handleChiste,       // !chiste — banco de 169 chistes en data/chistes.json
-  handleQuestion,     // !dios_fua — pregunta con contexto completo + web search
-  handleShoutout,     // !so — shoutout con IA
-  addToHistory,       // llamar en cada mensaje (index.js)
-  updateLastChatTime, // actualiza timestamp de último mensaje del chat
-  getRecentHistory,   // devuelve historial formateado
-  checkChatHook,      // hook espontáneo si el chat lleva tiempo inactivo
-  checkStreamStatus,  // detecta transición live/offline
-  initStreamStatus,   // llamar al arrancar
+  handleCohost,         // mensaje espontáneo basado en el chat reciente
+  handleChiste,         // !chiste — banco de 169 chistes en data/chistes.json
+  handleQuestion,       // !dios_fua — pregunta con contexto completo + web search
+  handleShoutout,       // !so — shoutout con IA
+  addToHistory,         // llamar en cada mensaje (index.js)
+  updateLastChatTime,   // actualiza timestamp de último mensaje del chat
+  getRecentHistory,     // devuelve historial formateado
+  checkChatHook,        // hook espontáneo si el chat lleva tiempo inactivo
+  checkStreamStatus,    // detecta transición live/offline
+  initStreamStatus,     // llamar al arrancar
   invalidateContextCache,
-  checkForHighlight,  // detecta momentos épicos y crea markers automáticos
-  getActiveUsers, resetActiveUsers
+  checkForHighlight,    // detecta momentos épicos y crea markers automáticos
+  checkEmoteSpam,       // detecta spam de emote sincronizado
+  checkCapsRage,        // detecta explosión de CAPS en el chat
+  checkPatternMatch,    // responde a preguntas naturales sin prefijo
+  getActiveUsers, resetActiveUsers,
+  onWarmupMode,         // bienvenida al stream si <5 viewers
+  postStreamEnd,        // mensaje final del stream con resumen IA
+  groqWithRetry,        // llamar siempre en vez de groq.chat directamente
+  truncate              // sanitizar respuesta antes de client.say()
 }
 ```
 
