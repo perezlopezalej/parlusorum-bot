@@ -52,9 +52,74 @@ function setRaidActive(username, durationMs = RAID_DURATION_MS) {
 function isRaidActive() { return Date.now() < raidActiveUntil; }
 function getRaidUsername() { return raidUsername; }
 
+// --- Narrativa del stream ---
+const MAX_NARRATIVE_EVENTS = 5;
+let streamNarrative = [];
+
+function addNarrativeEvent(type, description) {
+  streamNarrative.push({ type, description, ts: Date.now() });
+  if (streamNarrative.length > MAX_NARRATIVE_EVENTS) streamNarrative.shift();
+}
+function getStreamNarrative() { return [...streamNarrative]; }
+function resetStreamNarrative() { streamNarrative = []; }
+
+// --- Modo de personalidad ---
+let currentMode = 'normal';
+let modeSetAt = 0;
+
+function setPersonalityMode(mode) {
+  currentMode = mode;
+  modeSetAt = Date.now();
+}
+function getPersonalityMode() { return currentMode; }
+function getModeSetAt() { return modeSetAt; }
+
+// --- Historial de mensajes propios del bot ---
+const MAX_BOT_HISTORY = 3;
+let botMessageHistory = [];
+
+function addBotMessage(msg) {
+  botMessageHistory.push({ msg, ts: Date.now() });
+  if (botMessageHistory.length > MAX_BOT_HISTORY) botMessageHistory.shift();
+}
+
+function getBotHistory() { return [...botMessageHistory]; }
+function resetBotHistory() { botMessageHistory = []; }
+
+// --- Anclaje periódico de personalidad ---
+let messagesSinceReinforce = 0;
+const REINFORCE_EVERY = 50;
+
+function tickReinforce() {
+  messagesSinceReinforce++;
+  if (messagesSinceReinforce >= REINFORCE_EVERY) {
+    messagesSinceReinforce = 0;
+    return true;
+  }
+  return false;
+}
+
+function resetReinforceCounter() { messagesSinceReinforce = 0; }
+
+// --- Estado de contexto de juego ---
+let _gameContextFailed = false;
+function setGameContextFailed(val) { _gameContextFailed = val; }
+function getGameContextFailed() { return _gameContextFailed; }
+
+// --- Tiempo de último CAPS rage ---
+let lastCapsRageTime = 0;
+function setLastCapsRageTime(ts) { lastCapsRageTime = ts; }
+function getLastCapsRageTime() { return lastCapsRageTime; }
+
 module.exports = {
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,
   setBrbMode, isBrb, getBrbDuration,
-  setRaidActive, isRaidActive, getRaidUsername
+  setRaidActive, isRaidActive, getRaidUsername,
+  setPersonalityMode, getPersonalityMode, getModeSetAt,
+  addNarrativeEvent, getStreamNarrative, resetStreamNarrative,
+  addBotMessage, getBotHistory, resetBotHistory,
+  tickReinforce, resetReinforceCounter,
+  setGameContextFailed, getGameContextFailed,
+  setLastCapsRageTime, getLastCapsRageTime,
 };

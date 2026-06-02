@@ -1,3 +1,8 @@
+---
+name: parlusorum-code-review
+description: Code review especializado para el bot de Twitch parlusorum. Revisa los archivos del diff y aplica criterios de seguridad, rate limiting IRC, memory leaks, Groq/tokens, y consistencia del proyecto.
+---
+
 # Parlusorum Code Review
 
 Code review especializado para el bot de Twitch **parlusorum**. Antes de revisar, lee los archivos relevantes del cambio. Aplica los criterios en orden de severidad.

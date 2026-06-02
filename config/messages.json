@@ -1,0 +1,37 @@
+{
+  "fallback_responses": {
+    "timeout": [
+      "El FUA está procesando... dame un segundo 🤔",
+      "El servidor tarda más de lo esperado, pero el FUA no se rinde 💪",
+      "Cargando respuesta épica... ⏳"
+    ],
+    "error": [
+      "El FUA me ha dejado sin palabras por un momento 🤫",
+      "Error en el sistema del FUA — pero el carácter sigue intacto 💪",
+      "Algo falló por aquí, pero el FUA no muere 🔥"
+    ],
+    "ratelimit": [
+      "Demasiado chat en poco tiempo — el FUA necesita aire 🌬️",
+      "Tantas preguntas que hasta el FUA necesita pausa ⏳",
+      "El servidor del FUA respira — vuelve en un momento 💨"
+    ],
+    "cohost": [
+      "parlus1Esteeselrollo",
+      "💪 FUA",
+      "parlus1PORELPODERDELFUAAAAA"
+    ]
+  },
+  "warmup_fallback": "¡El stream acaba de empezar! Bienvenidos 🔥 FUA!",
+  "stream_start_messages": [
+    "LIVE! Bienvenidos todos! FUA! 💪🔥",
+    "El canal ha arrancado! A disfrutar! FUA! 🔥",
+    "ESTAMOS EN DIRECTO! El FUA nos convoca! 💪",
+    "Arranca el stream! Preparaos para el caos! FUA! 🔥"
+  ],
+  "stream_end_messages": [
+    "Y hasta aqui el stream! Gracias a todos! FUA y hasta la proxima! 💜🔥",
+    "Stream terminado! Gracias por acompanarhos! FUA! 🔥",
+    "Eso es todo por hoy! Gracias a la comunidad! FUA! 💜",
+    "Se acabo! FUA y nos vemos pronto! 🔥💪"
+  ]
+}

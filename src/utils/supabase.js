@@ -8,6 +8,7 @@ const logger = require('./logger');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const CHANNEL_NAME = process.env.CHANNEL || 'parlusorum';
 
 if (SUPABASE_URL) logger.info('💾 Supabase configurado');
 
@@ -347,6 +348,82 @@ async function migrateFromNpoint() {
   }
 }
 
+// ─── COOLDOWNS PERSISTENTES ───────────────────────────────────────────────────
+
+async function loadActiveCooldowns() {
+  const db = getClient();
+  if (!db) return {};
+  try {
+    const { data, error } = await db
+      .from('cooldowns')
+      .select('key, expires_at')
+      .gt('expires_at', new Date().toISOString());
+    if (error) throw error;
+    const result = {};
+    for (const row of data || []) {
+      result[row.key] = new Date(row.expires_at).getTime();
+    }
+    return result;
+  } catch (e) {
+    logger.error(`loadActiveCooldowns: ${e.message}`);
+    return {};
+  }
+}
+
+function persistCooldown(key, expiresAt) {
+  const db = getClient();
+  if (!db) return;
+  db.from('cooldowns')
+    .upsert({ key, expires_at: new Date(expiresAt).toISOString() }, { onConflict: 'key' })
+    .then(({ error }) => { if (error) logger.warn(`persistCooldown ${key}: ${error.message}`); })
+    .catch(() => {});
+}
+
+function deleteCooldown(key) {
+  const db = getClient();
+  if (!db) return;
+  db.from('cooldowns')
+    .delete()
+    .eq('key', key)
+    .then(({ error }) => { if (error) logger.warn(`deleteCooldown ${key}: ${error.message}`); })
+    .catch(() => {});
+}
+
+// ─── MEMORIA FACTUAL DE USUARIOS ─────────────────────────────────────────────
+
+function saveUserFact(username, factType, value) {
+  const db = getClient();
+  if (!db) return;
+  db.from('user_facts').upsert({
+    username: username.toLowerCase(),
+    channel: CHANNEL_NAME,
+    fact_type: factType,
+    value: String(value),
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'username,channel,fact_type' })
+    .then(({ error }) => { if (error) logger.warn(`saveUserFact ${username}/${factType}: ${error.message}`); })
+    .catch(() => {});
+}
+
+async function getUserFacts(username) {
+  const db = getClient();
+  if (!db) return [];
+  try {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await db
+      .from('user_facts')
+      .select('fact_type, value')
+      .eq('username', username.toLowerCase())
+      .eq('channel', CHANNEL_NAME)
+      .gte('updated_at', cutoff);
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    logger.error(`getUserFacts ${username}: ${e.message}`);
+    return [];
+  }
+}
+
 module.exports = {
   getClient,
   loadUsers,
@@ -363,4 +440,9 @@ module.exports = {
   incrementChannelStat,
   saveTokens,
   loadTokens,
+  loadActiveCooldowns,
+  persistCooldown,
+  deleteCooldown,
+  saveUserFact,
+  getUserFacts,
 };

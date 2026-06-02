@@ -42,8 +42,17 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === '/eventsub' && req.method === 'POST') {
     let rawBody = '';
-    req.on('data', chunk => rawBody += chunk);
+    let bodyOverflow = false;
+    res.on('error', () => {});
+    req.on('data', chunk => {
+      rawBody += chunk;
+      if (rawBody.length > 65536) { bodyOverflow = true; req.destroy(); }
+    });
     req.on('end', () => {
+      if (bodyOverflow) {
+        if (!res.headersSent && !res.writableEnded) { res.writeHead(413); res.end(); }
+        return;
+      }
       if (eventSubHandler) eventSubHandler(req, res, rawBody);
       else { res.writeHead(503); res.end(); }
     });
@@ -141,8 +150,12 @@ client.on('connected', async (addr, port) => {
 
     // Migración automática npoint → Supabase
     if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
-      const { migrateFromNpoint } = require('./src/utils/supabase');
+      const { migrateFromNpoint, loadActiveCooldowns } = require('./src/utils/supabase');
       await migrateFromNpoint().catch(e => logger.warn(`Migración: ${e.message}`));
+      loadActiveCooldowns().then(cd => {
+        ai.restoreCooldowns(cd);
+        commands.restoreCooldowns(cd);
+      }).catch(e => logger.warn(`Cooldowns no restaurados: ${e.message}`));
     }
 
     await initStreamState();

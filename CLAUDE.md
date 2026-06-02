@@ -176,3 +176,16 @@ Deployed on **Render** (free tier). Render uses `npm start` automatically. Varia
 - **Warmup mode**: 60 s after `stream.online`, if viewer count < 5, posts an AI warm-up message asking the chat about the current game
 - **Stream end summary**: `postStreamEnd()` posts the AI-generated stream summary in chat; `streamEndPostedByEventSub` flag prevents the generic "fin del stream" fallback from firing too
 - **EventSub race guard**: `_sessionStarting` promise ensures the `stream.offline` handler waits for `stream.online` async I/O to complete before generating the end-of-stream memory
+
+## Conventions
+
+- **State mutable**: toda variable de estado compartida entre funciones vive en `src/utils/state.js`. Nunca declarar estado mutable en los handlers (`ai/handler.js`, `commands/handler.js`, etc.).
+- **require() al inicio**: todos los `require()` van al inicio del archivo, agrupados: core Node → npm → módulos propios. Excepción permitida: dependencias circulares conocidas (`eventsub` ↔ `ai`, `alerts` ↔ `ai`) que deben permanecer lazy dentro del cuerpo de la función.
+- **Caché in-memory**: para evitar queries repetidas a Supabase usar `Map` con TTL — mismo patrón que `fullContextCache` en `ai/handler.js` (`userFactsCache`, TTL 5 min). Sin dependencias externas.
+- **Mensajes al chat**: los textos en español que llegan al chat van en `config/messages.json` (fallbacks, warmup strings, etc.). Excepción: mensajes de error internos o logs que nunca llegan al chat.
+- **truncate() obligatorio**: todo `client.say()` con contenido dinámico o procedente de `config/` debe pasar por `truncate()` antes de enviarse. Sin excepción — protege contra el límite de 500 caracteres de Twitch y futuros cambios de config.
+- **Map con TTL → setInterval de pruning**: todo `Map` indexado por usuario o ID con un TTL definido debe declarar su `setInterval` de limpieza inmediatamente después. Ver patrón en `chisteCooldowns`, `questionCooldowns`, `userFactsCache` en `ai/handler.js`.
+
+## Known limitations
+
+- **`is_regular` sin umbral**: `onStreamEnd` en `memory/handler.js` marca como `is_regular` a todos los usuarios activos del stream sin mínimo de mensajes, porque `getActiveUsers()` devuelve un `Set` de usernames sin conteo por usuario. Para añadir umbral se necesitaría un Map `username → messageCount` en `ai/handler.js` alimentado desde `addToHistory()`.

@@ -256,6 +256,10 @@ function createEventSubHandler(client, channel, deps) {
         try { onStreamOnline(); } catch {}
         try { resetSessionCounters(); } catch {}
         try { resetStreamChatBuffer(); } catch {}
+        try { require('./utils/state').resetStreamNarrative(); } catch {}
+        try { require('./utils/state').resetBotHistory(); } catch {}
+        try { require('./utils/state').resetReinforceCounter(); } catch {}
+        try { require('./ai/handler').clearUserFactsCache(); } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
           _sessionStarting = (async () => {

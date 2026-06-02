@@ -1,10 +1,10 @@
 const { canMakeRequest } = require('../utils/ratelimit');
-const { getChannelStats, incrementChannelStat } = require('../utils/supabase');
-const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo } = require('../twitch/api');
+const { getChannelStats, incrementChannelStat, persistCooldown } = require('../utils/supabase');
+const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
 const { handleShoutout, groqWithRetry, truncate } = require('../ai/handler');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
-const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
+const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
@@ -117,6 +117,7 @@ async function handleLurk(client, channel, tags) {
     return;
   }
   cooldowns.set(key, now + 60000);
+  persistCooldown(key, now + 60000);
 
   if (!canMakeRequest()) {
     const msg = lurkMessages[Math.floor(Math.random() * lurkMessages.length)];
@@ -173,15 +174,14 @@ async function handleJuego(client, channel) {
 
 async function handleEstadisticas(client, channel) {
   try {
-    const eventsub = require('../eventsub');
     const [gameInfo, followers] = await Promise.all([
       getCurrentGame(),
       getFollowerCount(channelConfig.broadcaster_id)
     ]);
-    const live = eventsub.isLiveViaEventSub();
-    const uptime = eventsub.getStreamUptime();
+    const live = isLiveViaEventSub();
+    const uptime = getStreamUptime();
     let viewers = null;
-    if (live) viewers = await eventsub.getViewersWithAppToken(channelConfig.broadcaster_id).catch(() => null);
+    if (live) viewers = await getViewersWithAppToken(channelConfig.broadcaster_id).catch(() => null);
 
     if (live) {
       const parts = [];
@@ -239,8 +239,7 @@ function handleSilencio(client, channel, username) {
 }
 
 async function handleClip(client, channel) {
-  const eventsub = require('../eventsub');
-  if (!eventsub.isLiveViaEventSub()) { client.say(channel, `❌ El canal no esta en directo.`); return; }
+  if (!isLiveViaEventSub()) { client.say(channel, `❌ El canal no esta en directo.`); return; }
   client.say(channel, `🎬 Creando clip...`);
   try {
     const url = await createClip();
@@ -252,9 +251,7 @@ async function handleClip(client, channel) {
 }
 
 async function handleMarker(client, channel, args) {
-  const eventsub = require('../eventsub');
-  if (!eventsub.isLiveViaEventSub()) { client.say(channel, '❌ El canal no esta en directo.'); return; }
-  const { createStreamMarker } = require('../twitch/api');
+  if (!isLiveViaEventSub()) { client.say(channel, '❌ El canal no esta en directo.'); return; }
   const desc = args.slice(1).join(' ') || 'Momento marcado manualmente';
   try {
     const marker = await createStreamMarker(desc.slice(0, 140));
@@ -268,16 +265,12 @@ async function handleMarker(client, channel, args) {
 
 async function handleResumen(client, channel) {
   try {
-    const eventsub = require('../eventsub');
     const s = getSummary();
-    const uptime = eventsub.getStreamUptime() || s.uptime;
+    const uptime = getStreamUptime() || s.uptime;
     const gameInfo = await getCurrentGame().catch(() => null);
     const game = gameInfo?.game ? `🎮 ${gameInfo.game}` : '';
-    const topCmds = s.topCommands || 'ninguno';
-    const parts1 = [`📊 Duracion: ${uptime}`, `💬 Msgs/hora: ${s.messagesLastHour}`, game].filter(Boolean);
-    const parts2 = [`👁️ Pico: ${s.peakViewers}`, `💀 Muertes: ${deathCount}`, `🏆 Cmds: ${topCmds}`];
-    client.say(channel, parts1.join(' | '));
-    setTimeout(() => client.say(channel, parts2.join(' | ')), 1500);
+    const parts = [`📊 ${uptime}`, `💬 ${s.messagesLastHour} msg/h`, game].filter(Boolean);
+    client.say(channel, parts.join(' | '));
   } catch (err) {
     logger.error(`!resumen: ${err.message}`);
     client.say(channel, 'No pude generar el resumen.');
@@ -293,4 +286,11 @@ function handleAyuda(client, channel, args) {
   }
 }
 
-module.exports = { handle, getDeathCount, resetSessionCounters };
+function restoreCooldowns(data) {
+  const now = Date.now();
+  for (const [key, expiresAt] of Object.entries(data)) {
+    if (expiresAt > now && key.startsWith('lurk-')) cooldowns.set(key, expiresAt);
+  }
+}
+
+module.exports = { handle, getDeathCount, resetSessionCounters, restoreCooldowns };

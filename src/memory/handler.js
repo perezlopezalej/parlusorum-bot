@@ -86,6 +86,25 @@ async function onStreamEnd(streamStats, chatSample) {
     await saveStreamMemory(memory);
 
     logger.info(`🧠 Memoria del stream guardada: "${memory.summary?.slice(0, 60)}"`);
+
+    // 4. Persistir hechos de usuarios activos (fire-and-forget)
+    try {
+      const { saveUserFact } = require('../utils/supabase');
+      const { getActiveUsers } = require('../ai/handler');
+      const activeUsers = getActiveUsers();
+      for (const username of activeUsers.slice(0, 20)) {
+        saveUserFact(username, 'is_regular', 'true');
+        if (streamStats.game) saveUserFact(username, 'last_game_mentioned', streamStats.game);
+      }
+      if (memory.recurringPhrases?.length > 0) {
+        for (const username of activeUsers.slice(0, 5)) {
+          saveUserFact(username, 'recurring_joke', memory.recurringPhrases[0]);
+        }
+      }
+    } catch (e) {
+      logger.warn(`User facts post-stream: ${e.message}`);
+    }
+
     return memory;
   } catch (e) {
     logger.error(`Error en onStreamEnd: ${e.message}`);

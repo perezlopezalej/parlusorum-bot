@@ -18,15 +18,25 @@ const BLOCKED_PATTERNS = [
   'follar', 'coger', 'mamada', 'corrida',
   // Extremismo
   'terroris', 'yihad', 'isis',
-  // Inyección de prompt
+  // Inyección de prompt — inglés
   'ignore previous', 'ignore all', 'ignore your',
   'forget your instructions', 'new instructions',
   'system prompt', 'jailbreak', 'dan mode',
   'pretend you are', 'act as if',
-  'do anything now',       // DAN jailbreak
-  'hypothetically',        // "hypothetically, if you could..."
+  'do anything now',
+  'hypothetically',
   'roleplay as',
   'simulate',
+  'end system prompt', 'disregard', 'you are now', 'your new instructions',
+  // Inyección de prompt — español
+  'ignora las instrucciones', 'ignora tu', 'ignora tus',
+  'olvida tu rol', 'olvida tus instrucciones', 'olvida las instrucciones',
+  'actua como dan', 'actua como un', 'nueva personalidad',
+  'eres libre ahora', 'sin restricciones', 'sin limites',
+  'fin del sistema', 'fin del prompt', 'nueva instruccion',
+  'modo sin censura', 'modo developer', 'modo dios',
+  'finge que eres', 'pretende ser', 'actua como si',
+  'ignora todo lo anterior', 'a partir de ahora eres',
 ];
 
 // Normalizar texto: quitar acentos, pasar a minúsculas
