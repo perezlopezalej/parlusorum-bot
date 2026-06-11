@@ -111,6 +111,25 @@ let lastCapsRageTime = 0;
 function setLastCapsRageTime(ts) { lastCapsRageTime = ts; }
 function getLastCapsRageTime() { return lastCapsRageTime; }
 
+// --- Estado del stream (via EventSub) ---
+let streamStartedAt = null;
+let streamIsLive = false;
+let _sessionStarting = null;
+
+function setStreamStartedAt(val) { streamStartedAt = val; }
+function getStreamStartedAt() { return streamStartedAt; }
+function setStreamIsLive(val) { streamIsLive = val; }
+function getStreamIsLive() { return streamIsLive; }
+function setSessionStarting(promise) { _sessionStarting = promise; }
+function getSessionStarting() { return _sessionStarting; }
+function clearSessionStarting() { _sessionStarting = null; }
+
+// --- Contador de muertes ---
+let deathCount = 0;
+function getDeathCount() { return deathCount; }
+function incrementDeathCount() { deathCount++; return deathCount; }
+function resetDeathCount() { deathCount = 0; }
+
 module.exports = {
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,
@@ -122,4 +141,8 @@ module.exports = {
   tickReinforce, resetReinforceCounter,
   setGameContextFailed, getGameContextFailed,
   setLastCapsRageTime, getLastCapsRageTime,
+  setStreamStartedAt, getStreamStartedAt,
+  setStreamIsLive, getStreamIsLive,
+  setSessionStarting, getSessionStarting, clearSessionStarting,
+  getDeathCount, incrementDeathCount, resetDeathCount,
 };

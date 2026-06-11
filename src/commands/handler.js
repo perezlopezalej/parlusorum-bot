@@ -1,17 +1,14 @@
 const { canMakeRequest } = require('../utils/ratelimit');
 const { getChannelStats, incrementChannelStat, persistCooldown } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
-const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration } = require('../utils/state');
+const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount } = require('../utils/state');
 const { handleShoutout, groqWithRetry, truncate } = require('../ai/handler');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
-// --- Contador de muertes --- FIX #1: exportado para que eventsub lo use
-let deathCount = 0;
-function getDeathCount() { return deathCount; }
-function resetSessionCounters() { deathCount = 0; sessionWins = 0; resetStreamMetrics(); }
+function resetSessionCounters() { resetDeathCount(); sessionWins = 0; resetStreamMetrics(); }
 
 // --- Contador win/loss ---
 let sessionWins = 0;
@@ -207,7 +204,7 @@ async function handleBoss(client, channel) {
 
 async function handleScore(client, channel) {
   const stats = await getChannelStats().catch(() => null);
-  const session = `💀 Bosses: ${sessionWins} | Muertes: ${deathCount}`;
+  const session = `💀 Bosses: ${sessionWins} | Muertes: ${getDeathCount()}`;
   if (stats) {
     client.say(channel, `${session} | All-time: ${stats.total_wins} bosses`);
   } else {
@@ -216,9 +213,9 @@ async function handleScore(client, channel) {
 }
 
 function handleMuertes(client, channel, args, isMod) {
-  if (isMod && args[1] === '+1') { deathCount++; client.say(channel, `💀 Muerte #${deathCount} en este stream 😅`); }
-  else if (isMod && args[1] === 'reset') { deathCount = 0; client.say(channel, `💀 Contador reseteado.`); }
-  else client.say(channel, `💀 Muertes hoy: ${deathCount}`);
+  if (isMod && args[1] === '+1') { const n = incrementDeathCount(); client.say(channel, `💀 Muerte #${n} en este stream 😅`); }
+  else if (isMod && args[1] === 'reset') { resetDeathCount(); client.say(channel, `💀 Contador reseteado.`); }
+  else client.say(channel, `💀 Muertes hoy: ${getDeathCount()}`);
 }
 
 function handleBrb(client, channel, username) {
@@ -293,4 +290,4 @@ function restoreCooldowns(data) {
   }
 }
 
-module.exports = { handle, getDeathCount, resetSessionCounters, restoreCooldowns };
+module.exports = { handle, resetSessionCounters, restoreCooldowns };

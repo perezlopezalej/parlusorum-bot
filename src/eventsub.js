@@ -1,6 +1,13 @@
 const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
+const {
+  setStreamStartedAt, getStreamStartedAt,
+  setStreamIsLive, getStreamIsLive,
+  setSessionStarting, getSessionStarting, clearSessionStarting,
+  getDeathCount,
+  resetStreamNarrative, resetBotHistory, resetReinforceCounter,
+} = require('./utils/state');
 
 const TWITCH_MESSAGE_ID = 'twitch-eventsub-message-id';
 const TWITCH_MESSAGE_TIMESTAMP = 'twitch-eventsub-message-timestamp';
@@ -13,16 +20,11 @@ const MESSAGE_TYPE_REVOCATION = 'revocation';
 // EVENTSUB_SECRET es obligatorio — validado en index.js (process.exit si falta)
 const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
 
-// --- Estado del stream via EventSub ---
-let streamStartedAt = null;
-let streamIsLive = false;
-// Serializa startStreamSession y onStreamEnd para evitar carrera online/offline
-let _sessionStarting = null;
-
 // Deduplicación de notificaciones — Twitch puede reenviar el mismo evento
 const processedEventIds = new Set();
 
 function getStreamUptime() {
+  const streamStartedAt = getStreamStartedAt();
   if (!streamStartedAt) return null;
   const mins = Math.floor((Date.now() - streamStartedAt) / 60000);
   const h = Math.floor(mins / 60);
@@ -30,7 +32,7 @@ function getStreamUptime() {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function isLiveViaEventSub() { return streamIsLive; }
+function isLiveViaEventSub() { return getStreamIsLive(); }
 
 // --- App Access Token con cache ---
 let appTokenCache = null;
@@ -83,12 +85,12 @@ async function initStreamState() {
     const stream = data.data?.[0];
 
     if (stream) {
-      streamIsLive = true;
-      streamStartedAt = stream.started_at ? new Date(stream.started_at).getTime() : Date.now();
+      setStreamIsLive(true);
+      setStreamStartedAt(stream.started_at ? new Date(stream.started_at).getTime() : Date.now());
       logger.info(`📺 Stream en directo al arrancar (uptime: ${getStreamUptime()})`);
     } else {
-      streamIsLive = false;
-      streamStartedAt = null;
+      setStreamIsLive(false);
+      setStreamStartedAt(null);
       logger.info(`📺 Canal offline al arrancar`);
     }
   } catch (e) {
@@ -198,13 +200,13 @@ function createEventSubHandler(client, channel, deps) {
     postStreamEnd,
     getSummary,
     onStreamEnd,
-    getDeathCount,
     getStreamChatBuffer,
     resetStreamChatBuffer,
     getActiveUsers,
     resetActiveUsers,
     onStreamOnline,
-    resetSessionCounters
+    resetSessionCounters,
+    clearUserFactsCache
   } = deps;
 
   return async function handleEventSub(req, res, rawBody) {
@@ -250,19 +252,19 @@ function createEventSubHandler(client, channel, deps) {
 
       if (type === 'stream.online') {
         // Cambios de estado en memoria: síncronos e inmediatos
-        streamIsLive = true;
-        streamStartedAt = event?.started_at ? new Date(event.started_at).getTime() : Date.now();
+        setStreamIsLive(true);
+        setStreamStartedAt(event?.started_at ? new Date(event.started_at).getTime() : Date.now());
         logger.info(`🔴 Stream online via EventSub`);
         try { onStreamOnline(); } catch {}
         try { resetSessionCounters(); } catch {}
         try { resetStreamChatBuffer(); } catch {}
-        try { require('./utils/state').resetStreamNarrative(); } catch {}
-        try { require('./utils/state').resetBotHistory(); } catch {}
-        try { require('./utils/state').resetReinforceCounter(); } catch {}
-        try { require('./ai/handler').clearUserFactsCache(); } catch {}
+        try { resetStreamNarrative(); } catch {}
+        try { resetBotHistory(); } catch {}
+        try { resetReinforceCounter(); } catch {}
+        try { clearUserFactsCache(); } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
-          _sessionStarting = (async () => {
+          setSessionStarting((async () => {
             try {
               const gameInfo = await getCurrentGame().catch(() => null);
               await startStreamSession(gameInfo?.game || null);
@@ -273,7 +275,8 @@ function createEventSubHandler(client, channel, deps) {
               setTimeout(async () => {
                 try {
                   if (!isLiveViaEventSub()) return;
-                  if (streamStartedAt && Date.now() - streamStartedAt > 10 * 60 * 1000) return;
+                  const startedAt = getStreamStartedAt();
+                  if (startedAt && Date.now() - startedAt > 10 * 60 * 1000) return;
                   if (client.readyState() !== 'OPEN') return;
                   const viewers = await getViewersWithAppToken(channelConfig.broadcaster_id);
                   if (viewers !== null && viewers < 5) {
@@ -282,23 +285,25 @@ function createEventSubHandler(client, channel, deps) {
                 } catch (e) { logger.warn(`Warmup check: ${e.message}`); }
               }, 60 * 1000);
             } catch (e) { logger.warn(`Supabase session start: ${e.message}`); }
-          })();
-          await _sessionStarting.finally(() => { _sessionStarting = null; });
+          })());
+          await getSessionStarting().finally(() => { clearSessionStarting(); });
         });
       }
 
       if (type === 'stream.offline') {
         // Cambios de estado en memoria: síncronos e inmediatos
-        streamIsLive = false;
+        setStreamIsLive(false);
         const endedAt = Date.now();
+        const streamStartedAt = getStreamStartedAt();
         const durationMinutes = streamStartedAt
           ? Math.floor((endedAt - streamStartedAt) / 60000)
           : 0;
-        streamStartedAt = null;
+        setStreamStartedAt(null);
         logger.info(`⚫ Stream offline via EventSub`);
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
-          if (_sessionStarting) await _sessionStarting.catch(() => {});
+          const pending = getSessionStarting();
+          if (pending) await pending.catch(() => {});
           try {
             const gameInfo = await getCurrentGame().catch(() => null);
             const metrics = getSummary();

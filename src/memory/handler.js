@@ -12,6 +12,7 @@ const {
 } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const { containsBlockedContent } = require('../utils/filter');
+const { groqWithRetry } = require('../utils/groq-utils');
 
 
 // ─── GENERAR RESUMEN AL ACABAR EL STREAM ─────────────────────────────────────
@@ -41,7 +42,6 @@ Responde SOLO en JSON con este formato exacto:
   "recurringPhrases": ["frase1", "frase2"]
 }`;
 
-    const { groqWithRetry } = require('../ai/handler');
     const response = await groqWithRetry({
       max_tokens: 300,
       messages: [{ role: 'user', content: prompt }]
@@ -90,8 +90,7 @@ async function onStreamEnd(streamStats, chatSample) {
     // 4. Persistir hechos de usuarios activos (fire-and-forget)
     try {
       const { saveUserFact } = require('../utils/supabase');
-      const { getActiveUsers } = require('../ai/handler');
-      const activeUsers = getActiveUsers();
+      const activeUsers = streamStats.activeUsers || [];
       for (const username of activeUsers.slice(0, 20)) {
         saveUserFact(username, 'is_regular', 'true');
         if (streamStats.game) saveUserFact(username, 'last_game_mentioned', streamStats.game);

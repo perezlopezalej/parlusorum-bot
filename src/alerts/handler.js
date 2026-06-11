@@ -5,7 +5,7 @@ const { loadUsers, saveUsers } = require('../utils/storage');
 const { setRaidActive } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const { sanitizeForAI } = require('../utils/filter');
-const { groqWithRetry, truncate } = require('../ai/handler');
+const { groqWithRetry, truncate } = require('../utils/groq-utils');
 
 const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || 'parlusorum').toLowerCase();

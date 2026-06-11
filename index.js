@@ -16,6 +16,7 @@ if (missing.length > 0) {
 const { createEventSubHandler, registerSubscriptions, initStreamState } = require('./src/eventsub');
 const commands = require('./src/commands/handler');
 const { resetSessionCounters } = commands;
+
 const games = require('./src/games/handler');
 const alerts = require('./src/alerts/handler');
 const timers = require('./src/timers/handler');
@@ -132,13 +133,13 @@ client.on('connected', async (addr, port) => {
     postStreamEnd: ai.postStreamEnd,
     getSummary,
     onStreamEnd: memory.onStreamEnd,
-    getDeathCount: commands.getDeathCount,
     resetSessionCounters,
     getStreamChatBuffer: ai.getStreamChatBuffer,
     resetStreamChatBuffer: ai.resetStreamChatBuffer,
-    getActiveUsers: ai.getActiveUsers,
+    getActiveUsers: ai.getActiveUsersWithMinMessages,
     resetActiveUsers: ai.resetActiveUsers,
-    onStreamOnline: alerts.onStreamOnline
+    onStreamOnline: alerts.onStreamOnline,
+    clearUserFactsCache: ai.clearUserFactsCache
   });
 
   if (!timersStarted) {

@@ -76,4 +76,17 @@ function wrapClientSay(client) {
   };
 }
 
+function _logQueueOnExit(signal) {
+  if (_queue.length > 0) {
+    const items = _queue
+      .map(({ channel, msg }) => `${channel}: "${String(msg).slice(0, 60)}"`)
+      .join(' | ');
+    logger.warn(`IRC: ${signal} — ${_queue.length} msg(s) en cola descartados: ${items}`);
+  }
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => _logQueueOnExit('SIGTERM'));
+process.on('SIGINT',  () => _logQueueOnExit('SIGINT'));
+
 module.exports = { wrapClientSay };

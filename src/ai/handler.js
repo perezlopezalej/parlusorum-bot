@@ -1,8 +1,7 @@
-const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { searchWeb, needsWebSearch } = require('../utils/search');
@@ -10,24 +9,9 @@ const { getMemoryContext } = require('../memory/handler');
 const { persistCooldown } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const { saveHighlight } = require('../utils/storage');
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-// FIX #3: modelo configurable via env var.
-// llama-4-maverick (meta-llama/llama-4-maverick-17b-128e-instruct) deprecado en Groq feb/2026.
-// Cambia GROQ_MODEL en .env si quieres probarlo, pero tiene la mitad de rate limit.
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-
-const TWITCH_MAX_LENGTH = 490;
-
-// Regex para separar emotes del canal de puntuación adyacente.
-// Construida una vez al cargar el módulo para no repetirla en cada mensaje.
-const _channelEmotes = channelConfig.channel_emotes || [];
-const _emotePattern = _channelEmotes.length > 0
-  ? _channelEmotes.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  : null;
-const _emoteBeforeRe = _emotePattern ? new RegExp(`(\\S)(${_emotePattern})`, 'g') : null;
-const _emoteAfterRe  = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g') : null;
+const { groqWithRetry, truncate } = require('../utils/groq-utils');
+const { getViewersWithAppToken } = require('../eventsub');
+const { throttleSay } = require('../alerts/handler');
 // FIX #5: cohost mas activo — probability 0.08->0.15, cooldown 180s->120s
 const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '120000', 10);
 const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.25');
@@ -46,37 +30,7 @@ function getFallback(type, mention = '') {
   return mention ? `${mention} ${msg}` : msg;
 }
 
-function truncate(msg, limit = TWITCH_MAX_LENGTH) {
-  let clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
-  if (_emoteBeforeRe) clean = clean.replace(_emoteBeforeRe, '$1 $2');
-  if (_emoteAfterRe)  clean = clean.replace(_emoteAfterRe,  '$1 $2');
-  clean = clean.replace(/  +/g, ' ').trim();
-  if (clean.length <= limit) return clean;
-  return clean.slice(0, limit - 3) + '...';
-}
-
-async function groqWithRetry(params, maxRetries = 2) {
-  params.model = GROQ_MODEL;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try { return await groq.chat.completions.create(params); }
-    catch (err) {
-      if ((err.status === 429 || err.message?.includes('rate')) && attempt < maxRetries) {
-        const retryAfterSec = parseInt(err.headers?.['retry-after'] || '0');
-        const delay = retryAfterSec > 0
-          ? retryAfterSec * 1000
-          : 2 ** attempt * 1000 + Math.random() * 500;
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-      throw err;
-    }
-  }
-}
-
-function getEventSubLiveStatus() {
-  try { return require('../eventsub').isLiveViaEventSub(); }
-  catch { return false; }
-}
+function getEventSubLiveStatus() { return getStreamIsLive(); }
 
 // FIX #1: contexto con roles clarificados
 function getChannelContext() {
@@ -162,6 +116,7 @@ function getMinimalContext() {
 
 // --- Usuarios activos en el stream actual ---
 const activeUsersThisStream = new Set();
+const streamMessageCounts = new Map();
 
 function trackActiveUser(username) {
   if (username) activeUsersThisStream.add(username.toLowerCase());
@@ -171,8 +126,14 @@ function getActiveUsers() {
   return [...activeUsersThisStream];
 }
 
+const MIN_REGULAR_MESSAGES = 3;
+function getActiveUsersWithMinMessages(minCount = MIN_REGULAR_MESSAGES) {
+  return [...activeUsersThisStream].filter(u => (streamMessageCounts.get(u) || 0) >= minCount);
+}
+
 function resetActiveUsers() {
   activeUsersThisStream.clear();
+  streamMessageCounts.clear();
 }
 const chatHistory = [];
 const MAX_HISTORY = 40;
@@ -193,6 +154,8 @@ function addToHistory(username, message) {
   if (streamChatBuffer.length > MAX_STREAM_BUFFER) streamChatBuffer.shift();
   lastChatMessageTime = Date.now();
   trackActiveUser(username);
+  const lc = (username || '').toLowerCase();
+  streamMessageCounts.set(lc, (streamMessageCounts.get(lc) || 0) + 1);
 }
 
 function updateLastChatTime() { lastChatMessageTime = Date.now(); }
@@ -478,12 +441,7 @@ function postStreamEnd(client, channel, aiSummary) {
   const msg = aiSummary
     ? `🎬 ¡Fin del stream! ${aiSummary} ¡Hasta la próxima! FUA! 💜🔥`
     : pickRandom(streamEndMessages);
-  try {
-    require('../alerts/handler').throttleSay(client, channel, truncate(msg));
-  } catch (e) {
-    logger.warn(`postStreamEnd throttleSay fallback: ${e.message}`);
-    client.say(channel, truncate(msg));
-  }
+  throttleSay(client, channel, truncate(msg));
 }
 
 // --- Conversation hooks --- FIX #6: game hooks enriquecidos con RAWG + comentarios IA espontáneos
@@ -510,8 +468,7 @@ async function checkChatHook(client, channel) {
   if (silenceTime < HOOK_MIN_SILENCE) return;
   // Si el chat lleva más de 10 min muerto, no forzar — no hay nadie
   try {
-    const eventsub = require('../eventsub');
-    const viewers = await eventsub.getViewersWithAppToken(channelConfig.broadcaster_id);
+    const viewers = await getViewersWithAppToken(channelConfig.broadcaster_id);
     if (viewers !== null && viewers < MIN_VIEWERS_FOR_HOOKS) return;
   } catch {}
 
@@ -1061,8 +1018,7 @@ module.exports = {
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
   initStreamStatus, invalidateContextCache, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,
-  getActiveUsers, resetActiveUsers, onWarmupMode, postStreamEnd,
-  groqWithRetry, truncate,
+  getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
   getStreamChatBuffer, resetStreamChatBuffer,
   restoreCooldowns, clearUserFactsCache,
 };
