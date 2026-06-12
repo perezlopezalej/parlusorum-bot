@@ -86,6 +86,11 @@ function addBotMessage(msg) {
 function getBotHistory() { return [...botMessageHistory]; }
 function resetBotHistory() { botMessageHistory = []; }
 
+// --- Contexto del último cohost (anti-repetición de contexto) ---
+let lastCohostContextHash = '';
+function getLastCohostContextHash() { return lastCohostContextHash; }
+function setLastCohostContextHash(hash) { lastCohostContextHash = hash; }
+
 // --- Anclaje periódico de personalidad ---
 let messagesSinceReinforce = 0;
 const REINFORCE_EVERY = 50;
@@ -160,6 +165,7 @@ module.exports = {
   setPersonalityMode, getPersonalityMode, getModeSetAt,
   addNarrativeEvent, getStreamNarrative, resetStreamNarrative,
   addBotMessage, getBotHistory, resetBotHistory,
+  getLastCohostContextHash, setLastCohostContextHash,
   tickReinforce, resetReinforceCounter,
   setGameContextFailed, getGameContextFailed,
   setLastCapsRageTime, getLastCapsRageTime,

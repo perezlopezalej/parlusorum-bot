@@ -414,6 +414,8 @@ function createEventSubHandler(client, channel, deps) {
         client.say(channel, `🏁 ¡Hype Train terminado en nivel ${level}!${winners} ¡Gracias por el hype!${golden} 💜`);
       }
 
+      const { getBotPersonality } = require('./ai/handler'); // lazy: circular dep eventsub↔ai
+
       if (type === 'channel.prediction.begin') {
         const { title, outcomes } = event || {};
         const opcionesTexto = (outcomes || []).map((o, i) => `${i+1}) ${o.title}`).join(' | ');
@@ -424,7 +426,7 @@ function createEventSubHandler(client, channel, deps) {
             model: GROQ_MODEL_FAST,
             max_tokens: 120,
             messages: [
-              { role: 'system', content: `Eres el cohost del canal. Narra con energía de comentarista deportivo. SIEMPRE en español. Máx 400 caracteres.` },
+              { role: 'system', content: `${getBotPersonality()} Narra con energía de comentarista deportivo. Máx 400 caracteres. Sin presentarte.` },
               { role: 'user', content: `El streamer ha abierto una predicción: '${title}'. Opciones: ${opcionesTexto}. Narra esto en 1-2 frases.` }
             ]
           });
@@ -454,7 +456,7 @@ function createEventSubHandler(client, channel, deps) {
               model: GROQ_MODEL_FAST,
               max_tokens: 120,
               messages: [
-                { role: 'system', content: `Eres el cohost del canal. Anuncia resultados con dramatismo. SIEMPRE en español. Máx 400 caracteres.` },
+                { role: 'system', content: `${getBotPersonality()} Anuncia resultados con dramatismo. Máx 400 caracteres. Sin presentarte.` },
                 { role: 'user', content: `La predicción '${title}' terminó. Ganó: '${ganadorPred.title}' con ${numGanadores} acertantes y ${totalPuntos} puntos en juego. Anuncia el resultado en 1-2 frases.` }
               ]
             });
@@ -474,7 +476,7 @@ function createEventSubHandler(client, channel, deps) {
             model: GROQ_MODEL_FAST,
             max_tokens: 120,
             messages: [
-              { role: 'system', content: `Eres el cohost del canal. Comenta encuestas con energía. SIEMPRE en español. Máx 400 caracteres.` },
+              { role: 'system', content: `${getBotPersonality()} Comenta encuestas con energía. Máx 400 caracteres. Sin presentarte.` },
               { role: 'user', content: `El streamer ha abierto una encuesta: '${title}'. Opciones: ${opcionesTexto}. Comenta esto en 1-2 frases.` }
             ]
           });
@@ -497,7 +499,7 @@ function createEventSubHandler(client, channel, deps) {
               model: GROQ_MODEL_FAST,
               max_tokens: 120,
               messages: [
-                { role: 'system', content: `Eres el cohost del canal. Anuncia resultados de encuestas con energía. SIEMPRE en español. Máx 400 caracteres.` },
+                { role: 'system', content: `${getBotPersonality()} Anuncia resultados de encuestas con energía. Máx 400 caracteres. Sin presentarte.` },
                 { role: 'user', content: `La encuesta '${title}' terminó. Ganó '${ganadorPoll.title}' con ${pct}% de ${totalVotos} votos.${esAjustado ? ' ¡Fue muy reñido!' : ''} Anuncia el resultado en 1-2 frases.` }
               ]
             });
@@ -522,7 +524,7 @@ function createEventSubHandler(client, channel, deps) {
               model: GROQ_MODEL_FAST,
               max_tokens: 60,
               messages: [
-                { role: 'system', content: `Eres el cohost del canal. Agradece con humor y energía. SIEMPRE en español. Máx 200 caracteres.` },
+                { role: 'system', content: `${getBotPersonality()} Agradece con humor y energía. Máx 200 caracteres. Sin presentarte.` },
                 { role: 'user', content: `El usuario ${user_name} canjeó la recompensa '${reward?.title}'. Agradécelo en 1 frase.` }
               ]
             });

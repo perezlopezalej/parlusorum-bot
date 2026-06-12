@@ -4,7 +4,7 @@ const { isSilenced } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
-const { groqWithRetry, truncate } = require('../ai/handler');
+const { groqWithRetry, truncate, NARRATOR_BASE } = require('../ai/handler');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
 
 const timerRefs = [];
@@ -60,7 +60,7 @@ function start(client, config) {
         messages: [
           {
             role: 'system',
-            content: `Eres dios_fua, narrador en directo del canal de ${channelConfig.streamer}. Estilo: comentarista deportivo — dramatico, energetico, como si narraras un partido en vivo. Juego: "${gameContext}". Genera UN comentario narrativo: un dato epico del juego, una prediccion dramatica, un momento de tension, o una pregunta que ponga al chat a pensar. SIEMPRE en espanol. Sin presentarte. Max 1-2 frases. Usa FUA cuando algo merece epica.`
+            content: NARRATOR_BASE(`Juego: "${gameContext}".`)
           },
           { role: 'user', content: `Narra algo sobre ${game}` }
         ]

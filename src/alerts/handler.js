@@ -89,7 +89,7 @@ async function checkFirstMessage(client, channel, tags) {
           messages: [
             {
               role: 'system',
-              content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}.${game} @${safeUsername} acaba de escribir su PRIMER mensaje en el canal. Dale la bienvenida de forma unica, calida y con personalidad.${game ? ' Menciona el juego de forma natural si encaja.' : ''} Sin presentarte. SIEMPRE en espanol. Max 1 frase corta.`
+              content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Canal: ${channelConfig.vibe}. Emotes (máx 1-2): ${(channelConfig.channel_emotes || []).join(', ')}.${game} @${safeUsername} acaba de escribir su PRIMER mensaje en el canal. Dale la bienvenida de forma unica, calida y con personalidad.${game ? ' Menciona el juego de forma natural si encaja.' : ''} Sin presentarte. SIEMPRE en espanol. Max 1 frase corta.`
             },
             { role: 'user', content: `Bienvenida para @${safeUsername}` }
           ]
@@ -210,6 +210,7 @@ function onBits(client, channel, username, bits) {
 }
 
 async function onRaid(client, channel, username, viewers) {
+  const { getBotPersonality } = require('../ai/handler'); // lazy: circular dep alerts↔ai
   client.say(channel, `⚔️ RAID de @${username} con ${viewers} viewers! Bienvenidos a todos! 🔥`);
   if (!canMakeRequest()) { setRaidActive(username); return; }
   try {
@@ -219,7 +220,7 @@ async function onRaid(client, channel, username, viewers) {
     const response = await groqWithRetry({
       max_tokens: 100,
       messages: [
-        { role: 'system', content: `Eres el bot del canal de ${channelConfig.streamer}. Responde SIEMPRE en espanol. Maximo 400 caracteres.` },
+        { role: 'system', content: `${getBotPersonality()} Ha llegado una raid de @${username} con ${viewers} viewers. ${context} Genera una bienvenida calurosa con personalidad. Menciona el juego si venían de jugar. Usa FUA si el momento lo merece. Máx 400 caracteres. Sin presentarte.` },
         { role: 'user', content: `@${username} ha hecho raid con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado y gracioso. Maximo 1-2 frases.` }
       ]
     });

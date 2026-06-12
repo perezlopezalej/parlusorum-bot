@@ -130,7 +130,7 @@ async function handleLurk(client, channel, tags) {
       messages: [
         {
           role: 'system',
-          content: `Eres dios_fua, bot del canal de ParLusorum.${game} @${username} activa el modo lurker. Genera UNA despedida única, graciosa y cálida para @${username}. Sin presentarte. SIEMPRE en español. Max 1 frase corta.`
+          content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Canal: ${channelConfig.vibe}. Emotes (máx 1-2): ${(channelConfig.channel_emotes || []).join(', ')}.${game} @${username} activa el modo lurker. Genera UNA despedida única, graciosa y cálida para @${username}. Sin presentarte. SIEMPRE en español. Max 1 frase corta.`
         },
         { role: 'user', content: `Despide a @${username} en modo lurk` }
       ]
