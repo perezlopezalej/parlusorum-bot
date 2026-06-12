@@ -139,7 +139,8 @@ client.on('connected', async (addr, port) => {
     getActiveUsers: ai.getActiveUsersWithMinMessages,
     resetActiveUsers: ai.resetActiveUsers,
     onStreamOnline: alerts.onStreamOnline,
-    clearUserFactsCache: ai.clearUserFactsCache
+    clearUserFactsCache: ai.clearUserFactsCache,
+    handleQuestion: ai.handleQuestion
   });
 
   if (!timersStarted) {

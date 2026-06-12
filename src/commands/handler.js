@@ -1,14 +1,14 @@
 const { canMakeRequest } = require('../utils/ratelimit');
 const { getChannelStats, incrementChannelStat, persistCooldown } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
-const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount } = require('../utils/state');
+const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats } = require('../utils/state');
 const { handleShoutout, groqWithRetry, truncate } = require('../ai/handler');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
-function resetSessionCounters() { resetDeathCount(); sessionWins = 0; resetStreamMetrics(); }
+function resetSessionCounters() { resetDeathCount(); sessionWins = 0; resetStreamMetrics(); resetTriviaStats(); }
 
 // --- Contador win/loss ---
 let sessionWins = 0;

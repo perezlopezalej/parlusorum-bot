@@ -5,6 +5,8 @@ const channelConfig = require('../../config/channel.json');
 // llama-4-maverick (meta-llama/llama-4-maverick-17b-128e-instruct) deprecado en Groq feb/2026.
 // Cambia GROQ_MODEL en .env si quieres probarlo, pero tiene la mitad de rate limit.
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'llama-3.1-8b-instant';
+const GROQ_MODEL_COMPOUND = process.env.GROQ_MODEL_COMPOUND || 'groq/compound';
 
 const TWITCH_MAX_LENGTH = 490;
 
@@ -20,7 +22,7 @@ const _emoteAfterRe  = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g'
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 async function groqWithRetry(params, maxRetries = 2) {
-  params.model = GROQ_MODEL;
+  params.model = params.model || GROQ_MODEL;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try { return await groq.chat.completions.create(params); }
     catch (err) {
@@ -46,4 +48,4 @@ function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   return clean.slice(0, limit - 3) + '...';
 }
 
-module.exports = { groqWithRetry, truncate };
+module.exports = { groqWithRetry, truncate, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND };

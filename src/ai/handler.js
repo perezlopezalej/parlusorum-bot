@@ -4,12 +4,11 @@ const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChann
 const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
-const { searchWeb, needsWebSearch } = require('../utils/search');
 const { getMemoryContext } = require('../memory/handler');
 const { persistCooldown } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const { saveHighlight } = require('../utils/storage');
-const { groqWithRetry, truncate } = require('../utils/groq-utils');
+const { groqWithRetry, truncate, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
 // FIX #5: cohost mas activo — probability 0.08->0.15, cooldown 180s->120s
@@ -134,6 +133,7 @@ function getActiveUsersWithMinMessages(minCount = MIN_REGULAR_MESSAGES) {
 function resetActiveUsers() {
   activeUsersThisStream.clear();
   streamMessageCounts.clear();
+  userConversations.clear();
 }
 const chatHistory = [];
 const MAX_HISTORY = 40;
@@ -319,6 +319,19 @@ function getUserType(username, tags) {
 let lastCohostTime = 0;
 let cohostRunning = false;
 
+function detectChatMood(messages) {
+  const text = messages.join(' ').toLowerCase();
+  const hype = ['jaja','lol','gg','pog','hype','vamo','goat','omg','wow','ez',
+                'pepehype','pogchamp','pepega','luego','siuu'];
+  const frustracion = ['oof','no','mal','wtf','otra vez','siempre','muerto',
+                       'nooo','noooo','rip','gg ez','mentira','dios mio'];
+  const hypeCount = hype.filter(w => text.includes(w)).length;
+  const frustCount = frustracion.filter(w => text.includes(w)).length;
+  if (hypeCount >= 2) return 'HYPE';
+  if (frustCount >= 2) return 'FRUSTRACIÓN';
+  return 'NEUTRO';
+}
+
 async function handleCohost(client, channel) {
   if (isSilenced() || isTriviaActive() || cohostRunning) return;
   const now = Date.now();
@@ -347,12 +360,16 @@ async function handleCohost(client, channel) {
     const raidNote = isRaidActive()
       ? ` Acaba de llegar una raid de @${getRaidUsername()}, hay nuevos viewers en el canal. Si encaja con el chat, menciona la raid con energia.`
       : '';
+    const recentMsgs = chatHistory.slice(-10).map(m => m.message || '');
+    const mood = detectChatMood(recentMsgs);
+    const moodNote = `\nEl chat está en modo ${mood} ahora mismo. Ajusta el tono de tu comentario a ese ambiente.`;
     const response = await groqWithRetry({
+      model: GROQ_MODEL_FAST,
       max_tokens: 70,
       messages: [
         {
           role: 'system',
-          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game}${raidNote} Haces comentarios espontaneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en espanol, sin palabras en ingles. Usas FUA con caracter real: el momento exacto es DURANTE la dificultad, cuando el streamer esta a punto de rendirse — ese es el impulso, no la celebracion despues. No en cada mensaje.`
+          content: `Eres un espectador habitual del canal de ${channelConfig.streamer} con buen rollo. ${game}${raidNote} Haces comentarios espontaneos como alguien del chat. Sin saludos. Sin presentarte. 1 frase en espanol, sin palabras en ingles. Usas FUA con caracter real: el momento exacto es DURANTE la dificultad, cuando el streamer esta a punto de rendirse — ese es el impulso, no la celebracion despues. No en cada mensaje.${moodNote}`
         },
         { role: 'user', content: `Chat reciente:\n${recentContext}${(() => { const n = getStreamNarrative(); return n.length > 0 ? `\n<stream_story>${n.map(e => `[${e.type}] ${e.description}`).join(' | ')}</stream_story>` : ''; })()}${botBlock}\nComenta algo natural sobre lo que se habla.` }
       ]
@@ -595,20 +612,6 @@ async function handleQuestion(client, channel, tags, args) {
     const personality = await getPersonality(trackMessage(), userType, username);
     const userConv = getUserConversation(userId);
 
-    // FIX #7: busqueda web con Tavily si la pregunta es factual
-    let searchContext = '';
-    if (needsWebSearch(question)) {
-      try {
-        const webResult = await searchWeb(question);
-        if (webResult) {
-          searchContext = `\n[Informacion web]: ${webResult}`;
-          logger.info(`Tavily busqueda: "${question.slice(0, 50)}"`);
-        }
-      } catch (err) {
-        logger.warn(`Tavily fallo: ${err.message}`);
-      }
-    }
-
     const tone = detectTone(question);
     const toneNote = tone === 'frustration' ? '\nEl usuario suena frustrado. Responde con empatía breve y ánimo, no con chistes.'
       : tone === 'hype' ? '\nEl usuario está emocionado. Responde con energía y entusiasmo.'
@@ -617,9 +620,10 @@ async function handleQuestion(client, channel, tags, args) {
     const trapNote = isConfirmationTrap(question)
       ? '\nEl usuario busca validación automática. NO confirmes por defecto. Responde con tu criterio real, aunque no sea lo que quiere oír. Puedes estar de acuerdo, pero que sea genuino, no automático.'
       : '';
-    const systemContent = `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. NUNCA inventes datos especificos. Sin "Lo siento". Responde SIEMPRE en espanol.${searchContext}`;
+    const systemContent = `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. NUNCA inventes datos especificos. Sin "Lo siento". Responde SIEMPRE en espanol.`;
 
     const response = await groqWithRetry({
+      model: GROQ_MODEL_COMPOUND,
       max_tokens: 150,
       messages: [
         { role: 'system', content: systemContent },
@@ -811,6 +815,7 @@ async function checkEmoteSpam(client, channel, tags, message) {
       recentEmoteUse.delete(token);
       try {
         const response = await groqWithRetry({
+          model: GROQ_MODEL_FAST,
           max_tokens: 60,
           messages: [
             { role: 'system', content: `Eres dios_fua, narrador del canal de ${channelConfig.streamer}. El chat acaba de inundarse con "${token}" — reaccion masiva y sincronizada. Narra este momento de reaccion colectiva con energia de comentarista deportivo. SIEMPRE en espanol. Max 1 frase. Usa FUA si merece epica.` },
@@ -870,6 +875,7 @@ async function checkCapsRage(client, channel, tags, message) {
       const gameInfo = await getCurrentGame().catch(() => null);
       const game = gameInfo?.game ? ` Juego: "${gameInfo.game}".` : '';
       const response = await groqWithRetry({
+        model: GROQ_MODEL_FAST,
         max_tokens: 60,
         messages: [
           { role: 'system', content: `Eres dios_fua, narrador del canal de ${channelConfig.streamer}.${game} El chat ha entrado en MODO CAPS — todos gritando a la vez. Narra este momento de locura colectiva con energia de comentarista deportivo. SIEMPRE en espanol. Max 1 frase. Usa FUA.` },
@@ -974,6 +980,7 @@ async function checkPatternMatch(client, channel, tags, message) {
       : '';
 
     const response = await groqWithRetry({
+      model: GROQ_MODEL_FAST,
       max_tokens: 120,
       messages: [
         { role: 'system', content: `${personality}${toneNote}${trapNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol.` },

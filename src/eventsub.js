@@ -1,12 +1,15 @@
 const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
+const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
+const { throttleSay } = require('./alerts/handler');
 const {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount,
   resetStreamNarrative, resetBotHistory, resetReinforceCounter,
+  getActivePrediction, setActivePrediction, clearActivePrediction,
 } = require('./utils/state');
 
 const TWITCH_MESSAGE_ID = 'twitch-eventsub-message-id';
@@ -169,9 +172,59 @@ async function registerSubscriptions(broadcasterId) {
         logger.warn(`⚠️ EventSub ${sub.type}: ${JSON.stringify(data.message || data.error || data)}`);
       }
     }
-    return true;
   } catch (e) {
     logger.error(`EventSub error: ${e.message}`);
+    return false;
+  }
+
+  // Subs con user access token — BROADCASTER_TOKEN debe tener scopes:
+  // channel:read:hype_train, channel:read:predictions, channel:read:polls, channel:read:redemptions
+  const broadcasterToken = process.env.BROADCASTER_TOKEN;
+  if (!broadcasterToken) {
+    logger.warn('⚠️ EventSub: BROADCASTER_TOKEN no configurado — hype_train, predicciones, polls y channel points no suscritos.');
+    return true;
+  }
+
+  const userTokenSubs = [
+    { type: 'channel.hype_train.begin',    version: '2', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.hype_train.progress', version: '2', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.hype_train.end',      version: '2', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.prediction.begin',    version: '1', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.prediction.lock',     version: '1', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.prediction.end',      version: '1', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.poll.begin',          version: '1', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.poll.end',            version: '1', condition: { broadcaster_user_id: broadcasterId } },
+    { type: 'channel.channel_points_custom_reward_redemption.add', version: '1', condition: { broadcaster_user_id: broadcasterId } },
+  ];
+  const userHeaders = {
+    'Client-ID': process.env.CLIENT_ID,
+    'Authorization': `Bearer ${broadcasterToken}`,
+    'Content-Type': 'application/json'
+  };
+
+  try {
+    const userTokenListRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers: userHeaders });
+    const userTokenListData = await userTokenListRes.json();
+    const oldUserTokenSubs = userTokenListData.data?.filter(s => userTokenSubs.some(sub => sub.type === s.type)) || [];
+    for (const sub of oldUserTokenSubs) {
+      await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, { method: 'DELETE', headers: userHeaders });
+    }
+
+    for (const sub of userTokenSubs) {
+      const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+        method: 'POST', headers: userHeaders,
+        body: JSON.stringify({ ...sub, transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET } })
+      });
+      const data = await res.json();
+      if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
+        logger.info(`✅ EventSub: ${sub.type} registrado.`);
+      } else {
+        logger.warn(`⚠️ EventSub ${sub.type}: ${JSON.stringify(data.message || data.error || data)}`);
+      }
+    }
+    return true;
+  } catch (e) {
+    logger.error(`EventSub user-token subs error: ${e.message}`);
     return false;
   }
 }
@@ -206,7 +259,8 @@ function createEventSubHandler(client, channel, deps) {
     resetActiveUsers,
     onStreamOnline,
     resetSessionCounters,
-    clearUserFactsCache
+    clearUserFactsCache,
+    handleQuestion
   } = deps;
 
   return async function handleEventSub(req, res, rawBody) {
@@ -338,6 +392,146 @@ function createEventSubHandler(client, channel, deps) {
             }
           }
         });
+      }
+
+      if (type === 'channel.hype_train.begin') {
+        const { level = 1, is_golden_kappa_train = false } = event || {};
+        const goldenNote = is_golden_kappa_train ? ' ¡¡Es un GOLDEN KAPPA TRAIN!! 🏆' : '';
+        logger.info(`🚂 Hype Train begin: nivel ${level}${is_golden_kappa_train ? ' (golden kappa)' : ''}`);
+        client.say(channel, `🚂 ¡HYPE TRAIN nivel ${level} ha comenzado!${goldenNote} ¡Contribuye con bits o subs! FUA 🔥`);
+      }
+
+      if (type === 'channel.hype_train.progress') {
+        const { level = '?', total = '?' } = event || {};
+        logger.info(`🚂 Hype Train progreso: nivel ${level}, total ${total}`);
+      }
+
+      if (type === 'channel.hype_train.end') {
+        const { level = 1, is_golden_kappa_train = false, winner_count = null } = event || {};
+        const winners = winner_count ? ` ¡${winner_count} ganadores!` : '';
+        const golden = is_golden_kappa_train ? ' 🏆 ¡GOLDEN KAPPA!' : '';
+        logger.info(`🏁 Hype Train end: nivel ${level}${is_golden_kappa_train ? ' (golden kappa)' : ''}`);
+        client.say(channel, `🏁 ¡Hype Train terminado en nivel ${level}!${winners} ¡Gracias por el hype!${golden} 💜`);
+      }
+
+      if (type === 'channel.prediction.begin') {
+        const { title, outcomes } = event || {};
+        const opcionesTexto = (outcomes || []).map((o, i) => `${i+1}) ${o.title}`).join(' | ');
+        setActivePrediction({ title, outcomes });
+        logger.info(`🔮 Predicción comenzada: "${title}"`);
+        try {
+          const response = await groqWithRetry({
+            model: GROQ_MODEL_FAST,
+            max_tokens: 120,
+            messages: [
+              { role: 'system', content: `Eres el cohost del canal. Narra con energía de comentarista deportivo. SIEMPRE en español. Máx 400 caracteres.` },
+              { role: 'user', content: `El streamer ha abierto una predicción: '${title}'. Opciones: ${opcionesTexto}. Narra esto en 1-2 frases.` }
+            ]
+          });
+          throttleSay(client, channel, truncate(response.choices[0].message.content));
+        } catch {
+          throttleSay(client, channel, truncate(`🔮 ¡PREDICCIÓN! "${title}" — ${opcionesTexto} — ¡Apuesta tus puntos! 🎯`));
+        }
+      }
+
+      if (type === 'channel.prediction.lock') {
+        const pred = getActivePrediction();
+        const titulo = pred?.title || 'la predicción';
+        logger.info(`🔒 Predicción cerrada: "${titulo}"`);
+        throttleSay(client, channel, truncate(`🔒 ¡Predicción cerrada! Ya no se pueden hacer apuestas en "${titulo}". ¡A esperar el resultado! 👀`));
+      }
+
+      if (type === 'channel.prediction.end') {
+        const { winning_outcome_id, outcomes, title } = event || {};
+        clearActivePrediction();
+        const ganadorPred = (outcomes || []).find(o => o.id === winning_outcome_id);
+        if (ganadorPred) {
+          const totalPuntos = ganadorPred.channel_points || 0;
+          const numGanadores = ganadorPred.top_predictors?.length ?? 0;
+          logger.info(`🏆 Predicción terminada: ganó "${ganadorPred.title}"`);
+          try {
+            const response = await groqWithRetry({
+              model: GROQ_MODEL_FAST,
+              max_tokens: 120,
+              messages: [
+                { role: 'system', content: `Eres el cohost del canal. Anuncia resultados con dramatismo. SIEMPRE en español. Máx 400 caracteres.` },
+                { role: 'user', content: `La predicción '${title}' terminó. Ganó: '${ganadorPred.title}' con ${numGanadores} acertantes y ${totalPuntos} puntos en juego. Anuncia el resultado en 1-2 frases.` }
+              ]
+            });
+            throttleSay(client, channel, truncate(response.choices[0].message.content));
+          } catch {
+            throttleSay(client, channel, truncate(`🏆 ¡Ganó "${ganadorPred.title}"! ${numGanadores > 0 ? `¡${numGanadores} acertaron!` : ''} 🎉`));
+          }
+        }
+      }
+
+      if (type === 'channel.poll.begin') {
+        const { title, choices } = event || {};
+        const opcionesTexto = (choices || []).map((c, i) => `${i+1}) ${c.title}`).join(' | ');
+        logger.info(`📊 Poll comenzado: "${title}"`);
+        try {
+          const response = await groqWithRetry({
+            model: GROQ_MODEL_FAST,
+            max_tokens: 120,
+            messages: [
+              { role: 'system', content: `Eres el cohost del canal. Comenta encuestas con energía. SIEMPRE en español. Máx 400 caracteres.` },
+              { role: 'user', content: `El streamer ha abierto una encuesta: '${title}'. Opciones: ${opcionesTexto}. Comenta esto en 1-2 frases.` }
+            ]
+          });
+          throttleSay(client, channel, truncate(response.choices[0].message.content));
+        } catch {
+          throttleSay(client, channel, truncate(`📊 ¡ENCUESTA! "${title}" — ${opcionesTexto} — ¡Vota en el chat!`));
+        }
+      }
+
+      if (type === 'channel.poll.end') {
+        const { title, choices } = event || {};
+        if (choices && choices.length > 0) {
+          const ganadorPoll = choices.reduce((a, b) => (b.votes > a.votes ? b : a));
+          const totalVotos = choices.reduce((sum, c) => sum + c.votes, 0);
+          const pct = totalVotos > 0 ? Math.round((ganadorPoll.votes / totalVotos) * 100) : 0;
+          const esAjustado = pct < 40;
+          logger.info(`📊 Poll terminado: ganó "${ganadorPoll.title}" con ${pct}%`);
+          try {
+            const response = await groqWithRetry({
+              model: GROQ_MODEL_FAST,
+              max_tokens: 120,
+              messages: [
+                { role: 'system', content: `Eres el cohost del canal. Anuncia resultados de encuestas con energía. SIEMPRE en español. Máx 400 caracteres.` },
+                { role: 'user', content: `La encuesta '${title}' terminó. Ganó '${ganadorPoll.title}' con ${pct}% de ${totalVotos} votos.${esAjustado ? ' ¡Fue muy reñido!' : ''} Anuncia el resultado en 1-2 frases.` }
+              ]
+            });
+            throttleSay(client, channel, truncate(response.choices[0].message.content));
+          } catch {
+            throttleSay(client, channel, truncate(`📊 Encuesta terminada: ganó "${ganadorPoll.title}" con ${pct}% de los votos${esAjustado ? ' (¡muy reñido!)' : ''}`));
+          }
+        }
+      }
+
+      if (type === 'channel.channel_points_custom_reward_redemption.add') {
+        try {
+          const { user_name, reward, user_input } = event || {};
+          const rewardTitle = reward?.title?.toLowerCase() || '';
+          const esPreguntaAlBot = ['bot', 'pregunta', 'dios'].some(kw => rewardTitle.includes(kw));
+          logger.info(`🎁 Canje: ${user_name} → "${reward?.title}"`);
+          if (esPreguntaAlBot && user_input?.trim() && handleQuestion) {
+            const fakeTags = { 'display-name': user_name, 'user-id': user_name, username: user_name };
+            await handleQuestion(client, channel, fakeTags, ['!dios_fua', ...user_input.trim().split(' ')]);
+          } else {
+            const response = await groqWithRetry({
+              model: GROQ_MODEL_FAST,
+              max_tokens: 60,
+              messages: [
+                { role: 'system', content: `Eres el cohost del canal. Agradece con humor y energía. SIEMPRE en español. Máx 200 caracteres.` },
+                { role: 'user', content: `El usuario ${user_name} canjeó la recompensa '${reward?.title}'. Agradécelo en 1 frase.` }
+              ]
+            });
+            throttleSay(client, channel, truncate(response.choices[0].message.content));
+          }
+        } catch {
+          const { user_name, reward } = event || {};
+          throttleSay(client, channel, truncate(`🎁 ¡@${user_name} canjeó "${reward?.title}"! ¡Gracias! 💜`));
+        }
       }
 
       return;

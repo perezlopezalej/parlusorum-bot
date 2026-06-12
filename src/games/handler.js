@@ -1,8 +1,8 @@
-const { groqWithRetry } = require('../ai/handler');
+const { groqWithRetry } = require('../utils/groq-utils');
 const { getCurrentGame } = require('../twitch/api');
 const { canMakeRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
-const { setTriviaActive } = require('../utils/state');
+const { setTriviaActive, getTriviaStats, registrarAcierto, registrarFallo } = require('../utils/state');
 
 // --- Trivia (general + canal) ---
 const triviaQuestions = [
@@ -48,7 +48,7 @@ let triviaHintStage = 0;
 const askedQuestions = new Set();
 
 // Evita llamar a Groq más de una vez cada 2 min para el mismo juego
-let lastGeneratedQuestion = null; // { question, answer, pistas, game, ts }
+let lastGeneratedQuestion = null; // { question, answer, pistas, curiosidad, game, ts }
 const GENERATED_TTL = 2 * 60 * 1000;
 
 async function handleTrivia(client, channel) {
@@ -68,20 +68,47 @@ async function handleTrivia(client, channel) {
             Date.now() - lastGeneratedQuestion.ts < GENERATED_TTL) {
           q = lastGeneratedQuestion;
         } else {
+          const stats = getTriviaStats();
+          let dificultadHint = '';
+          if (stats.rachaActual >= 3) {
+            dificultadHint = ` El chat lleva una racha de ${stats.rachaActual} aciertos seguidos — genera una pregunta difícil.`;
+          } else if (stats.rachaActual <= -3) {
+            dificultadHint = ` El chat lleva ${Math.abs(stats.rachaActual)} fallos seguidos — genera una pregunta más fácil.`;
+          }
           const response = await groqWithRetry({
-            max_tokens: 200,
-            response_format: { type: 'json_object' },
+            max_tokens: 300,
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'generate_trivia',
+                description: 'Genera una pregunta de trivia sobre el juego actual',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    pregunta:           { type: 'string' },
+                    opciones:           { type: 'array', items: { type: 'string' }, minItems: 4, maxItems: 4 },
+                    respuesta_correcta: { type: 'string', description: 'Debe ser exactamente una de las opciones' },
+                    dificultad:         { type: 'string', enum: ['facil', 'media', 'dificil'] },
+                    curiosidad:         { type: 'string', description: 'Dato extra revelado al dar la respuesta' }
+                  },
+                  required: ['pregunta', 'opciones', 'respuesta_correcta', 'dificultad', 'curiosidad']
+                }
+              }
+            }],
+            tool_choice: { type: 'function', function: { name: 'generate_trivia' } },
             messages: [{
               role: 'user',
-              content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nResponde con JSON:\n{"pregunta":"...","respuesta":"...","pistas":["pista1","pista2"]}\n- "respuesta": en minúsculas, 1-3 palabras\n- "pistas": 2 pistas que ayuden sin revelar la respuesta\n- La pregunta debe ser concreta y verificable`
+              content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch. La respuesta debe estar en minúsculas, 1-3 palabras.${dificultadHint}`
             }]
           });
-          const parsed = JSON.parse(response.choices[0].message.content);
-          if (parsed.pregunta && parsed.respuesta) {
+          const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+          const args = JSON.parse(toolCall.function.arguments);
+          if (args.pregunta && args.respuesta_correcta) {
             q = {
-              question: parsed.pregunta,
-              answer: parsed.respuesta.toLowerCase(),
-              pistas: Array.isArray(parsed.pistas) ? parsed.pistas.slice(0, 2) : [],
+              question: args.pregunta,
+              answer: args.respuesta_correcta.toLowerCase(),
+              pistas: Array.isArray(args.opciones) ? args.opciones.slice(0, 2) : [],
+              curiosidad: args.curiosidad || '',
               game,
               ts: Date.now()
             };
@@ -127,9 +154,11 @@ function scheduleNextTriviaPhase(client, channel) {
       triviaHintStage++;
       scheduleNextTriviaPhase(client, channel);
     } else {
-      client.say(channel, `⏰ ¡Tiempo! La respuesta era: ${activeTriviaQuestion.answer}`);
+      const curiosidadTimeout = activeTriviaQuestion.curiosidad ? ` 💡 ${activeTriviaQuestion.curiosidad}` : '';
+      client.say(channel, `⏰ ¡Tiempo! La respuesta era: ${activeTriviaQuestion.answer}${curiosidadTimeout}`);
       activeTriviaQuestion = null;
       triviaHintStage = 0;
+      registrarFallo();
       setTriviaActive(false);
     }
   }, pistas.length > 0 ? 15000 : 30000);
@@ -146,9 +175,11 @@ function checkTriviaAnswer(client, channel, tags, message) {
   if (normalizedMsg === normalizedAnswer) {
     const username = tags['display-name'];
     clearTimeout(triviaTimeout);
-    client.say(channel, `🎉 ¡@${username} ha acertado! ¡Enhorabuena! 🏆`);
+    const curiosidadWin = activeTriviaQuestion.curiosidad ? ` 💡 ${activeTriviaQuestion.curiosidad}` : '';
+    client.say(channel, `🎉 ¡@${username} ha acertado! ¡Enhorabuena! 🏆${curiosidadWin}`);
     activeTriviaQuestion = null;
     triviaHintStage = 0;
+    registrarAcierto();
     setTriviaActive(false);
   }
 }

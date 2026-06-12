@@ -130,6 +130,28 @@ function getDeathCount() { return deathCount; }
 function incrementDeathCount() { deathCount++; return deathCount; }
 function resetDeathCount() { deathCount = 0; }
 
+// --- Predicción activa ---
+let activePrediction = null;
+function getActivePrediction() { return activePrediction; }
+function setActivePrediction(val) { activePrediction = val; }
+function clearActivePrediction() { activePrediction = null; }
+
+// --- Estadísticas de trivia (dificultad adaptativa) ---
+let triviaStats = { aciertos: 0, fallos: 0, rachaActual: 0 };
+
+function getTriviaStats() { return { ...triviaStats }; }
+function registrarAcierto() {
+  triviaStats.aciertos++;
+  triviaStats.rachaActual = Math.max(0, triviaStats.rachaActual) + 1;
+}
+function registrarFallo() {
+  triviaStats.fallos++;
+  triviaStats.rachaActual = Math.min(0, triviaStats.rachaActual) - 1;
+}
+function resetTriviaStats() {
+  triviaStats = { aciertos: 0, fallos: 0, rachaActual: 0 };
+}
+
 module.exports = {
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,
@@ -145,4 +167,6 @@ module.exports = {
   setStreamIsLive, getStreamIsLive,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, incrementDeathCount, resetDeathCount,
+  getActivePrediction, setActivePrediction, clearActivePrediction,
+  getTriviaStats, registrarAcierto, registrarFallo, resetTriviaStats,
 };
