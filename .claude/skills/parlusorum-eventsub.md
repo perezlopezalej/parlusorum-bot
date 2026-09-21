@@ -106,7 +106,7 @@ if (type === 'channel.subscribe' && event?.user_name) {
 ```
 EVENTSUB_SECRET    → secret para verificación HMAC (mín 10 chars, máx 100)
 PUBLIC_URL         → URL pública del servidor; en Render se puede omitir y se usa RENDER_EXTERNAL_URL
-                      (e.g. https://parlusorum-bot-c9i2.onrender.com)
+                      (e.g. https://parlusorum-bot.onrender.com)
                      El webhook se registra como ${PUBLIC_URL}/eventsub
 CLIENT_ID          → App client ID (para registrar suscripciones)
 CLIENT_SECRET      → App client secret (para obtener app access token)

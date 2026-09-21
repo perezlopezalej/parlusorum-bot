@@ -5,8 +5,14 @@ Deploy en Render y flujo de trabajo local con ngrok para EventSub.
 ## Estado actual
 
 El bot corre en **Render** (free tier), servicio `parlusorum-bot`, URL pública
-`https://parlusorum-bot-c9i2.onrender.com`. Migrado desde Railway; ya no queda
-nada de Railway en el repo (`railway.toml` y `Procfile` eliminados).
+`https://parlusorum-bot.onrender.com`. Migrado desde Railway; ya no queda nada
+de Railway en el repo (`railway.toml` y `Procfile` eliminados).
+
+El servicio antiguo `parlusorum-bot-c9i2.onrender.com` quedó obsoleto en la
+migración. **Nunca deben estar los dos encendidos a la vez**: dos instancias con
+el mismo `BOT_TOKEN` duplican cada mensaje en el chat, y la que arranque última
+reescribe las suscripciones EventSub contra su propia URL dejando a la otra sin
+eventos. Además dos servicios free siempre activos no caben en las 750 h/mes.
 
 ## Setup en Render
 
@@ -82,13 +88,36 @@ Verificar a qué URL apuntan las suscripciones reales en Twitch:
 
 ```bash
 npm run check:eventsub                         # compara con PUBLIC_URL/RENDER_EXTERNAL_URL del .env
-node scripts/check-eventsub.js https://parlusorum-bot-c9i2.onrender.com
+node scripts/check-eventsub.js https://parlusorum-bot.onrender.com
 node scripts/check-eventsub.js --prune         # borra las que apunten a otra URL
 ```
 
 Necesita `CLIENT_ID` y `CLIENT_SECRET`. Sin un `BROADCASTER_TOKEN` válido solo
 lista las de app token (follow, stream.online, stream.offline); las de hype
 train, predicciones, polls y channel points requieren el token del streamer.
+
+## Cutover a un servicio nuevo de Render
+
+El orden importa: si el servicio nuevo conecta a IRC antes de que el viejo esté
+apagado, hay bot duplicado en el chat y robo de suscripciones EventSub. Guardar
+variables en el dashboard **reinicia el servicio automáticamente**, así que ese
+guardado es el momento en que el nuevo intenta conectar.
+
+1. Apagar el viejo primero: Settings → Suspend Web Service.
+2. Copiar las variables del viejo al nuevo. **No copiar `PUBLIC_URL`** (apuntaría
+   al dominio viejo y EventSub registraría callbacks muertos) **ni `PORT`**
+   (Render inyecta el suyo). `RENDER_EXTERNAL_URL` tampoco se toca: es automática.
+3. Al guardar, el nuevo reinicia. En los logs debe aparecer:
+   `✅ Bot conectado a #parlusorum` → `🔗 EventSub callback: https://<nuevo>/eventsub`
+   → `✅ EventSub: stream.online registrado`.
+   Si sale `Login authentication failed`, el `BOT_TOKEN` está caducado: sin conexión
+   IRC no se ejecuta `client.on('connected')`, así que tampoco hay EventSub, ni
+   timers, ni handler del webhook (`POST /eventsub` devuelve 503). Solo vive `/health`.
+4. Verificar desde local: `node scripts/check-eventsub.js https://<nuevo>` — las tres
+   suscripciones de app token deben salir con ✅ y estado `enabled`.
+5. Con todo verde, borrar el servicio viejo (o dejarlo suspendido unos días como
+   rollback: para volver, basta con reanudarlo y reiniciarlo, que re-registra
+   EventSub contra su URL).
 
 ## Particularidades del free tier de Render
 
