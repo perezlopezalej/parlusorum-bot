@@ -1,0 +1,51 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Crear el servicio: Render Dashboard → New → Blueprint → seleccionar este repo.
+# Las variables con `sync: false` se piden en el formulario de creación (no se versionan).
+services:
+  - type: web
+    name: parlusorum-bot
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # --- Runtime ---
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+
+      # --- Obligatorias (el bot hace process.exit si falta alguna) ---
+      - key: BOT_USERNAME
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: CHANNEL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: BROADCASTER_TOKEN
+        sync: false
+      - key: EVENTSUB_SECRET
+        sync: false
+
+      # --- Opcionales pero en uso en producción ---
+      - key: BROADCASTER_REFRESH_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: RAWG_API_KEY
+        sync: false
+
+      # PUBLIC_URL no hace falta: si no está, EventSub usa RENDER_EXTERNAL_URL
+      # (inyectada por Render). Definirla solo si se usa un dominio propio.

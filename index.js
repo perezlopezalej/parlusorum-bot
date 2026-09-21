@@ -65,7 +65,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => logger.info(`🌐 Servidor HTTP en puerto ${PORT}`));
 
 // Self-ping to keep Render free tier alive
-const SELF_PING_URL = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL;
+const SELF_PING_URL = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
 if (SELF_PING_URL) {
   setInterval(async () => {
     try {

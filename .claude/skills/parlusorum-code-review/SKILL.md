@@ -85,7 +85,7 @@ Verificar:
 
 ## 4. NODE.JS PRODUCCIÓN
 
-**CVE-2025-59465**: Node.js 22+ tiene vulnerabilidades conocidas en el stack HTTP/2. Verificar la versión exacta en Railway (`process.version` o `engines` en `package.json`) y si aplica el CVE al modo de uso del bot (HTTP/1.1 para EventSub webhook es menos afectado que HTTP/2 puro).
+**CVE-2025-59465**: Node.js 22+ tiene vulnerabilidades conocidas en el stack HTTP/2. Verificar la versión exacta en Render (`process.version` o `engines` en `package.json`) y si aplica el CVE al modo de uso del bot (HTTP/1.1 para EventSub webhook es menos afectado que HTTP/2 puro).
 
 **Async handlers sin try/catch**: En `EventEmitter`, una excepción lanzada dentro de un handler `async` no se propaga como `unhandledRejection` en todas las versiones de Node — puede silenciarse.
 

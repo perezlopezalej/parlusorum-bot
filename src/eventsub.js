@@ -37,6 +37,12 @@ function getStreamUptime() {
 
 function isLiveViaEventSub() { return getStreamIsLive(); }
 
+// URL pública del servicio. En Render, RENDER_EXTERNAL_URL se inyecta sola;
+// PUBLIC_URL solo hace falta con dominio propio o en local con ngrok.
+function getPublicBaseUrl() {
+  return (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, '');
+}
+
 // --- App Access Token con cache ---
 let appTokenCache = null;
 let appTokenExpiry = 0;
@@ -131,11 +137,13 @@ async function registerSubscriptions(broadcasterId) {
     logger.warn('⚠️ EventSub: EVENTSUB_SECRET no configurado — suscripciones no registradas.');
     return false;
   }
-  const callbackUrl = `${process.env.PUBLIC_URL}/eventsub`;
-  if (!callbackUrl || callbackUrl.startsWith('undefined')) {
-    logger.warn('⚠️ EventSub: PUBLIC_URL no configurada.');
+  const publicBase = getPublicBaseUrl();
+  if (!publicBase) {
+    logger.warn('⚠️ EventSub: ni PUBLIC_URL ni RENDER_EXTERNAL_URL configuradas.');
     return false;
   }
+  const callbackUrl = `${publicBase}/eventsub`;
+  logger.info(`🔗 EventSub callback: ${callbackUrl}`);
 
   const appToken = await getAppAccessToken();
   if (!appToken) { logger.warn('⚠️ EventSub: no se pudo obtener app token.'); return false; }
@@ -554,5 +562,6 @@ module.exports = {
   isLiveViaEventSub,
   getStreamUptime,
   getViewersWithAppToken,
-  getAppAccessToken
+  getAppAccessToken,
+  getPublicBaseUrl
 };

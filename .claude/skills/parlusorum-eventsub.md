@@ -105,7 +105,8 @@ if (type === 'channel.subscribe' && event?.user_name) {
 
 ```
 EVENTSUB_SECRET    → secret para verificación HMAC (mín 10 chars, máx 100)
-PUBLIC_URL         → URL pública del servidor, e.g. https://xxx.railway.app
+PUBLIC_URL         → URL pública del servidor; en Render se puede omitir y se usa RENDER_EXTERNAL_URL
+                      (e.g. https://parlusorum-bot-c9i2.onrender.com)
                      El webhook se registra como ${PUBLIC_URL}/eventsub
 CLIENT_ID          → App client ID (para registrar suscripciones)
 CLIENT_SECRET      → App client secret (para obtener app access token)
@@ -138,4 +139,4 @@ twitch event trigger channel.follow -F https://TU_NGROK_URL/eventsub -s TU_EVENT
 | Recomendado para | servidores con dominio | desarrollo local |
 | Reconexión | automática (Twitch reintenta) | manual |
 
-El proyecto usa **webhook** porque está en Railway con URL pública. Para desarrollo local sin ngrok, la alternativa es WebSocket (EventSub `transport.method: 'websocket'`).
+El proyecto usa **webhook** porque está en Render con URL pública. Para desarrollo local sin ngrok, la alternativa es WebSocket (EventSub `transport.method: 'websocket'`).

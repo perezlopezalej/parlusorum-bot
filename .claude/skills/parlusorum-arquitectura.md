@@ -108,4 +108,4 @@ El cliente ya tiene `connection: { reconnect: true }` — tmi.js reconecta solo.
 - `chatHistory` (MAX 40 mensajes, últimos 10 min) — en `src/ai/handler.js:120`
 - `userConversations` (MAX 200 usuarios, 5 turnos/usuario, 1h TTL) — se purgan los 50 más antiguos cuando llega al límite
 - `processedMessages` Set — se limpia cada 60s
-- Todo estado vive en memoria del proceso — Railway reinicia el proceso en cada deploy, reseteando estado en memoria
+- Todo estado vive en memoria del proceso — Render reinicia el proceso en cada deploy, reseteando estado en memoria

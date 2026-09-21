@@ -110,7 +110,7 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
 
 ## Connection Pooler de Supabase
 
-**Importante (2025):** Supabase deprecó Session Mode en puerto 6543. Para Node.js en Railway:
+**Importante (2025):** Supabase deprecó Session Mode en puerto 6543. Para Node.js en Render:
 
 - Usar **Transaction Mode** (puerto 6543 post-feb-2025, o puerto 5432 para Session)
 - El SDK `@supabase/supabase-js` gestiona conexiones internamente — **no** usar la URL directa de postgres, usar siempre la URL HTTPS de la API de Supabase
@@ -151,4 +151,4 @@ Para proyectos nuevos: configurar Supabase desde el principio. npoint.io es un b
 | `relation "users" does not exist` | Tablas no creadas en Supabase | Ejecutar el SQL de creación de tablas |
 | `JWT expired` | SUPABASE_KEY caducada | Regenerar en Supabase dashboard → Settings → API |
 | `too many connections` | Usando URL directa de postgres | Usar URL HTTPS de la API, no la de postgres directo |
-| Storage cae a npoint.io inesperadamente | SUPABASE_URL o SUPABASE_KEY vacíos en Railway | Verificar Variables tab en Railway |
+| Storage cae a npoint.io inesperadamente | SUPABASE_URL o SUPABASE_KEY vacíos en Render | Verificar Environment del servicio en Render |

@@ -40,7 +40,7 @@ Seguir el patrón: añadir en minúsculas sin acentos — `normalize()` se encar
 
 - Validado al arrancar via `https://id.twitch.tv/oauth2/validate` (index.js:53-61)
 - El token se pasa en headers como `Bearer ${token}` — **nunca** en query string o body
-- Si expira: el log muestra `⚠️ BROADCASTER_TOKEN caducado` — renovar manualmente en Railway Variables o implementar refresh flow
+- Si expira: el log muestra `⚠️ BROADCASTER_TOKEN caducado` — renovar manualmente en Render → Environment (o dejar que `BROADCASTER_REFRESH_TOKEN` lo refresque solo)
 
 ### App Access Token (src/eventsub.js:37-63)
 
@@ -120,8 +120,8 @@ La capa de substring captura cuentas tipo `bot_dios_fua_secondary`.
 
 ## Checklist de seguridad antes de deploy
 
-- [ ] `EVENTSUB_SECRET` configurado en Railway Variables (mín 10 chars)
-- [ ] `PUBLIC_URL` configurado con la URL de Railway (https)
+- [ ] `EVENTSUB_SECRET` configurado en Render → Environment (mín 10 chars)
+- [ ] URL pública correcta (Render inyecta `RENDER_EXTERNAL_URL`; `PUBLIC_URL` solo con dominio propio)
 - [ ] `BOT_TOKEN` con formato `oauth:...` (no solo el token)
 - [ ] `BROADCASTER_TOKEN` con scopes: `channel:manage:clips`, `user:edit:broadcast`, `moderator:read:followers`, `channel:manage:broadcast`
 - [ ] `GROQ_API_KEY` no está en código ni en logs

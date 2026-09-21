@@ -43,7 +43,7 @@ No build step — plain CommonJS JavaScript.
 - `filter.js` — Content sanitization and anti-prompt-injection before AI calls
 - `metrics.js` — Chat activity tracking (messages/hour, peak viewers, top commands)
 - `logger.js` — Console + file logging to `logs/bot.log` (auto-rotates at 5 MB)
-- `search.js` — Tavily web search for factual AI context
+- `groq-utils.js` — Shared Groq call wrapper with retry, `truncate()`, model constants
 
 **Config** (`config/`):
 - `commands.json` — Command responses (only `!comandos`), cooldowns, timer intervals
@@ -117,26 +117,26 @@ CLIENT_SECRET             Twitch app client secret
 CHANNEL                   Target channel name (e.g. parlusorum)
 GROQ_API_KEY              Groq LLM API key
 BROADCASTER_TOKEN         Streamer's OAuth token for Helix API calls
+EVENTSUB_SECRET           Webhook HMAC secret (min 10 chars)
 ```
 
 Optional:
 ```
 BROADCASTER_REFRESH_TOKEN  OAuth refresh token — auto-refreshes BROADCASTER_TOKEN on 401;
                            loaded from / saved to Supabase for persistence across restarts
-EVENTSUB_SECRET            Webhook HMAC secret (required in production; warns if absent)
-PUBLIC_URL                 Service URL for EventSub webhook registration
-                           (e.g. https://parlusorum-bot-c9i2.onrender.com)
-RENDER_EXTERNAL_URL        Injected automatically by Render — used by self-ping;
-                           falls back to PUBLIC_URL if absent
-BOT_USER_ID                Optional — avoids extra Helix call to look up bot's user ID
+PUBLIC_URL                 Overrides the EventSub callback base URL — only needed with a
+                           custom domain or ngrok; otherwise RENDER_EXTERNAL_URL is used
+RENDER_EXTERNAL_URL        Injected automatically by Render — used by self-ping and as the
+                           EventSub callback base when PUBLIC_URL is absent
 SUPABASE_URL               Supabase project URL
 SUPABASE_KEY               Supabase anon/service key
 NPOINT_BIN_ID              Fallback JSON storage bin ID (used if Supabase not configured)
 PREFIX                     Command prefix (default: !)
 PORT                       HTTP server port (default: 3000; Render injects this)
 GROQ_MODEL                 LLM model (default: llama-3.3-70b-versatile)
+GROQ_MODEL_FAST            Fast model for short calls (default: llama-3.1-8b-instant)
+GROQ_MODEL_COMPOUND        Model with built-in web search (default: groq/compound)
 NODE_ENV                   production | development
-TAVILY_API_KEY             Tavily web search API key (factual context for !dios_fua)
 RAWG_API_KEY               RAWG game database API key (game info for !juego, timers, hooks)
 WATCHDOG_TIMEOUT_MS        Reconnect if no chat during live stream (default: 1800000)
 AI_TIMER_INTERVAL_MS       AI game commentary timer interval (default: 1500000 = 25 min)
@@ -153,7 +153,7 @@ LURKER_THRESHOLD_MS        Silence time before a returning lurker is greeted (de
 
 Deployed on **Render** (free tier). Render uses `npm start` automatically. Variables are set from the Render dashboard (Environment tab of the service). Render assigns `PORT` dynamically — the HTTP server reads it from `process.env.PORT`. Render injects `RENDER_EXTERNAL_URL` automatically.
 
-`PUBLIC_URL` must be the service URL on Render (e.g. `https://parlusorum-bot-c9i2.onrender.com`) for EventSub to register its webhook on startup. Without it EventSub does not work.
+The repo ships a `render.yaml` blueprint (free plan, Frankfurt, `npm ci` / `npm start`, health check on `/health`). EventSub registers its webhook on startup against `PUBLIC_URL || RENDER_EXTERNAL_URL`, so `PUBLIC_URL` is only needed with a custom domain or ngrok. `npm run check:eventsub` lists the live subscriptions and flags any callback pointing at a stale URL.
 
 **Self-ping**: `index.js` pings `GET /health` every 10 minutes using `RENDER_EXTERNAL_URL || PUBLIC_URL` to prevent the Render free-tier service from sleeping.
 
