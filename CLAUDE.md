@@ -43,7 +43,7 @@ No build step — plain CommonJS JavaScript.
 - `filter.js` — Content sanitization and anti-prompt-injection before AI calls
 - `metrics.js` — Chat activity tracking (messages/hour, peak viewers, top commands)
 - `logger.js` — Console + file logging to `logs/bot.log` (auto-rotates at 5 MB)
-- `groq-utils.js` — Shared Groq call wrapper with retry, `truncate()`, model constants
+- `groq-utils.js` — Shared Groq call wrapper with retry, `truncate()`, model constants; adds `reasoning_effort: 'low'` and token headroom for gpt-oss reasoning models
 
 **Config** (`config/`):
 - `commands.json` — Command responses (only `!comandos`), cooldowns, timer intervals
@@ -84,7 +84,7 @@ Twitch EventSub → POST /eventsub
 
 | Command | Who | Description |
 |---------|-----|-------------|
-| `!dios_fua [q]` | All | AI question/answer (Groq, web search if factual, per-user conv memory) |
+| `!dios_fua [q]` | All | AI question/answer (Groq, per-user conv memory; no web search since groq/compound was withdrawn) |
 | `!chiste` | All | Random joke from 169-joke bank (30s per-user cooldown) |
 | `!trivia` | All | Trivia — Groq generates game-specific question with hints, falls back to static bank |
 | `!lurk` | All | AI farewell for lurk mode |
@@ -133,9 +133,10 @@ SUPABASE_KEY               Supabase anon/service key
 NPOINT_BIN_ID              Fallback JSON storage bin ID (used if Supabase not configured)
 PREFIX                     Command prefix (default: !)
 PORT                       HTTP server port (default: 3000; Render injects this)
-GROQ_MODEL                 LLM model (default: llama-3.3-70b-versatile)
-GROQ_MODEL_FAST            Fast model for short calls (default: llama-3.1-8b-instant)
-GROQ_MODEL_COMPOUND        Model with built-in web search (default: groq/compound)
+GROQ_MODEL                 LLM model (default: openai/gpt-oss-120b)
+GROQ_MODEL_FAST            Fast model for short calls (default: openai/gpt-oss-20b)
+GROQ_MODEL_COMPOUND        Model for !dios_fua (default: same as GROQ_MODEL — groq/compound
+                           and its built-in web search were withdrawn by Groq)
 NODE_ENV                   production | development
 RAWG_API_KEY               RAWG game database API key (game info for !juego, timers, hooks)
 WATCHDOG_TIMEOUT_MS        Reconnect if no chat during live stream (default: 1800000)
@@ -175,6 +176,7 @@ The repo ships a `render.yaml` blueprint (free plan, Frankfurt, `npm ci` / `npm 
 - **Per-user conversation memory**: `handleQuestion` and `checkPatternMatch` keep up to 5 turns per user (1 h TTL, max 200 users in-memory) so multi-turn exchanges feel coherent
 - **Warmup mode**: 60 s after `stream.online`, if viewer count < 5, posts an AI warm-up message asking the chat about the current game
 - **Stream end summary**: `postStreamEnd()` posts the AI-generated stream summary in chat; `streamEndPostedByEventSub` flag prevents the generic "fin del stream" fallback from firing too
+- **Groq models**: Groq decommissions models often (all `llama-3.x`/`llama-4` and `groq/compound` return 404 `model_not_found` since sep/2026). Check what is live with `GET https://api.groq.com/openai/v1/models` before changing `GROQ_MODEL*`. The gpt-oss family are reasoning models: without `reasoning_effort: 'low'` they burn the whole `max_tokens` budget thinking and return empty `content` with `finish_reason: 'length'` — `groqWithRetry()` sets it and adds 64 tokens of headroom automatically
 - **EventSub race guard**: `_sessionStarting` promise ensures the `stream.offline` handler waits for `stream.online` async I/O to complete before generating the end-of-stream memory
 
 ## Conventions

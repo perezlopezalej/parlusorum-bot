@@ -4,7 +4,8 @@ const { isSilenced } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
-const { groqWithRetry, truncate, NARRATOR_BASE } = require('../ai/handler');
+const { NARRATOR_BASE } = require('../ai/handler');
+const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
 
 const timerRefs = [];

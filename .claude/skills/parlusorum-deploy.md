@@ -60,9 +60,9 @@ SUPABASE_URL               https://xxxx.supabase.co
 SUPABASE_KEY               eyJ...
 NPOINT_BIN_ID              fallback si no hay Supabase (legacy)
 RAWG_API_KEY               info de juegos en !juego
-GROQ_MODEL                 llama-3.3-70b-versatile (por defecto)
-GROQ_MODEL_FAST            llama-3.1-8b-instant (por defecto)
-GROQ_MODEL_COMPOUND        groq/compound (por defecto)
+GROQ_MODEL                 openai/gpt-oss-120b (por defecto)
+GROQ_MODEL_FAST            openai/gpt-oss-20b (por defecto)
+GROQ_MODEL_COMPOUND        igual que GROQ_MODEL (groq/compound fue retirado)
 NODE_ENV                   production
 AI_MAX_RPM                 20  (límite global de llamadas a Groq por minuto)
 WATCHDOG_TIMEOUT_MS        1800000  (30 min; reconecta si stream live sin mensajes)
