@@ -4,6 +4,7 @@ const http = require('http');
 const config = require('./config/commands.json');
 const channelConfig = require('./config/channel.json');
 const logger = require('./src/utils/logger');
+console.log("BOT ARRANCADO");
 
 // --- Validar variables de entorno obligatorias ---
 const REQUIRED_ENV = ['BOT_USERNAME', 'BOT_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET', 'CHANNEL', 'GROQ_API_KEY', 'BROADCASTER_TOKEN', 'EVENTSUB_SECRET'];
