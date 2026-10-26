@@ -39,6 +39,9 @@ const BLOCKED_PATTERNS = [
   'ignora todo lo anterior', 'a partir de ahora eres',
 ];
 
+// Patrones cortos que solo bloquean como palabra completa (evita "crisis", "análisis", "recoger"...)
+const WORD_ONLY = new Set(['isis', 'coger', 'corrida', 'perra', 'hdp', 'zorra', 'mamada', 'porno']);
+
 // Normalizar texto: quitar acentos, pasar a minúsculas
 function normalize(text) {
   return text
@@ -50,7 +53,11 @@ function normalize(text) {
 
 function containsBlockedContent(text) {
   const normalized = normalize(text);
-  return BLOCKED_PATTERNS.some(pattern => normalized.includes(normalize(pattern)));
+  const padded = ` ${normalized.replace(/\s+/g, ' ')} `;
+  return BLOCKED_PATTERNS.some(pattern => {
+    const p = normalize(pattern);
+    return WORD_ONLY.has(p) ? new RegExp(`\\s${p}s?\\s`).test(padded) : normalized.includes(p);
+  });
 }
 
 function sanitizeForAI(text) {

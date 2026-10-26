@@ -34,7 +34,7 @@ const triviaQuestions = [
   { question: '¿Cuál es la capital de Japón?', answer: 'tokio' },
   { question: '¿Cuántos jugadores hay en un equipo de béisbol?', answer: '9' },
   // Del canal
-  { question: '¿Qué significa FUA según el meme original?', answer: 'fuerza universal aplicada' },
+  { question: '¿Qué es el FUA según el meme original?', answer: 'un grito' },
   { question: '¿Cómo se llama el bot del canal?', answer: 'dios_fua' },
   { question: '¿ParLusorum es un streamer o una pareja de streamers?', answer: 'pareja' },
   { question: '¿En qué juego cooperativo han jugado juntos ParLusorum?', answer: 'it takes two' },

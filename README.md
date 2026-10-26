@@ -26,20 +26,26 @@ NODE_ENV=production
 
 ## 💬 Comandos
 
-| Comando | Descripción |
-|---|---|
-| `!discord` | Enlace al Discord |
-| `!redes` | Redes sociales |
-| `!comandos` | Lista de comandos |
-| `!uptime` | Tiempo activo del bot |
-| `!ruleta` | Juego de ruleta |
-| `!trivia` | Pregunta de trivia |
-| `!moneda` | Cara o cruz |
-| `!pregunta [texto]` | Pregunta a la IA |
-| `!cita` | Frase épica |
-| `!chiste` | Chiste gaming |
-| `!consejo` | Consejo random |
-| `!meme` | Meme en texto |
+| Comando | Quién | Descripción |
+|---|---|---|
+| `!dios_fua [pregunta]` | Todos | Pregunta a la IA |
+| `!chiste` | Todos | Chiste aleatorio |
+| `!trivia` | Todos | Pregunta de trivia |
+| `!lurk` | Todos | Despedida de lurker |
+| `!juego` | Todos | Juego actual con info de RAWG |
+| `!estadisticas` | Todos | Viewers, juego, followers y uptime |
+| `!uptime` | Todos | Tiempo en directo (o del bot si está offline) |
+| `!score` | Todos | Bosses y muertes de la sesión |
+| `!muertes` | Todos / Mods (`+1`, `reset`) | Contador de muertes |
+| `!comandos` | Todos | Lista de comandos |
+| `!ayuda [cmd]` | Todos | Ayuda de un comando |
+| `!so @user` | Mods | Shoutout con IA |
+| `!boss` | Mods | Suma un boss a la sesión |
+| `!brb` | Mods | Activa/desactiva modo BRB |
+| `!silencio` | Mods | Activa/desactiva mensajes automáticos |
+| `!clip` | Mods | Crea un clip |
+| `!marker [desc]` | Mods | Crea un marker en el VOD |
+| `!resumen` | Mods | Resumen del stream |
 
 ## 📁 Estructura
 

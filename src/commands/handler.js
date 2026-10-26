@@ -1,7 +1,7 @@
 const { canMakeRequest } = require('../utils/ratelimit');
 const { getChannelStats, incrementChannelStat, persistCooldown } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
-const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats } = require('../utils/state');
+const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
@@ -214,7 +214,7 @@ async function handleScore(client, channel) {
 }
 
 function handleMuertes(client, channel, args, isMod) {
-  if (isMod && args[1] === '+1') { const n = incrementDeathCount(); client.say(channel, `💀 Muerte #${n} en este stream 😅`); }
+  if (isMod && args[1] === '+1') { const n = incrementDeathCount(); addNarrativeEvent('death', `Muerte #${n} del streamer en este stream`); client.say(channel, `💀 Muerte #${n} en este stream 😅`); }
   else if (isMod && args[1] === 'reset') { resetDeathCount(); client.say(channel, `💀 Contador reseteado.`); }
   else client.say(channel, `💀 Muertes hoy: ${getDeathCount()}`);
 }

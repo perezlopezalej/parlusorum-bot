@@ -4,7 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Parlusorum Bot is a Twitch chatbot for the "parlusorum" channel. It handles chat commands, AI-powered responses via Groq, trivia, automated alerts (subs/raids/follows), recurring timer messages, and cross-stream AI memory. Deployed to Render (free tier); runs on Node.js 22+.
+Parlusorum Bot is a Twitch chatbot for the "parlusorum" channel: chat commands, AI responses via Groq, trivia, alerts (subs/raids/follows), recurring timers, and cross-stream AI memory. Deployed to Render (free tier); Node.js 22+.
+
+## Reglas de trabajo
+
+- Nunca leer en voz alta ni mostrar el contenido de `.env`, tokens o secrets.
+- No hacer commit ni push salvo que se pida.
+- Las tareas nuevas empiezan en solo lectura salvo que se indique lo contrario.
+- Salidas largas a un fichero en `logs/` y resumen corto en el chat.
 
 ## Commands
 
@@ -17,177 +24,129 @@ No build step — plain CommonJS JavaScript.
 
 ## Architecture
 
-**Entry point**: `index.js` — validates env vars, wraps `client.say()` for IRC throttling, starts HTTP server (health + EventSub webhook), initializes tmi.js IRC client, runs self-ping every 10 min to keep Render alive, and wires up all handlers on connection.
-
-**Handler modules**:
+**Entry point**: `index.js` — validates env vars, wraps `client.say()` for IRC throttling, starts HTTP server (health + EventSub webhook + auth routes), initializes tmi.js, self-pings every 10 min, wires up handlers on connection.
 
 | Module | Path | Responsibility |
 |--------|------|----------------|
-| Commands | `src/commands/handler.js` | Dispatches `!prefix` commands, enforces cooldowns and permissions |
-| AI | `src/ai/handler.js` | Groq SDK, `!dios_fua`, jokes, cohost, emote/caps detection, pattern matching, warmup mode, stream end summary |
-| Games | `src/games/handler.js` | Trivia (`!trivia`) — dynamic via Groq by current game, or static bank fallback |
-| Alerts | `src/alerts/handler.js` | Sub/bits/raid notifications, follower milestones, lurker detection, achievements, first-message AI welcome |
-| Timers | `src/timers/handler.js` | Recurring messages, stream duration announcements (40 min), AI game commentary (25 min) |
-| EventSub | `src/eventsub.js` | Twitch webhook receiver with HMAC-SHA256 signature verification; App Access Token management |
-| Twitch API | `src/twitch/api.js` | Helix API calls (stream info, followers, clips, markers, RAWG games) with token caching and auto-refresh on 401 |
-| Memory | `src/memory/handler.js` | Cross-stream AI summary generation and injection into prompts |
-| Bot Detector | `src/moderation/bot-detector.js` | Auto-bans known bots via twitchbots.info; batches up to 100 user IDs with 5s delay |
+| Commands | `src/commands/handler.js` | Dispatches `!prefix` commands, cooldowns, permissions |
+| AI | `src/ai/handler.js` | Groq, `!dios_fua`, jokes, cohost, emote/caps detection, pattern matching, warmup, stream end summary |
+| Games | `src/games/handler.js` | Trivia — dynamic via Groq by current game, static bank fallback |
+| Alerts | `src/alerts/handler.js` | Sub/bits/raid, follower milestones, lurkers, achievements, first-message welcome |
+| Timers | `src/timers/handler.js` | Recurring messages, duration announcements (40 min), AI game commentary (25 min) |
+| EventSub | `src/eventsub.js` | Webhook receiver (HMAC-SHA256), App Access Token management |
+| Auth | `src/auth.js` | Broadcaster OAuth: `/auth/broadcaster` (start) and `/auth/callback`; scopes in `BROADCASTER_SCOPES` |
+| Twitch API | `src/twitch/api.js` | Helix calls (stream, followers, clips, markers, RAWG) with token cache and refresh on 401 |
+| Memory | `src/memory/handler.js` | Cross-stream summary generation and injection into prompts |
+| Bot Detector | `src/moderation/bot-detector.js` | Auto-bans known bots via twitchbots.info (batches of up to 100 IDs, 5s delay) |
 
-**Utilities** (`src/utils/`):
+**Utilities** (`src/utils/`): `storage.js` (Supabase-first, npoint.io fallback, auto-migrates), `supabase.js` (sessions, memory, highlights, token persistence), `state.js` (global mutable state), `ratelimit.js` (Groq global + per-user), `irc-ratelimit.js` (FIFO queue wrapping `client.say()`: max 18 msg/30s, 1.1s gap, 50 queued), `filter.js` (sanitization / anti-prompt-injection), `metrics.js`, `logger.js` (`logs/bot.log`, rotates at 5 MB), `groq-utils.js` (`groqWithRetry()`, `truncate()`, model constants).
 
-- `storage.js` — Supabase-first persistence with npoint.io JSON fallback; auto-migrates on startup
-- `supabase.js` — Supabase client, stream sessions, memory and highlight tables, token persistence
-- `state.js` — Global mutable state (trivia active, silence mode, brb, raid active)
-- `ratelimit.js` — Groq rate limiting (global + per-user by role)
-- `irc-ratelimit.js` — IRC FIFO queue; wraps `client.say()` globally at startup (max 18 msg/30s sliding window, 1.1s min gap, max 50 queued)
-- `filter.js` — Content sanitization and anti-prompt-injection before AI calls
-- `metrics.js` — Chat activity tracking (messages/hour, peak viewers, top commands)
-- `logger.js` — Console + file logging to `logs/bot.log` (auto-rotates at 5 MB)
-- `groq-utils.js` — Shared Groq call wrapper with retry, `truncate()`, model constants; adds `reasoning_effort: 'low'` and token headroom for gpt-oss reasoning models
+**Config** (`config/`): `commands.json` (only `!comandos`, cooldowns, timer intervals), `channel.json` (broadcaster_id, usernames, emotes, milestones, `bot_whitelist`, `bot_autoban_dry_run`), `messages.json` (chat texts).
 
-**Config** (`config/`):
-- `commands.json` — Command responses (only `!comandos`), cooldowns, timer intervals
-- `channel.json` — Static channel metadata (broadcaster_id, usernames, emotes, milestones)
+- `bot_whitelist`: usernames never auto-banned (nightbot, streamelements, fossabot, moobot, dios_fua).
+- `bot_autoban_dry_run` is `true` **on purpose**: the detector only logs would-be bans. Don't flip it without being asked.
 
 ## Message Flow
 
 ```
-tmi.js 'message' event
-  → block self-messages (self flag + username check + partial match)
-  → deduplicate by tags['id'] (Set cleared every 60s) — prevents double-response on reconnect
-  → checkNewUser(tags) — bot-detector batches user IDs, auto-bans via twitchbots.info
-  → trackMessage() + addToHistory() + updateLastChatTime()
-  → alerts.handleMessage() → checkFirstMessage (AI welcome or static) + trackLurker
+tmi.js 'message'
+  → block self-messages; dedupe by tags['id'] (Set cleared every 60s)
+  → checkNewUser(tags) (bot detector) → trackMessage/addToHistory/updateLastChatTime
+  → alerts.handleMessage() → checkFirstMessage + trackLurker
   → if no !prefix:
-      checkForHighlight()   — 4+ keyword msgs in 15s → stream marker + AI narration
-      checkPatternMatch()   — @dios_fua mentions or natural-language triggers → AI reply
-        if not handled: handleCohost() — random spontaneous comment (25% prob, 120s cooldown)
-      checkEmoteSpam()      — 8+ unique users same emote in 20s → AI comment
-      checkCapsRage()       — 5+ users 70%+ caps in 15s → AI comment
-  → games.checkTriviaAnswer() (always, even without prefix)
-  → if no !prefix: return
-  → parse command → dispatch to games / ai / commands handler
-  → client.say() → irc-ratelimit FIFO queue (max 18 msg/30s, min 1.1s gap)
+      checkForHighlight()  — 4+ keyword msgs in 15s → stream marker + AI narration (saved to Supabase)
+      checkPatternMatch()  — @dios_fua mentions (8s global/10s user cd) or natural-language
+                             triggers (45s/30s) → AI reply; if unhandled: handleCohost() (25%, 120s cd)
+      checkEmoteSpam()     — 8+ users, same emote, 20s → AI comment
+      checkCapsRage()      — 5+ users, 70%+ caps, 15s → AI comment
+  → games.checkTriviaAnswer() (always)
+  → no !prefix: return; else dispatch to games / ai / commands
+  → client.say() → irc-ratelimit queue
 
 Twitch EventSub → POST /eventsub
-  → verify HMAC-SHA256 signature (timingSafeEqual)
-  → deduplicate by Twitch-Eventsub-Message-Id (max 200 cached)
-  → respond 204 immediately; process in setImmediate to meet Twitch's <10s deadline
-  → stream.online: set streamIsLive=true, reset session counters, start Supabase session,
-      60s warmup check (if < 5 viewers → AI warmup message)
-  → stream.offline: set streamIsLive=false, wait for session-start to finish (race guard),
-      generate AI stream memory, call postStreamEnd() → posts summary in chat
-  → channel.follow: post follow message, check follower milestones
+  → verify HMAC (timingSafeEqual); dedupe by Twitch-Eventsub-Message-Id (max 200)
+  → 204 immediately; process in setImmediate (Twitch <10s deadline)
+  → stream.online: streamIsLive=true, reset counters, start Supabase session,
+      60s later if < 5 viewers → AI warmup message
+  → stream.offline: streamIsLive=false, await _sessionStarting (race guard), generate AI memory,
+      postStreamEnd() (streamEndPostedByEventSub suppresses the generic "fin del stream")
+  → channel.follow: follow message + milestones
 ```
 
 ## Commands Reference
 
 | Command | Who | Description |
 |---------|-----|-------------|
-| `!dios_fua [q]` | All | AI question/answer (Groq, per-user conv memory; no web search since groq/compound was withdrawn) |
-| `!chiste` | All | Random joke from 169-joke bank (30s per-user cooldown) |
-| `!trivia` | All | Trivia — Groq generates game-specific question with hints, falls back to static bank |
-| `!lurk` | All | AI farewell for lurk mode |
+| `!dios_fua [q]` | All | AI Q&A (per-user conv memory; no web search) |
+| `!chiste` | All | Random joke from 169-joke bank (30s per-user cd) |
+| `!trivia` | All | Groq game-specific question with hints, static fallback |
+| `!lurk` | All | AI lurk farewell |
 | `!juego` | All | Current game with RAWG info |
-| `!estadisticas` | All | Live viewer count, game, followers, uptime |
-| `!uptime` | All | Stream uptime (via EventSub) or bot uptime if offline |
-| `!score` | All | Session bosses + deaths, all-time boss count from Supabase |
+| `!estadisticas` | All | Viewers, game, followers, uptime |
+| `!uptime` | All | Stream uptime (EventSub) or bot uptime if offline |
+| `!score` | All | Session bosses + deaths, all-time bosses from Supabase |
 | `!muertes [+1\|reset]` | All/Mods | Death counter |
-| `!boss` | Mods | Increment boss-kill counter for current session |
-| `!brb` | Mods | Toggle BRB mode (sends reminder every 5 min) |
+| `!boss` | Mods | Increment session boss kills |
+| `!brb` | Mods | Toggle BRB mode (reminder every 5 min) |
 | `!silencio` | Mods | Toggle all automatic bot messages |
-| `!so @user` | Mods | AI-powered shoutout using target's last game |
-| `!clip` | Mods | Create a Twitch clip |
-| `!marker [desc]` | Mods | Create a VOD stream marker |
-| `!resumen` | Mods | Two-message stream summary (uptime, msgs/h, game, peak viewers, deaths) |
-| `!comandos` | All | Full command list |
-| `!ayuda [cmd]` | All | Help for a specific command |
+| `!so @user` | Mods | AI shoutout using target's last game |
+| `!clip` | Mods | Create a clip |
+| `!marker [desc]` | Mods | Create a VOD marker |
+| `!resumen` | Mods | One-message stream summary |
+| `!comandos` | All | Command list |
+| `!ayuda [cmd]` | All | Help for a command |
 
-**Removed commands** (respond with "ese comando ya no existe"): `!moneda`, `!titulo`, `!loss`, `!metricas`.
+**Removed commands** (reply "ese comando ya no existe"): `!moneda`, `!titulo`, `!loss`, `!metricas`.
 
 ## Environment Variables
 
-Required at startup (validated in `index.js`):
-
-```
-BOT_USERNAME              Twitch bot account username
-BOT_TOKEN                 Twitch OAuth token (oauth:...)
-CLIENT_ID                 Twitch app client ID
-CLIENT_SECRET             Twitch app client secret
-CHANNEL                   Target channel name (e.g. parlusorum)
-GROQ_API_KEY              Groq LLM API key
-BROADCASTER_TOKEN         Streamer's OAuth token for Helix API calls
-EVENTSUB_SECRET           Webhook HMAC secret (min 10 chars)
-```
+Required (validated in `index.js`): `BOT_USERNAME`, `BOT_TOKEN` (oauth:...), `CLIENT_ID`, `CLIENT_SECRET`, `CHANNEL`, `GROQ_API_KEY`, `BROADCASTER_TOKEN` (streamer's token for Helix), `EVENTSUB_SECRET` (min 10 chars).
 
 Optional:
 ```
-BROADCASTER_REFRESH_TOKEN  OAuth refresh token — auto-refreshes BROADCASTER_TOKEN on 401;
-                           loaded from / saved to Supabase for persistence across restarts
-PUBLIC_URL                 Overrides the EventSub callback base URL — only needed with a
-                           custom domain or ngrok; otherwise RENDER_EXTERNAL_URL is used
-RENDER_EXTERNAL_URL        Injected automatically by Render — used by self-ping and as the
-                           EventSub callback base when PUBLIC_URL is absent
-SUPABASE_URL               Supabase project URL
-SUPABASE_KEY               Supabase anon/service key
-NPOINT_BIN_ID              Fallback JSON storage bin ID (used if Supabase not configured)
+BROADCASTER_REFRESH_TOKEN  Auto-refreshes BROADCASTER_TOKEN on 401; persisted in Supabase
+PUBLIC_URL                 EventSub callback base override (custom domain/ngrok); else RENDER_EXTERNAL_URL
+RENDER_EXTERNAL_URL        Injected by Render; self-ping and EventSub callback base
+SUPABASE_URL / SUPABASE_KEY  Supabase project; NPOINT_BIN_ID = fallback storage if absent
 PREFIX                     Command prefix (default: !)
-PORT                       HTTP server port (default: 3000; Render injects this)
-GROQ_MODEL                 LLM model (default: openai/gpt-oss-120b)
-GROQ_MODEL_FAST            Fast model for short calls (default: openai/gpt-oss-20b)
-GROQ_MODEL_COMPOUND        Model for !dios_fua (default: same as GROQ_MODEL — groq/compound
-                           and its built-in web search were withdrawn by Groq)
+PORT                       HTTP port (default 3000; Render injects)
+GROQ_MODEL                 default openai/gpt-oss-120b
+GROQ_MODEL_FAST            default openai/gpt-oss-20b
+GROQ_MODEL_COMPOUND        !dios_fua model (default = GROQ_MODEL; groq/compound withdrawn)
 NODE_ENV                   production | development
-RAWG_API_KEY               RAWG game database API key (game info for !juego, timers, hooks)
-WATCHDOG_TIMEOUT_MS        Reconnect if no chat during live stream (default: 1800000)
-AI_TIMER_INTERVAL_MS       AI game commentary timer interval (default: 1500000 = 25 min)
-COHOST_PROBABILITY         Probability of spontaneous chat comment 0–1 (default: 0.25)
-COHOST_COOLDOWN_MS         Minimum gap between cohost messages (default: 120000)
-QUESTION_COOLDOWN_MS       Global cooldown for !dios_fua in ms (default: 10000)
-AI_MAX_RPM                 Global Groq rate limit requests/min (default: 20)
-HOOK_INTERVAL_MS           Min gap between AI chat hooks (default: 600000 = 10 min)
-HOOK_SILENCE_MS            Chat must be silent this long before a hook fires (default: 300000)
-LURKER_THRESHOLD_MS        Silence time before a returning lurker is greeted (default: 900000)
+RAWG_API_KEY               Game info for !juego, timers, hooks
+WATCHDOG_TIMEOUT_MS        Reconnect if no chat while live (default 1800000)
+AI_TIMER_INTERVAL_MS       AI game commentary interval (default 1500000)
+COHOST_PROBABILITY         0–1 (default 0.25)
+COHOST_COOLDOWN_MS         default 120000
+QUESTION_COOLDOWN_MS       Global !dios_fua cooldown (default 10000)
+AI_MAX_RPM                 Global Groq requests/min (default 20)
+HOOK_INTERVAL_MS           Min gap between AI hooks (default 600000)
+HOOK_SILENCE_MS            Chat silence required before a hook (default 300000)
+LURKER_THRESHOLD_MS        Silence before greeting a returning lurker (default 900000)
 ```
 
 ## Deployment
 
-Deployed on **Render** (free tier). Render uses `npm start` automatically. Variables are set from the Render dashboard (Environment tab of the service). Render assigns `PORT` dynamically — the HTTP server reads it from `process.env.PORT`. Render injects `RENDER_EXTERNAL_URL` automatically.
-
-The repo ships a `render.yaml` blueprint (free plan, Frankfurt, `npm ci` / `npm start`, health check on `/health`). EventSub registers its webhook on startup against `PUBLIC_URL || RENDER_EXTERNAL_URL`, so `PUBLIC_URL` is only needed with a custom domain or ngrok. `npm run check:eventsub` lists the live subscriptions and flags any callback pointing at a stale URL.
-
-**Self-ping**: `index.js` pings `GET /health` every 10 minutes using `RENDER_EXTERNAL_URL || PUBLIC_URL` to prevent the Render free-tier service from sleeping.
-
-**Auto-deploy**: configured in Render to deploy on every push to GitHub `main`.
+**Render** free tier: `npm start`, variables set in the dashboard, auto-deploys on every push to GitHub `main`. `render.yaml` blueprint (Frankfurt, `npm ci` / `npm start`, health check `/health`). Self-ping hits `/health` every 10 min (`RENDER_EXTERNAL_URL || PUBLIC_URL`) to avoid sleep. `npm run check:eventsub` lists live subscriptions and flags callbacks pointing at a stale URL.
 
 ## Key Patterns
 
-- **Cooldowns**: per-command Maps keyed `${command}-${userId}` (per-user) or `${command}` (global); cleaned every 30 min via `setInterval`
-- **Permissions**: mod-only commands check `tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1'`
-- **IRC throttle**: `irc-ratelimit.js` wraps `client.say()` once at startup with a FIFO queue — all modules are throttled automatically without code changes; messages sent to a disconnected client are discarded with a warning
-- **Token refresh**: broadcaster token loaded from Supabase on startup (overrides .env if fresher); auto-refreshed on any 401 via `refreshBroadcasterToken()` in `api.js`; new tokens persisted back to Supabase; App Access Token (for EventSub) cached 23 h
-- **Storage fallback**: if `SUPABASE_URL`/`SUPABASE_KEY` absent, `storage.js` falls back to npoint.io with automatic migration when Supabase is later configured
-- **Cross-stream memory**: on `stream.offline`, Groq generates a stream summary stored in Supabase; last 5 summaries are injected into the AI system prompt (10-min cache)
-- **Bot detection**: `checkNewUser()` called on every new chat message; user IDs batched (up to 100, 5s delay) and checked against twitchbots.info; confirmed bots are banned via Helix; verified IDs cached in-process
-- **Auto-highlights**: `checkForHighlight()` tracks keyword messages (clip/fua/epico/wtf…); if 4+ trigger messages arrive within 15 s, creates a stream marker via Helix and posts AI narration in chat; result saved to Supabase highlights table
-- **Emote spam**: 8+ unique users use the same emote token within 20 s → AI comment narrating the collective reaction
-- **CAPS rage**: 5+ unique users send 70%+ caps messages within 15 s → AI comment
-- **Pattern matcher**: responds without `!` prefix — direct @dios_fua mentions (8s global / 10s per-user cooldown) and natural-language triggers like "qué juego es" or "eres un bot" (45s global / 30s per-user)
-- **Per-user conversation memory**: `handleQuestion` and `checkPatternMatch` keep up to 5 turns per user (1 h TTL, max 200 users in-memory) so multi-turn exchanges feel coherent
-- **Warmup mode**: 60 s after `stream.online`, if viewer count < 5, posts an AI warm-up message asking the chat about the current game
-- **Stream end summary**: `postStreamEnd()` posts the AI-generated stream summary in chat; `streamEndPostedByEventSub` flag prevents the generic "fin del stream" fallback from firing too
-- **Groq models**: Groq decommissions models often (all `llama-3.x`/`llama-4` and `groq/compound` return 404 `model_not_found` since sep/2026). Check what is live with `GET https://api.groq.com/openai/v1/models` before changing `GROQ_MODEL*`. The gpt-oss family are reasoning models: without `reasoning_effort: 'low'` they burn the whole `max_tokens` budget thinking and return empty `content` with `finish_reason: 'length'` — `groqWithRetry()` sets it and adds 64 tokens of headroom automatically
-- **EventSub race guard**: `_sessionStarting` promise ensures the `stream.offline` handler waits for `stream.online` async I/O to complete before generating the end-of-stream memory
+- **Cooldowns**: Maps keyed `${command}-${userId}` (per-user) or `${command}` (global); pruned every 30 min via `setInterval`.
+- **Permissions**: mod-only commands check `tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1'`.
+- **IRC throttle**: `irc-ratelimit.js` wraps `client.say()` once at startup; messages to a disconnected client are discarded with a warning.
+- **Tokens**: broadcaster token loaded from Supabase on startup (overrides .env if fresher), refreshed on 401 via `refreshBroadcasterToken()` and persisted back. `/auth/broadcaster` → `/auth/callback` re-authorizes it manually. **Two tokens, two uses**: the App Access Token (cached 23 h) is used *only* to create/list/delete EventSub webhook subscriptions (and read-only public `streams` checks in `eventsub.js`); every Helix call acting on behalf of the channel (clips, markers, bans, followers — anything in `BROADCASTER_SCOPES`) uses the broadcaster token.
+- **Storage fallback**: without Supabase env vars, `storage.js` uses npoint.io and migrates when Supabase is configured later.
+- **Cross-stream memory**: on `stream.offline`, Groq summarizes the stream into Supabase; last 5 summaries go into the AI system prompt (10-min cache).
+- **Bot detection**: `checkNewUser()` on each new chatter; IDs checked against twitchbots.info; confirmed bots banned via Helix (except while dry run is on, and never whitelisted ones); verified IDs cached in-process.
+- **Per-user conversation memory**: `handleQuestion` and `checkPatternMatch` keep up to 5 turns per user (1 h TTL, max 200 users).
+- **Groq models**: Groq decommissions models often (all `llama-3.x`/`llama-4` and `groq/compound` return 404 `model_not_found` since sep/2026). Check `GET https://api.groq.com/openai/v1/models` before changing `GROQ_MODEL*`. gpt-oss are reasoning models: without `reasoning_effort: 'low'` they exhaust `max_tokens` and return empty `content` (`finish_reason: 'length'`) — `groqWithRetry()` sets it and adds 64 tokens of headroom.
 
 ## Conventions
 
-- **State mutable**: toda variable de estado compartida entre funciones vive en `src/utils/state.js`. Nunca declarar estado mutable en los handlers (`ai/handler.js`, `commands/handler.js`, etc.).
-- **require() al inicio**: todos los `require()` van al inicio del archivo, agrupados: core Node → npm → módulos propios. Excepción permitida: dependencias circulares conocidas (`eventsub` ↔ `ai`, `alerts` ↔ `ai`) que deben permanecer lazy dentro del cuerpo de la función.
-- **Caché in-memory**: para evitar queries repetidas a Supabase usar `Map` con TTL — mismo patrón que `fullContextCache` en `ai/handler.js` (`userFactsCache`, TTL 5 min). Sin dependencias externas.
-- **Mensajes al chat**: los textos en español que llegan al chat van en `config/messages.json` (fallbacks, warmup strings, etc.). Excepción: mensajes de error internos o logs que nunca llegan al chat.
-- **truncate() obligatorio**: todo `client.say()` con contenido dinámico o procedente de `config/` debe pasar por `truncate()` antes de enviarse. Sin excepción — protege contra el límite de 500 caracteres de Twitch y futuros cambios de config.
-- **Map con TTL → setInterval de pruning**: todo `Map` indexado por usuario o ID con un TTL definido debe declarar su `setInterval` de limpieza inmediatamente después. Ver patrón en `chisteCooldowns`, `questionCooldowns`, `userFactsCache` en `ai/handler.js`.
-
-## Known limitations
-
-- **`is_regular` sin umbral**: `onStreamEnd` en `memory/handler.js` marca como `is_regular` a todos los usuarios activos del stream sin mínimo de mensajes, porque `getActiveUsers()` devuelve un `Set` de usernames sin conteo por usuario. Para añadir umbral se necesitaría un Map `username → messageCount` en `ai/handler.js` alimentado desde `addToHistory()`.
+- **State mutable**: toda variable de estado compartida entre funciones vive en `src/utils/state.js`. Nunca declarar estado mutable en los handlers.
+- **require() al inicio**: agrupados core Node → npm → módulos propios. Excepción: dependencias circulares conocidas (`eventsub` ↔ `ai`, `alerts` ↔ `ai`), lazy dentro de la función.
+- **Caché in-memory**: para evitar queries repetidas a Supabase usar `Map` con TTL (patrón `fullContextCache` / `userFactsCache`, TTL 5 min en `ai/handler.js`). Sin dependencias externas.
+- **Mensajes al chat**: los textos en español que llegan al chat van en `config/messages.json`. Excepción: errores internos y logs.
+- **truncate() obligatorio**: todo `client.say()` con contenido dinámico o de `config/` pasa por `truncate()` (límite 500 caracteres de Twitch). Sin excepción.
+- **Map con TTL → setInterval de pruning**: todo `Map` indexado por usuario/ID con TTL declara su `setInterval` de limpieza justo después (ver `chisteCooldowns`, `questionCooldowns`, `userFactsCache`).

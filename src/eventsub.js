@@ -185,9 +185,9 @@ async function registerSubscriptions(broadcasterId) {
     return false;
   }
 
-  // Subs por webhook: Twitch exige app access token. El broadcaster debe haber autorizado la app con los scopes:
+  // Subs por webhook que requieren que el broadcaster haya autorizado la app (BROADCASTER_SCOPES), pero se crean con el app access token:
   // channel:read:hype_train, channel:read:predictions, channel:read:polls, channel:read:redemptions
-  const userTokenSubs = [
+  const broadcasterAuthSubs = [
     { type: 'channel.hype_train.begin',    version: '2', condition: { broadcaster_user_id: broadcasterId } },
     { type: 'channel.hype_train.progress', version: '2', condition: { broadcaster_user_id: broadcasterId } },
     { type: 'channel.hype_train.end',      version: '2', condition: { broadcaster_user_id: broadcasterId } },
@@ -198,19 +198,18 @@ async function registerSubscriptions(broadcasterId) {
     { type: 'channel.poll.end',            version: '1', condition: { broadcaster_user_id: broadcasterId } },
     { type: 'channel.channel_points_custom_reward_redemption.add', version: '1', condition: { broadcaster_user_id: broadcasterId } },
   ];
-  const userHeaders = headers;
 
   try {
-    const userTokenListRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers: userHeaders });
-    const userTokenListData = await userTokenListRes.json();
-    const oldUserTokenSubs = userTokenListData.data?.filter(s => userTokenSubs.some(sub => sub.type === s.type)) || [];
-    for (const sub of oldUserTokenSubs) {
-      await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, { method: 'DELETE', headers: userHeaders });
+    const authListRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers: headers });
+    const authListData = await authListRes.json();
+    const oldBroadcasterAuthSubs = authListData.data?.filter(s => broadcasterAuthSubs.some(sub => sub.type === s.type)) || [];
+    for (const sub of oldBroadcasterAuthSubs) {
+      await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, { method: 'DELETE', headers: headers });
     }
 
-    for (const sub of userTokenSubs) {
+    for (const sub of broadcasterAuthSubs) {
       const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-        method: 'POST', headers: userHeaders,
+        method: 'POST', headers: headers,
         body: JSON.stringify({ ...sub, transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET } })
       });
       const data = await res.json();

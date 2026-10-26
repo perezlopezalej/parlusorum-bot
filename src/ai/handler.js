@@ -409,7 +409,6 @@ async function handleCohost(client, channel) {
     addBotMessage(cohostReply);
   } catch (err) {
     logger.error(`Co-host: ${err.message}`);
-    if (!isSilenced()) client.say(channel, truncate(getFallback('cohost')));
   } finally { cohostRunning = false; }
 }
 
