@@ -2,7 +2,7 @@
 /**
  * Verifica las suscripciones EventSub registradas en Twitch.
  *
- *   node scripts/check-eventsub.js                       # usa PUBLIC_URL / RENDER_EXTERNAL_URL del .env
+ *   node scripts/check-eventsub.js                       # usa PUBLIC_URL o https://parlusorum-bot.onrender.com
  *   node scripts/check-eventsub.js https://x.onrender.com  # compara contra esa URL
  *   node scripts/check-eventsub.js --prune                 # borra las que apunten a otra URL
  *
@@ -15,9 +15,10 @@ const args = process.argv.slice(2);
 const PRUNE = args.includes('--prune');
 const urlArg = args.find(a => a.startsWith('http'));
 
-const expectedBase = (urlArg || process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '')
+const DEFAULT_URL = 'https://parlusorum-bot.onrender.com';
+const expectedBase = (urlArg || process.env.PUBLIC_URL || DEFAULT_URL)
   .trim().replace(/\/+$/, '');
-const expectedCallback = expectedBase ? `${expectedBase}/eventsub` : null;
+const expectedCallback = `${expectedBase}/eventsub`;
 
 async function getAppToken() {
   const res = await fetch('https://id.twitch.tv/oauth2/token', {
@@ -64,8 +65,7 @@ async function report(label, headers) {
     const cb = s.transport?.callback || '(sin callback)';
     const match = expectedCallback ? cb === expectedCallback : null;
     const flagUrl = match === null ? '•' : match ? '✅' : '⚠️ ';
-    const flagStatus = s.status === 'enabled' ? '' : `  [status: ${s.status}]`;
-    console.log(`  ${flagUrl} ${s.type} v${s.version}  →  ${cb}${flagStatus}`);
+    console.log(`  ${flagUrl} ${s.type} v${s.version}  [status: ${s.status}]  →  ${cb}`);
     if (match === false) stale.push(s);
   }
 
@@ -83,24 +83,13 @@ async function report(label, headers) {
     console.error('❌ Faltan CLIENT_ID / CLIENT_SECRET.');
     process.exit(1);
   }
-  console.log(expectedCallback
-    ? `Callback esperado: ${expectedCallback}`
-    : '⚠️  Sin PUBLIC_URL/RENDER_EXTERNAL_URL — se listan las suscripciones sin comparar.');
+  console.log(`Callback esperado: ${expectedCallback}`);
 
   const appToken = await getAppToken();
-  await report('App token (follow, stream.online, stream.offline)', {
+  await report('App token', {
     'Client-ID': process.env.CLIENT_ID,
     'Authorization': `Bearer ${appToken}`
   });
 
-  const broadcasterToken = (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
-  if (!broadcasterToken) {
-    console.log('\n⚠️  Sin BROADCASTER_TOKEN — no se revisan hype train, predicciones, polls ni channel points.');
-  } else {
-    await report('Broadcaster token (hype train, predicciones, polls, channel points)', {
-      'Client-ID': process.env.CLIENT_ID,
-      'Authorization': `Bearer ${broadcasterToken}`
-    });
-  }
   console.log('');
 })().catch(e => { console.error(`❌ ${e.message}`); process.exit(1); });
