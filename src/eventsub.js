@@ -24,7 +24,13 @@ const MESSAGE_TYPE_REVOCATION = 'revocation';
 const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
 
 // Deduplicación de notificaciones — Twitch puede reenviar el mismo evento
-const processedEventIds = new Set();
+const MESSAGE_MAX_AGE_MS = 10 * 60 * 1000;
+const processedEventIds = new Map(); // message-id → expiresAt
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, exp] of processedEventIds) if (exp < now) processedEventIds.delete(id);
+}, 60 * 1000).unref();
 
 function getStreamUptime() {
   const streamStartedAt = getStreamStartedAt();
@@ -200,7 +206,7 @@ async function registerSubscriptions(broadcasterId) {
       if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
         logger.info(`✅ EventSub: ${sub.type} registrado.`);
       } else {
-        logger.warn(`⚠️ EventSub ${sub.type}: ${JSON.stringify(data.message || data.error || data)}`);
+        logger.warn(`⚠️ EventSub ${sub.type}: HTTP ${res.status} ${data.message || data.error || ''}`.trim());
       }
     }
   } catch (e) {
@@ -232,7 +238,7 @@ async function registerSubscriptions(broadcasterId) {
       if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
         logger.info(`✅ EventSub: ${sub.type} registrado.`);
       } else {
-        logger.warn(`⚠️ EventSub ${sub.type}: ${JSON.stringify(data.message || data.error || data)}`);
+        logger.warn(`⚠️ EventSub ${sub.type}: HTTP ${res.status} ${data.message || data.error || ''}`.trim());
       }
     }
     return true;
@@ -286,6 +292,12 @@ function createEventSubHandler(client, channel, deps) {
       res.writeHead(403); res.end(); return;
     }
 
+    const sentAt = Date.parse(req.headers[TWITCH_MESSAGE_TIMESTAMP]);
+    if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > MESSAGE_MAX_AGE_MS) {
+      logger.warn(`⚠️ EventSub: timestamp fuera de ventana (>10 min) → 403 [tipo=${messageType || '?'}]`);
+      res.writeHead(403); res.end(); return;
+    }
+
     let body;
     try { body = JSON.parse(rawBody); } catch {
       logger.warn(`⚠️ EventSub: JSON inválido → 400 [tipo=${messageType || '?'}]`);
@@ -310,10 +322,7 @@ function createEventSubHandler(client, channel, deps) {
           logger.info(`ℹ️ EventSub: notificación duplicada ignorada → 204 (${body.subscription?.type})`);
           return;
         }
-        processedEventIds.add(eventMsgId);
-        if (processedEventIds.size > 200) {
-          processedEventIds.delete(processedEventIds.keys().next().value);
-        }
+        processedEventIds.set(eventMsgId, Date.now() + MESSAGE_MAX_AGE_MS);
       }
 
       const type = body.subscription?.type;

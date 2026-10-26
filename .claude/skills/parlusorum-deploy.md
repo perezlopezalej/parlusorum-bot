@@ -5,11 +5,11 @@ Deploy en Render y flujo de trabajo local con ngrok para EventSub.
 ## Estado actual
 
 El bot corre en **Render** (free tier), servicio `parlusorum-bot`, URL pública
-`https://parlusorum-bot.onrender.com`. Migrado desde Railway; ya no queda nada
+`https://parlusorum-bot-0j8s.onrender.com`. Migrado desde Railway; ya no queda nada
 de Railway en el repo (`railway.toml` y `Procfile` eliminados).
 
-El servicio antiguo `parlusorum-bot-c9i2.onrender.com` quedó obsoleto en la
-migración. **Nunca deben estar los dos encendidos a la vez**: dos instancias con
+Los servicios `parlusorum-bot-c9i2.onrender.com` y `parlusorum-bot.onrender.com` ya
+no existen; el único servicio es `https://parlusorum-bot-0j8s.onrender.com`. **Nunca deben estar los dos encendidos a la vez**: dos instancias con
 el mismo `BOT_TOKEN` duplican cada mensaje en el chat, y la que arranque última
 reescribe las suscripciones EventSub contra su propia URL dejando a la otra sin
 eventos. Además dos servicios free siempre activos no caben en las 750 h/mes.
@@ -88,7 +88,7 @@ Verificar a qué URL apuntan las suscripciones reales en Twitch:
 
 ```bash
 npm run check:eventsub                         # compara con PUBLIC_URL/RENDER_EXTERNAL_URL del .env
-node scripts/check-eventsub.js https://parlusorum-bot.onrender.com
+node scripts/check-eventsub.js https://parlusorum-bot-0j8s.onrender.com
 node scripts/check-eventsub.js --prune         # borra las que apunten a otra URL
 ```
 

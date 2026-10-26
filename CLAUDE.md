@@ -150,3 +150,4 @@ LURKER_THRESHOLD_MS        Silence before greeting a returning lurker (default 9
 - **Mensajes al chat**: los textos en español que llegan al chat van en `config/messages.json`. Excepción: errores internos y logs.
 - **truncate() obligatorio**: todo `client.say()` con contenido dinámico o de `config/` pasa por `truncate()` (límite 500 caracteres de Twitch). Sin excepción.
 - **Map con TTL → setInterval de pruning**: todo `Map` indexado por usuario/ID con TTL declara su `setInterval` de limpieza justo después (ver `chisteCooldowns`, `questionCooldowns`, `userFactsCache`).
+- **Supabase**: el bot usa la clave secreta (service role) y todas las tablas tienen RLS activado sin políticas; nunca volver a la clave anon ni añadir políticas permisivas.

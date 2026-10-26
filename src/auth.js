@@ -23,25 +23,52 @@ const BROADCASTER_SCOPES = [
 const STATE_TTL_MS = 10 * 60 * 1000;
 const pendingStates = new Map(); // state → expiresAt
 
+const MAX_PENDING_STATES = 20;
+const RATE_LIMIT_MAX = 10;               // inicios de flujo por IP y ventana
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const startHits = new Map(); // ip → timestamps recientes
+
 setInterval(() => {
   const now = Date.now();
   for (const [s, exp] of pendingStates) if (exp < now) pendingStates.delete(s);
+  for (const [ip, hits] of startHits) {
+    if (!hits.some(t => now - t < RATE_LIMIT_WINDOW_MS)) startHits.delete(ip);
+  }
 }, 60 * 1000).unref();
+
+function isRateLimited(req) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+  const now = Date.now();
+  const hits = (startHits.get(ip) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  hits.push(now);
+  startHits.set(ip, hits);
+  return hits.length > RATE_LIMIT_MAX;
+}
 
 function getRedirectUri() {
   const base = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, '');
   return base ? `${base}/auth/callback` : null;
 }
 
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Cache-Control': 'no-store',
+  'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY',
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+};
+
 function page(res, status, title, msg) {
-  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:sans-serif;max-width:480px;margin:15vh auto;padding:0 16px;text-align:center"><h1>${title}</h1><p>${msg}</p></body></html>`);
 }
 
 function handleAuthStart(req, res) {
   const redirectUri = getRedirectUri();
   if (!redirectUri) return page(res, 500, 'Error', 'Falta PUBLIC_URL (o RENDER_EXTERNAL_URL) en el servidor.');
+  if (isRateLimited(req)) return page(res, 429, 'Demasiados intentos', 'Espera un minuto y vuelve a intentarlo.');
   const state = crypto.randomBytes(24).toString('hex');
+  if (pendingStates.size >= MAX_PENDING_STATES) pendingStates.delete(pendingStates.keys().next().value);
   pendingStates.set(state, Date.now() + STATE_TTL_MS);
   const url = new URL('https://id.twitch.tv/oauth2/authorize');
   url.search = new URLSearchParams({
@@ -52,7 +79,7 @@ function handleAuthStart(req, res) {
     state,
     force_verify: 'true',
   }).toString();
-  res.writeHead(302, { Location: url.toString() });
+  res.writeHead(302, { ...SECURITY_HEADERS, Location: url.toString() });
   res.end();
 }
 

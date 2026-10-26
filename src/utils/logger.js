@@ -21,8 +21,25 @@ function rotateLogs() {
   } catch {}
 }
 
+// Oculta cualquier cosa con forma de token (oauth:, Bearer, JWT, claves gsk_/sb_secret_, campos *_token/secret)
+const REDACT_PATTERNS = [
+  /oauth:[A-Za-z0-9]+/gi,
+  /Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi,
+  /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g,
+  /\b(?:gsk_|sb_secret_|sk-ant-)[A-Za-z0-9_-]+/g,
+  /((?:access_token|refresh_token|client_secret|api_?key|secret)["']?\s*[:=]\s*["']?)[^\s"'&,}]+/gi,
+];
+
+function redact(message) {
+  let out = String(message);
+  for (const re of REDACT_PATTERNS) {
+    out = out.replace(re, (m, prefix) => (typeof prefix === 'string' ?`${prefix}[REDACTED]` : '[REDACTED]'));
+  }
+  return out;
+}
+
 function write(level, message) {
-  const line = `[${formatDate()}] [${level}] ${message}\n`;
+  const line = `[${formatDate()}] [${level}] ${redact(message)}\n`;
   process.stdout.write(line);
   try {
     rotateLogs();

@@ -2,7 +2,7 @@
 /**
  * Verifica las suscripciones EventSub registradas en Twitch.
  *
- *   node scripts/check-eventsub.js                       # usa PUBLIC_URL o https://parlusorum-bot.onrender.com
+ *   node scripts/check-eventsub.js                       # usa PUBLIC_URL o https://parlusorum-bot-0j8s.onrender.com
  *   node scripts/check-eventsub.js https://x.onrender.com  # compara contra esa URL
  *   node scripts/check-eventsub.js --prune                 # borra las que apunten a otra URL
  *
@@ -15,7 +15,7 @@ const args = process.argv.slice(2);
 const PRUNE = args.includes('--prune');
 const urlArg = args.find(a => a.startsWith('http'));
 
-const DEFAULT_URL = 'https://parlusorum-bot.onrender.com';
+const DEFAULT_URL = 'https://parlusorum-bot-0j8s.onrender.com';
 const expectedBase = (urlArg || process.env.PUBLIC_URL || DEFAULT_URL)
   .trim().replace(/\/+$/, '');
 const expectedCallback = `${expectedBase}/eventsub`;

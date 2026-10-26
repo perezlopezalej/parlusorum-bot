@@ -35,7 +35,7 @@ const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
 
 let eventSubHandler = null;
 
-// Estado de la conexión al chat (expuesto en GET /status, sin secretos)
+// Estado de la conexión al chat (GET /status solo expone si está conectado)
 const chatStatus = { connected: false, lastError: null, lastErrorAt: null, lastConnectedAt: null, retryAttempts: 0 };
 
 // --- HTTP server ---
@@ -47,14 +47,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === '/status' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      chat: chatStatus.connected ? 'connected' : 'disconnected',
-      lastError: chatStatus.lastError,
-      lastErrorAt: chatStatus.lastErrorAt,
-      lastConnectedAt: chatStatus.lastConnectedAt,
-      retryAttempts: chatStatus.retryAttempts,
-      uptime: process.uptime()
-    }));
+    res.end(JSON.stringify({ chat: chatStatus.connected ? 'connected' : 'disconnected' }));
     return;
   }
   const urlPath = (req.url || '').split('?')[0];
