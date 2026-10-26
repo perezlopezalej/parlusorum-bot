@@ -8,7 +8,7 @@ const { getMemoryContext } = require('../memory/handler');
 const { persistCooldown } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const { saveHighlight } = require('../utils/storage');
-const { groqWithRetry, truncate, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
+const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
 // FIX #5: cohost mas activo — probability 0.08->0.15, cooldown 180s->120s
@@ -961,7 +961,6 @@ setInterval(() => {
 
 async function checkPatternMatch(client, channel, tags, message) {
   if (isSilenced() || isTriviaActive()) return false;
-  if (!canMakeRequest()) return false;
 
   const now = Date.now();
   const userId = tags['user-id'] || tags['username'];
@@ -981,6 +980,7 @@ async function checkPatternMatch(client, channel, tags, message) {
   const username = tags['display-name'];
   const question = sanitizeForAI(message);
   if (!question) return false;
+  if (!canMakeRequest()) return false;
 
   if (isDirect) {
     lastDirectMentionTime = now;

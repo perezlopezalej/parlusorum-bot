@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "check:eventsub": "node scripts/check-eventsub.js"
+    "check:eventsub": "node scripts/check-eventsub.js",
+    "bot-token": "node scripts/get-bot-token.js"
   },
   "keywords": [],
   "author": "",

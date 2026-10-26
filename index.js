@@ -4,7 +4,6 @@ const http = require('http');
 const config = require('./config/commands.json');
 const channelConfig = require('./config/channel.json');
 const logger = require('./src/utils/logger');
-console.log("BOT ARRANCADO");
 
 // --- Validar variables de entorno obligatorias ---
 const REQUIRED_ENV = ['BOT_USERNAME', 'BOT_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET', 'CHANNEL', 'GROQ_API_KEY', 'BROADCASTER_TOKEN', 'EVENTSUB_SECRET'];
@@ -22,18 +21,22 @@ const games = require('./src/games/handler');
 const alerts = require('./src/alerts/handler');
 const timers = require('./src/timers/handler');
 const ai = require('./src/ai/handler');
-const { getStreamInfo, getCurrentGame, loadBroadcasterTokens } = require('./src/twitch/api');
+const { getStreamInfo, getCurrentGame, loadBroadcasterTokens, ensureBotToken, refreshBotToken, refreshBotTokenIfNeeded } = require('./src/twitch/api');
 const { trackMessage, updatePeakViewers, getSummary } = require('./src/utils/metrics');
 const { startStreamSession } = require('./src/utils/supabase');
 const memory = require('./src/memory/handler');
 const { wrapClientSay } = require('./src/utils/irc-ratelimit');
 const { checkNewUser } = require('./src/moderation/bot-detector');
+const { handleAuthStart, handleAuthCallback } = require('./src/auth');
 
 const PORT = process.env.PORT || 3000;
 const CHANNEL = `#${process.env.CHANNEL}`;
 const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
 
 let eventSubHandler = null;
+
+// Estado de la conexión al chat (expuesto en GET /status, sin secretos)
+const chatStatus = { connected: false, lastError: null, lastErrorAt: null, lastConnectedAt: null, retryAttempts: 0 };
 
 // --- HTTP server ---
 const server = http.createServer((req, res) => {
@@ -42,6 +45,21 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
     return;
   }
+  if (req.url === '/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      chat: chatStatus.connected ? 'connected' : 'disconnected',
+      lastError: chatStatus.lastError,
+      lastErrorAt: chatStatus.lastErrorAt,
+      lastConnectedAt: chatStatus.lastConnectedAt,
+      retryAttempts: chatStatus.retryAttempts,
+      uptime: process.uptime()
+    }));
+    return;
+  }
+  const urlPath = (req.url || '').split('?')[0];
+  if (urlPath === '/auth/broadcaster' && req.method === 'GET') { handleAuthStart(req, res); return; }
+  if (urlPath === '/auth/callback' && req.method === 'GET') { handleAuthCallback(req, res); return; }
   if (req.url === '/eventsub' && req.method === 'POST') {
     let rawBody = '';
     let bodyOverflow = false;
@@ -95,15 +113,58 @@ async function validateBroadcasterToken() {
 }
 
 // --- Cliente Twitch ---
+// password como función: cada intento de conexión usa el BOT_TOKEN vigente (refrescado o no)
 const client = new tmi.Client({
   options: { debug: false },
   connection: { reconnect: true, secure: true, port: 443 },
-  identity: { username: process.env.BOT_USERNAME, password: process.env.BOT_TOKEN },
+  identity: { username: process.env.BOT_USERNAME, password: () => `oauth:${(process.env.BOT_TOKEN || '').replace(/^oauth:/, '')}` },
   channels: [process.env.CHANNEL]
 });
 
 wrapClientSay(client);
-client.connect().catch(err => logger.error(`IRC connect error: ${err.message || err}`));
+
+const RETRY_MIN_MS = 30 * 1000;
+const RETRY_MAX_MS = 10 * 60 * 1000;
+let chatConnecting = false;
+
+// Conecta al chat; ante fallo de login refresca el token del bot y reintenta con backoff.
+async function connectChat() {
+  if (chatConnecting) return;
+  chatConnecting = true;
+  let delay = RETRY_MIN_MS;
+  try {
+    while (!chatStatus.connected) {
+      try {
+        await client.connect();
+        return;
+      } catch (err) {
+        const msg = String(err?.message || err);
+        chatStatus.lastError = msg;
+        chatStatus.lastErrorAt = new Date().toISOString();
+        chatStatus.retryAttempts++;
+        const isAuth = /login|auth/i.test(msg);
+        logger.error(`🔴 Fallo al conectar al chat de Twitch: "${msg}"${isAuth ? ' (token del bot rechazado)' : ''}. Reintento en ${Math.round(delay / 1000)}s.`);
+        if (isAuth) await refreshBotToken();
+        await new Promise(r => setTimeout(r, delay));
+        delay = Math.min(delay * 2, RETRY_MAX_MS);
+        client.reconnect = true; // tmi lo desactiva tras un fallo de login
+      }
+    }
+  } finally {
+    chatConnecting = false;
+  }
+}
+
+(async () => {
+  const ok = await ensureBotToken();
+  if (!ok) logger.warn('⚠️ No se pudo garantizar un BOT_TOKEN válido; se intentará conectar igualmente.');
+  await connectChat();
+})();
+
+// Renovación preventiva del token del bot (cada hora)
+setInterval(() => {
+  refreshBotTokenIfNeeded().catch(e => logger.warn(`Renovación BOT_TOKEN: ${e.message}`));
+}, 60 * 60 * 1000);
 
 let timersStarted = false;
 let lastMessageTime = Date.now();
@@ -125,6 +186,9 @@ setInterval(async () => {
 }, 5 * 60 * 1000);
 
 client.on('connected', async (addr, port) => {
+  chatStatus.connected = true;
+  chatStatus.lastConnectedAt = new Date().toISOString();
+  chatStatus.retryAttempts = 0;
   logger.info(`✅ Bot conectado a #${process.env.CHANNEL}`);
   eventSubHandler = createEventSubHandler(client, CHANNEL, {
     getCurrentGame,
@@ -189,6 +253,10 @@ client.on('connected', async (addr, port) => {
 
 client.on('disconnected', (reason) => {
   logger.warn(`⚠️ Desconectado: ${reason || 'sin motivo'}`);
+  chatStatus.connected = false;
+  if (reason) { chatStatus.lastError = String(reason); chatStatus.lastErrorAt = new Date().toISOString(); }
+  // Si tmi dejó de reconectar por fallo de login, retomamos nosotros con refresh + backoff
+  if (/login|auth/i.test(String(reason || ''))) connectChat();
   const { setTriviaActive } = require('./src/utils/state');
   setTriviaActive(false);
 });
@@ -249,7 +317,7 @@ client.on('message', async (channel, tags, message, self) => {
 
     logger.debug(`💬 [${username}] !${command}`);
 
-    if (['trivia', 'moneda'].includes(command)) return games.handle(client, channel, tags, command, args);
+    if (command === 'trivia') return games.handle(client, channel, tags, command, args);
     if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
     if (command === 'chiste') return ai.handleChiste(client, channel, tags);
 

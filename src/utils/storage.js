@@ -75,6 +75,13 @@ async function saveUsers(data) {
   return nSaveUsers(data);
 }
 
+async function saveUser(userId, userData) {
+  if (USE_SUPABASE) return getSupabase().saveUser(userId, userData);
+  const users = await nLoadUsers();
+  users[userId] = userData;
+  return nSaveUsers(users);
+}
+
 if (USE_SUPABASE) {
   logger.info('💾 Storage: Supabase');
 } else {
@@ -91,4 +98,4 @@ async function saveHighlight(triggerMessages, markerId, description) {
   }
 }
 
-module.exports = { loadUsers, saveUsers, saveHighlight };
+module.exports = { loadUsers, saveUsers, saveUser, saveHighlight };

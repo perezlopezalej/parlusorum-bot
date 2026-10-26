@@ -49,6 +49,8 @@
   ],
   "creator_username": "vlxj97",
   "streamer_username": "parlusorum",
+  "bot_autoban_dry_run": true,
+  "bot_whitelist": ["nightbot", "streamelements", "fossabot", "moobot", "dios_fua"],
   "personality_modes": {
     "hype": {
       "prompt_extension": "El chat está ENCENDIDO ahora mismo. Respuestas más cortas y enérgicas, más FUA, más emotes del canal. Máx 2 frases breves.",

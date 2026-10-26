@@ -185,14 +185,8 @@ async function registerSubscriptions(broadcasterId) {
     return false;
   }
 
-  // Subs con user access token — BROADCASTER_TOKEN debe tener scopes:
+  // Subs por webhook: Twitch exige app access token. El broadcaster debe haber autorizado la app con los scopes:
   // channel:read:hype_train, channel:read:predictions, channel:read:polls, channel:read:redemptions
-  const broadcasterToken = process.env.BROADCASTER_TOKEN;
-  if (!broadcasterToken) {
-    logger.warn('⚠️ EventSub: BROADCASTER_TOKEN no configurado — hype_train, predicciones, polls y channel points no suscritos.');
-    return true;
-  }
-
   const userTokenSubs = [
     { type: 'channel.hype_train.begin',    version: '2', condition: { broadcaster_user_id: broadcasterId } },
     { type: 'channel.hype_train.progress', version: '2', condition: { broadcaster_user_id: broadcasterId } },
@@ -204,11 +198,7 @@ async function registerSubscriptions(broadcasterId) {
     { type: 'channel.poll.end',            version: '1', condition: { broadcaster_user_id: broadcasterId } },
     { type: 'channel.channel_points_custom_reward_redemption.add', version: '1', condition: { broadcaster_user_id: broadcasterId } },
   ];
-  const userHeaders = {
-    'Client-ID': process.env.CLIENT_ID,
-    'Authorization': `Bearer ${broadcasterToken}`,
-    'Content-Type': 'application/json'
-  };
+  const userHeaders = headers;
 
   try {
     const userTokenListRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers: userHeaders });

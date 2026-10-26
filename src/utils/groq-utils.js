@@ -62,4 +62,4 @@ function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   return clean.slice(0, limit - 3) + '...';
 }
 
-module.exports = { groqWithRetry, truncate, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND };
+module.exports = { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND };

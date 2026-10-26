@@ -76,6 +76,100 @@ async function loadBroadcasterTokens() {
   }
 }
 
+// ─── Token del bot (IRC) ──────────────────────────────────────────────────────
+
+const BOT_TOKEN_MIN_REMAINING_S = 3600;
+
+function stripOauth(token) {
+  return (token || '').replace(/^oauth:/, '');
+}
+
+// Devuelve { valid, expiresIn, login } sin exponer el token.
+async function validateBotToken(token = process.env.BOT_TOKEN) {
+  const clean = stripOauth(token);
+  if (!clean) return { valid: false, expiresIn: 0, login: null };
+  try {
+    const res = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { 'Authorization': `OAuth ${clean}` } });
+    if (!res.ok) return { valid: false, expiresIn: 0, login: null };
+    const data = await res.json();
+    return { valid: true, expiresIn: data.expires_in || 0, login: data.login || null };
+  } catch (e) {
+    logger.warn(`No se pudo validar BOT_TOKEN: ${e.message}`);
+    return { valid: false, expiresIn: 0, login: null, networkError: true };
+  }
+}
+
+async function refreshBotToken() {
+  const refreshToken = process.env.BOT_REFRESH_TOKEN;
+  if (!refreshToken) {
+    logger.error('🔴 BOT_REFRESH_TOKEN no configurado — ejecuta scripts/get-bot-token.js para generar uno nuevo.');
+    return false;
+  }
+  try {
+    const res = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: process.env.CLIENT_ID,
+        client_secret: process.env.CLIENT_SECRET,
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.access_token) {
+      logger.error(`🔴 Refresh de BOT_TOKEN fallido (${res.status}: ${data.message || 'sin detalle'}) — regenera el token con scripts/get-bot-token.js.`);
+      return false;
+    }
+    process.env.BOT_TOKEN = data.access_token;
+    process.env.BOT_REFRESH_TOKEN = data.refresh_token || refreshToken;
+    logger.info('🔄 BOT_TOKEN refrescado exitosamente.');
+    const { saveTokens } = require('../utils/supabase');
+    await saveTokens({
+      bot_token: data.access_token,
+      bot_refresh_token: data.refresh_token || refreshToken,
+    }).catch(e => logger.warn(`No se pudieron persistir tokens del bot: ${e.message}`));
+    return true;
+  } catch (e) {
+    logger.error(`Error en refreshBotToken: ${e.message}`);
+    return false;
+  }
+}
+
+// Carga el refresh token (y el token) del bot desde Supabase si existen.
+// Devuelve el token de Supabase para que el llamador decida cuál usar.
+async function loadBotTokens() {
+  const { loadTokens } = require('../utils/supabase');
+  const tokens = await loadTokens().catch(() => null);
+  if (!tokens) return null;
+  if (tokens.bot_refresh_token) process.env.BOT_REFRESH_TOKEN = tokens.bot_refresh_token;
+  return tokens.bot_token || null;
+}
+
+// Garantiza un BOT_TOKEN válido con al menos 1 h de vida; refresca si hace falta.
+async function ensureBotToken() {
+  const envToken = process.env.BOT_TOKEN;
+  const dbToken = await loadBotTokens();
+  for (const candidate of [dbToken, envToken]) {
+    if (!candidate) continue;
+    const v = await validateBotToken(candidate);
+    if (v.valid) {
+      process.env.BOT_TOKEN = candidate;
+      if (v.expiresIn >= BOT_TOKEN_MIN_REMAINING_S) return true;
+      break;
+    }
+  }
+  return refreshBotToken();
+}
+
+// Refresca solo si el token actual caduca pronto o ya no es válido.
+async function refreshBotTokenIfNeeded() {
+  const v = await validateBotToken();
+  if (v.networkError) return false;
+  if (v.valid && v.expiresIn >= BOT_TOKEN_MIN_REMAINING_S) return true;
+  return refreshBotToken();
+}
+
 // --- Estado del stream en tiempo real ---
 let streamCache = null;
 let lastStreamCheck = 0;
@@ -309,4 +403,5 @@ module.exports = {
   getStreamInfo, isStreamLive, getCurrentGame, getRecentGames,
   createClip, createStreamMarker, getGameInfo, getFollowerCount, getChannelInfo,
   refreshBroadcasterToken, loadBroadcasterTokens,
+  validateBotToken, refreshBotToken, ensureBotToken, refreshBotTokenIfNeeded,
 };

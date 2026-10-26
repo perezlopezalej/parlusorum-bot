@@ -256,7 +256,8 @@ async function incrementChannelStat(field) {
 
 // ─── TOKENS ──────────────────────────────────────────────────────────────────
 
-async function saveTokens({ broadcaster_token, broadcaster_refresh_token }) {
+// Los campos undefined no se serializan, así que el upsert solo toca las columnas recibidas.
+async function saveTokens({ broadcaster_token, broadcaster_refresh_token, bot_token, bot_refresh_token }) {
   const db = getClient();
   if (!db) return;
   try {
@@ -264,6 +265,8 @@ async function saveTokens({ broadcaster_token, broadcaster_refresh_token }) {
       id: 'broadcaster',
       broadcaster_token,
       broadcaster_refresh_token,
+      bot_token,
+      bot_refresh_token,
       updated_at: new Date().toISOString()
     }, { onConflict: 'id' });
     if (error) throw error;
@@ -279,7 +282,7 @@ async function loadTokens() {
   try {
     const { data, error } = await db
       .from('channel_config')
-      .select('broadcaster_token, broadcaster_refresh_token')
+      .select('broadcaster_token, broadcaster_refresh_token, bot_token, bot_refresh_token')
       .eq('id', 'broadcaster')
       .single();
     if (error) return null;

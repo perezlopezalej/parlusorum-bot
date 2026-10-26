@@ -1,7 +1,7 @@
 const { getChannelInfo, getFollowerCount, getCurrentGame } = require('../twitch/api');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
-const { loadUsers, saveUsers } = require('../utils/storage');
+const { loadUsers, saveUser } = require('../utils/storage');
 const { setRaidActive } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const { sanitizeForAI } = require('../utils/filter');
@@ -77,7 +77,7 @@ async function checkFirstMessage(client, channel, tags) {
       messageCount: 1,
       achievements: []
     };
-    saveUsers(users);
+    saveUser(userId, users[userId]);
 
     if (canMakeRequest()) {
       try {
@@ -125,7 +125,7 @@ async function checkFirstMessage(client, channel, tags) {
   }
 
   checkAchievements(client, channel, username, userData);
-  saveUsers(users);
+  saveUser(userId, userData);
 }
 
 function checkAnniversary(client, channel, username, userData, now) {
