@@ -70,11 +70,15 @@ const server = http.createServer((req, res) => {
     });
     req.on('end', () => {
       if (bodyOverflow) {
+        logger.warn('⚠️ EventSub: cuerpo demasiado grande (413)');
         if (!res.headersSent && !res.writableEnded) { res.writeHead(413); res.end(); }
         return;
       }
       if (eventSubHandler) eventSubHandler(req, res, rawBody);
-      else { res.writeHead(503); res.end(); }
+      else {
+        logger.warn('⚠️ EventSub: handler no listo (503)');
+        res.writeHead(503); res.end();
+      }
     });
     return;
   }
@@ -155,6 +159,26 @@ async function connectChat() {
   }
 }
 
+// El handler de EventSub no depende de la conexión al chat: si se creara en 'connected',
+// Twitch recibiría 503 en la verificación del webhook mientras el login IRC falla o reintenta.
+eventSubHandler = createEventSubHandler(client, CHANNEL, {
+  getCurrentGame,
+  startStreamSession,
+  invalidateMemoryCache: memory.invalidateMemoryCache,
+  onWarmupMode: ai.onWarmupMode,
+  postStreamEnd: ai.postStreamEnd,
+  getSummary,
+  onStreamEnd: memory.onStreamEnd,
+  resetSessionCounters,
+  getStreamChatBuffer: ai.getStreamChatBuffer,
+  resetStreamChatBuffer: ai.resetStreamChatBuffer,
+  getActiveUsers: ai.getActiveUsersWithMinMessages,
+  resetActiveUsers: ai.resetActiveUsers,
+  onStreamOnline: alerts.onStreamOnline,
+  clearUserFactsCache: ai.clearUserFactsCache,
+  handleQuestion: ai.handleQuestion
+});
+
 (async () => {
   const ok = await ensureBotToken();
   if (!ok) logger.warn('⚠️ No se pudo garantizar un BOT_TOKEN válido; se intentará conectar igualmente.');
@@ -190,24 +214,6 @@ client.on('connected', async (addr, port) => {
   chatStatus.lastConnectedAt = new Date().toISOString();
   chatStatus.retryAttempts = 0;
   logger.info(`✅ Bot conectado a #${process.env.CHANNEL}`);
-  eventSubHandler = createEventSubHandler(client, CHANNEL, {
-    getCurrentGame,
-    startStreamSession,
-    invalidateMemoryCache: memory.invalidateMemoryCache,
-    onWarmupMode: ai.onWarmupMode,
-    postStreamEnd: ai.postStreamEnd,
-    getSummary,
-    onStreamEnd: memory.onStreamEnd,
-    resetSessionCounters,
-    getStreamChatBuffer: ai.getStreamChatBuffer,
-    resetStreamChatBuffer: ai.resetStreamChatBuffer,
-    getActiveUsers: ai.getActiveUsersWithMinMessages,
-    resetActiveUsers: ai.resetActiveUsers,
-    onStreamOnline: alerts.onStreamOnline,
-    clearUserFactsCache: ai.clearUserFactsCache,
-    handleQuestion: ai.handleQuestion
-  });
-
   if (!timersStarted) {
     timers.start(client, config);
     timersStarted = true;

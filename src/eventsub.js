@@ -131,6 +131,26 @@ const followMessages = [
   '🚀 ¡@{username} acaba de seguirnos! ¡Bienvenid@ al caos! ¡FUA! 🔥',
 ];
 
+// Borra (con paginación) toda suscripción que no esté "enabled" (p. ej. webhook_callback_verification_failed)
+// y las "enabled" de los tipos que gestionamos, para recrearlas sin acumular duplicados.
+async function deleteStaleSubscriptions(headers, managedTypes) {
+  let cursor = null;
+  let deleted = 0;
+  do {
+    const url = 'https://api.twitch.tv/helix/eventsub/subscriptions' + (cursor ? `?after=${encodeURIComponent(cursor)}` : '');
+    const res = await fetch(url, { headers });
+    const data = await res.json();
+    const stale = (data.data || []).filter(s => s.status !== 'enabled' || managedTypes.has(s.type));
+    for (const sub of stale) {
+      const del = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, { method: 'DELETE', headers });
+      if (del.ok) deleted++;
+      else logger.warn(`⚠️ EventSub: no se pudo borrar ${sub.type} (${sub.status}): HTTP ${del.status}`);
+    }
+    cursor = data.pagination?.cursor || null;
+  } while (cursor);
+  logger.info(`🧹 EventSub: ${deleted} suscripciones antiguas/fallidas borradas`);
+}
+
 // --- Registrar suscripciones EventSub ---
 async function registerSubscriptions(broadcasterId) {
   if (!EVENTSUB_SECRET) {
@@ -160,13 +180,16 @@ async function registerSubscriptions(broadcasterId) {
     { type: 'stream.offline', version: '1', condition: { broadcaster_user_id: broadcasterId } }
   ];
 
+  const broadcasterAuthTypes = [
+    'channel.hype_train.begin', 'channel.hype_train.progress', 'channel.hype_train.end',
+    'channel.prediction.begin', 'channel.prediction.lock', 'channel.prediction.end',
+    'channel.poll.begin', 'channel.poll.end',
+    'channel.channel_points_custom_reward_redemption.add',
+  ];
+  const managedTypes = new Set([...subscriptions.map(s => s.type), ...broadcasterAuthTypes]);
+
   try {
-    const listRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers });
-    const listData = await listRes.json();
-    const oldSubs = listData.data?.filter(s => subscriptions.some(sub => sub.type === s.type)) || [];
-    for (const sub of oldSubs) {
-      await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, { method: 'DELETE', headers });
-    }
+    await deleteStaleSubscriptions(headers, managedTypes);
 
     for (const sub of subscriptions) {
       const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
@@ -200,13 +223,6 @@ async function registerSubscriptions(broadcasterId) {
   ];
 
   try {
-    const authListRes = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', { headers: headers });
-    const authListData = await authListRes.json();
-    const oldBroadcasterAuthSubs = authListData.data?.filter(s => broadcasterAuthSubs.some(sub => sub.type === s.type)) || [];
-    for (const sub of oldBroadcasterAuthSubs) {
-      await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, { method: 'DELETE', headers: headers });
-    }
-
     for (const sub of broadcasterAuthSubs) {
       const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
         method: 'POST', headers: headers,
@@ -264,15 +280,20 @@ function createEventSubHandler(client, channel, deps) {
     const messageType = req.headers[MESSAGE_TYPE];
 
     if (!verifySignature(req, rawBody)) {
-      logger.warn('⚠️ EventSub: firma inválida');
+      const missing = [TWITCH_MESSAGE_ID, TWITCH_MESSAGE_TIMESTAMP, TWITCH_MESSAGE_SIGNATURE].filter(h => !req.headers[h]);
+      const reason = missing.length ? `faltan cabeceras (${missing.length})` : 'HMAC no coincide';
+      logger.warn(`⚠️ EventSub: firma inválida → 403 [tipo=${messageType || '?'}, ${reason}]`);
       res.writeHead(403); res.end(); return;
     }
 
     let body;
-    try { body = JSON.parse(rawBody); } catch { res.writeHead(400); res.end(); return; }
+    try { body = JSON.parse(rawBody); } catch {
+      logger.warn(`⚠️ EventSub: JSON inválido → 400 [tipo=${messageType || '?'}]`);
+      res.writeHead(400); res.end(); return;
+    }
 
     if (messageType === MESSAGE_TYPE_VERIFICATION) {
-      logger.info(`✅ EventSub: webhook verificado (${body.subscription?.type})`);
+      logger.info(`✅ EventSub: challenge respondido → 200 (${body.subscription?.type})`);
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end(body.challenge); return;
     }
@@ -285,7 +306,10 @@ function createEventSubHandler(client, channel, deps) {
       // Deduplicar por message ID — Twitch puede reenviar la misma notificación
       const eventMsgId = req.headers[TWITCH_MESSAGE_ID];
       if (eventMsgId) {
-        if (processedEventIds.has(eventMsgId)) return;
+        if (processedEventIds.has(eventMsgId)) {
+          logger.info(`ℹ️ EventSub: notificación duplicada ignorada → 204 (${body.subscription?.type})`);
+          return;
+        }
         processedEventIds.add(eventMsgId);
         if (processedEventIds.size > 200) {
           processedEventIds.delete(processedEventIds.keys().next().value);
@@ -294,6 +318,7 @@ function createEventSubHandler(client, channel, deps) {
 
       const type = body.subscription?.type;
       const event = body.event;
+      logger.info(`📨 EventSub: notificación aceptada → 204 (${type})`);
 
       if (type === 'channel.follow' && event?.user_name) {
         logger.info(`👤 Nuevo seguidor: ${event.user_name}`);
@@ -537,7 +562,9 @@ function createEventSubHandler(client, channel, deps) {
     }
 
     if (messageType === MESSAGE_TYPE_REVOCATION) {
-      logger.warn(`⚠️ EventSub revocado: ${body.subscription?.type}`);
+      logger.warn(`⚠️ EventSub revocado → 204 (${body.subscription?.type}, motivo=${body.subscription?.status || '?'})`);
+    } else {
+      logger.warn(`⚠️ EventSub: tipo de mensaje desconocido → 204 [tipo=${messageType || '?'}]`);
     }
 
     res.writeHead(204); res.end();
