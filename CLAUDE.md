@@ -12,6 +12,8 @@ Parlusorum Bot is a Twitch chatbot for the "parlusorum" channel: chat commands, 
 - No hacer commit ni push salvo que se pida.
 - Las tareas nuevas empiezan en solo lectura salvo que se indique lo contrario.
 - Salidas largas a un fichero en `logs/` y resumen corto en el chat.
+- Tras cualquier cambio de código, ejecutar `npm test`; no dar la tarea por terminada si algún test falla.
+- Si se añade una función pura nueva, añadirle su test en `test/`.
 
 ## Commands
 

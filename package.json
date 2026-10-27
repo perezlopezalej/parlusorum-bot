@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
+    "test": "node --test --test-force-exit \"test/**/*.test.js\"",
     "check:eventsub": "node scripts/check-eventsub.js",
     "backup": "node scripts/backup.js",
     "bot-token": "node scripts/get-bot-token.js"
