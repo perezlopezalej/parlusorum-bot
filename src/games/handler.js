@@ -57,6 +57,36 @@ const askedQuestions = new Set();
 let lastGeneratedQuestion = null; // { question, answer, pistas, curiosidad, game, ts }
 const GENERATED_TTL = 2 * 60 * 1000;
 
+// Últimas preguntas generadas por juego, para no repetirlas
+const RECENT_PER_GAME = 15;
+const recentQuestions = new Map(); // game -> [question]
+
+function questionWords(text) {
+  return new Set(normalizeAnswer(text).split(' ').filter(w => w.length > 2));
+}
+
+function isSimilarQuestion(a, b) {
+  const wa = questionWords(a);
+  const wb = questionWords(b);
+  if (!wa.size || !wb.size) return false;
+  let common = 0;
+  for (const w of wa) if (wb.has(w)) common++;
+  return common / (wa.size + wb.size - common) >= 0.6;
+}
+
+function isRecentQuestion(game, question) {
+  return (recentQuestions.get(game) || []).some(r => isSimilarQuestion(r, question));
+}
+
+function rememberQuestion(game, question) {
+  const list = recentQuestions.get(game) || [];
+  list.push(question);
+  if (list.length > RECENT_PER_GAME) list.shift();
+  recentQuestions.set(game, list);
+}
+
+const winsText = n => `${n} ${n === 1 ? 'victoria' : 'victorias'}`;
+
 // --- Normalización, similitud y pistas ---
 const ARTICLES = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'the', 'a', 'an']);
 const SIMILARITY_THRESHOLD = 0.85;
@@ -84,7 +114,11 @@ function levenshtein(a, b) {
   return prev[b.length];
 }
 
-function isAnswerMatch(message, answer) {
+function isAnswerMatch(message, answer, aliases = []) {
+  return [answer, ...aliases].some(a => isSingleMatch(message, a));
+}
+
+function isSingleMatch(message, answer) {
   const m = normalizeAnswer(message);
   const a = normalizeAnswer(answer);
   if (!m || !a) return false;
@@ -123,7 +157,8 @@ async function handleTrivia(client, channel) {
       const game = gameInfo?.game;
       if (game) {
         if (lastGeneratedQuestion && lastGeneratedQuestion.game === game &&
-            Date.now() - lastGeneratedQuestion.ts < GENERATED_TTL) {
+            Date.now() - lastGeneratedQuestion.ts < GENERATED_TTL &&
+            !isRecentQuestion(game, lastGeneratedQuestion.question)) {
           q = lastGeneratedQuestion;
         } else {
           const stats = getTriviaStats();
@@ -136,6 +171,8 @@ async function handleTrivia(client, channel) {
           // Solo se genera con datos reales de RAWG; sin ellos, banco estático
           const rawg = await getGameInfo(game, { detail: true });
           if (rawg?.description && rawg.description.length >= 80 && (rawg.developers || rawg.released)) {
+            const recientes = recentQuestions.get(game) || [];
+            const evitar = recientes.length ? `\nNO repitas ni imites estas preguntas ya hechas:\n- ${recientes.join('\n- ')}` : '';
             const datos = [
               `Nombre: ${rawg.name}`,
               rawg.released ? `Fecha de salida: ${rawg.released}` : null,
@@ -156,6 +193,7 @@ async function handleTrivia(client, channel) {
                     properties: {
                       pregunta:           { type: 'string', description: 'En español, máx. 150 caracteres' },
                       respuesta_correcta: { type: 'string', description: 'En español o nombre propio, 1-3 palabras, sin frases' },
+                      respuestas_alternativas: { type: 'array', items: { type: 'string' }, description: 'Otras respuestas válidas: nombre original en inglés, siglas o variantes habituales (puede ir vacío)' },
                       dificultad:         { type: 'string', enum: ['facil', 'media', 'dificil'] },
                       curiosidad:         { type: 'string', description: 'En español, máx. 120 caracteres, sacada de los datos' }
                     },
@@ -166,7 +204,7 @@ async function handleTrivia(client, channel) {
               tool_choice: { type: 'function', function: { name: 'generate_trivia' } },
               messages: [{
                 role: 'user',
-                content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nUsa EXCLUSIVAMENTE estos datos: la pregunta, la respuesta y la curiosidad deben salir SOLO de ellos; no añadas nada de tu memoria.\nRedacta SIEMPRE en español (traduce lo que esté en inglés). La respuesta debe ser de 1-3 palabras y no debe aparecer en la pregunta.${dificultadHint}\n\nDATOS:\n${datos}`
+                content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nUsa EXCLUSIVAMENTE estos datos: la pregunta, la respuesta y la curiosidad deben salir SOLO de ellos; no añadas nada de tu memoria.\nRedacta SIEMPRE en español (traduce lo que esté en inglés): la pregunta y la respuesta principal en español; en respuestas_alternativas pon el nombre original en inglés, siglas o variantes habituales. La respuesta debe ser de 1-3 palabras y no debe aparecer en la pregunta.${dificultadHint}${evitar}\n\nDATOS:\n${datos}`
               }]
             });
             const choice = response.choices[0];
@@ -174,10 +212,15 @@ async function handleTrivia(client, channel) {
             const toolCall = choice?.message?.tool_calls?.[0];
             const args = JSON.parse(toolCall.function.arguments);
             const answer = String(args.respuesta_correcta || '').trim();
-            if (args.pregunta && answer && !normalizeAnswer(args.pregunta).includes(normalizeAnswer(answer))) {
+            if (args.pregunta && isRecentQuestion(game, args.pregunta)) {
+              logger.info('Trivia Groq: pregunta repetida, uso banco estático');
+            } else if (args.pregunta && answer && !normalizeAnswer(args.pregunta).includes(normalizeAnswer(answer))) {
+              const aliases = (Array.isArray(args.respuestas_alternativas) ? args.respuestas_alternativas : [])
+                .map(a => String(a || '').trim()).filter(Boolean).slice(0, 6);
               q = {
                 question: truncate(args.pregunta, 200),
                 answer: answer.toLowerCase(),
+                aliases,
                 pistas: buildHints(answer),
                 curiosidad: truncate(args.curiosidad || '', 150),
                 game,
@@ -186,6 +229,7 @@ async function handleTrivia(client, channel) {
               lastGeneratedQuestion = q;
             }
           }
+          if (q) rememberQuestion(game, q.question);
         }
       }
     } catch (err) {
@@ -240,7 +284,7 @@ function scheduleNextTriviaPhase(client, channel) {
 function checkTriviaAnswer(client, channel, tags, message) {
   if (!activeTriviaQuestion) return;
 
-  if (isAnswerMatch(message, activeTriviaQuestion.answer)) {
+  if (isAnswerMatch(message, activeTriviaQuestion.answer, activeTriviaQuestion.aliases || [])) {
     const username = tags['display-name'];
     clearTimeout(triviaTimeout);
     const curiosidadWin = activeTriviaQuestion.curiosidad ? ` 💡 ${activeTriviaQuestion.curiosidad}` : '';
@@ -271,7 +315,7 @@ async function announceWin(client, channel, username, curiosidad) {
     invalidateTriviaTopCache();
     const top = await getTop(5);
     const position = top.findIndex(r => r.username === username.toLowerCase()) + 1;
-    const vars = { username, wins, streak, position };
+    const vars = { username, wins: winsText(wins), streak, position };
     if (position === 1 && wins > 1) text = fill(msgs.win_champion, vars);
     else if (streak >= 2) text = fill(msgs.win_streak, vars);
     else if (position > 0) text = fill(msgs.win_position, vars);
@@ -287,7 +331,7 @@ async function handleTop(client, channel) {
     return;
   }
   const medals = ['🥇', '🥈', '🥉', '4º', '5º'];
-  client.say(channel, truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${r.count})`).join(' · ')));
+  client.say(channel, truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${winsText(r.count)})`).join(' · ')));
 }
 
 // Campeón actual para el contexto de la IA (null si no hay ranking)

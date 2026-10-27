@@ -63,10 +63,10 @@
   ],
   "trivia_rank": {
     "win": "🎉 ¡@{username} ha acertado! ¡Enhorabuena! 🏆",
-    "win_champion": "🎉 ¡@{username} ha acertado! 👑 Es el campeón del chat con {wins} victorias.",
-    "win_streak": "🎉 ¡@{username} ha acertado! 🔥 Racha de {streak} seguidas ({wins} victorias en total).",
-    "win_position": "🎉 ¡@{username} ha acertado! 🏆 Ya es el nº {position} del ranking con {wins} victorias.",
-    "win_total": "🎉 ¡@{username} ha acertado! 🏆 Lleva {wins} victorias en total.",
+    "win_champion": "🎉 ¡@{username} ha acertado! 👑 Es el campeón del chat con {wins}.",
+    "win_streak": "🎉 ¡@{username} ha acertado! 🔥 Racha de {streak} seguidas ({wins} en total).",
+    "win_position": "🎉 ¡@{username} ha acertado! 🏆 Ya es el nº {position} del ranking con {wins}.",
+    "win_total": "🎉 ¡@{username} ha acertado! 🏆 Lleva {wins} en total.",
     "top_title": "🏆 Top trivia: ",
     "top_empty": "🏆 Aún no hay ranking de trivia. ¡Prueba con !trivia!"
   },
