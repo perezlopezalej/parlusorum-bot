@@ -68,16 +68,20 @@ async function processBatch(batch) {
     }
     const data = await res.json();
     const botIds = new Set((data.bots || []).map(b => String(b.id ?? b.user_id)));
+    const dryRun = channelConfig.bot_autoban_dry_run !== false;
+    const detected = [];
     for (const id of ids) {
       if (botIds.has(String(id))) {
         if (isWhitelisted(batch.get(id))) continue;
-        if (channelConfig.bot_autoban_dry_run !== false) {
+        detected.push(batch.get(id) || id);
+        if (dryRun) {
           logger.info(`[BotDetector] [DRY-RUN] Baneraria a ${batch.get(id) || id} (${id}) — bot conocido, no se banea`);
           continue;
         }
         banUser(id, batch.get(id) || id);
       }
     }
+    logger.info(`🤖 Detector: ${ids.length} usuarios comprobados, ${detected.length} bots detectados${dryRun ? ' (dry run)' : ''}${dryRun && detected.length ? ': ' + detected.join(', ') : ''}`);
   } catch (e) {
     logger.warn(`[BotDetector] Error consultando twitchbots.info: ${e.message}`);
   }
