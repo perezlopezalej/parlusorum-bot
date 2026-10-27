@@ -121,13 +121,18 @@ function markCohostPause(pauseId) {
 
 // --- Modo de personalidad ---
 let currentMode = 'normal';
+let currentVariant = null;
 let modeSetAt = 0;
 
-function setPersonalityMode(mode) {
+// modeSetAt solo cambia cuando cambia el modo (o su variante): sirve para la permanencia mínima
+function setPersonalityMode(mode, variant = null) {
+  if (mode === currentMode && variant === currentVariant) return;
   currentMode = mode;
+  currentVariant = variant;
   modeSetAt = Date.now();
 }
 function getPersonalityMode() { return currentMode; }
+function getModeVariant() { return currentVariant; }
 function getModeSetAt() { return modeSetAt; }
 
 // --- Historial de mensajes propios del bot ---
@@ -257,7 +262,7 @@ module.exports = {
   setBrbMode, isBrb, getBrbDuration,
   setRaidActive, isRaidActive, getRaidUsername,
   markGiftBatch, isGiftBatch,
-  setPersonalityMode, getPersonalityMode, getModeSetAt,
+  setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt,
   addNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
   recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, canCohostOnPause, markCohostPause,
   addBotMessage, getBotHistory, resetBotHistory,

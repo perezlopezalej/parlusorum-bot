@@ -1,8 +1,9 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, canCohostOnPause, markCohostPause } = require('../utils/state');
-const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached } = require('../utils/narrative');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, canCohostOnPause, markCohostPause } = require('../utils/state');
+const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached, decideMode, resolveModeConfig, MODE_WINDOWS } = require('../utils/narrative');
+const { classifyMessage, cooldownMs, cooldownGate } = require('./patterns');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
@@ -245,18 +246,30 @@ function isConfirmationTrap(msg) {
 }
 
 // --- Detección de modo de personalidad ---
-function detectAndSetMode() {
+// Se recalcula en cada uso (personalidad, cohost, patrones): decide la narrativa del stream y caduca por la hora de cada evento
+function refreshMode() {
   const now = Date.now();
-  if (now - lastMarkerTime < 2 * 60 * 1000) return setPersonalityMode('victory');
-  if (isRaidActive() || now - getLastCapsRageTime() < 3 * 60 * 1000) return setPersonalityMode('hype');
-  if (isBrb()) return setPersonalityMode('focus');
-  if (now - lastChatMessageTime > 10 * 60 * 1000) return setPersonalityMode('chill');
-  setPersonalityMode('normal');
+  const next = decideMode({
+    now,
+    events: getStreamNarrative(),
+    raidActive: isRaidActive(),
+    brb: isBrb(),
+    capsRageAt: getLastCapsRageTime(),
+    recentChatCount: chatHistory.filter(m => m.ts > now - MODE_WINDOWS.chat).length,
+    prev: { mode: getPersonalityMode(), variant: getModeVariant(), setAt: getModeSetAt() },
+  });
+  setPersonalityMode(next.mode, next.variant);
+  return next;
+}
+
+// Config del modo actual (max_chars, max_tokens, cohost_multiplier, pattern_cooldown_multiplier, prompt_extension)
+function getModeConfig() {
+  return resolveModeConfig(channelConfig.personality_modes, getPersonalityMode(), getModeVariant());
 }
 
 // --- Personalidad ---
 async function getPersonality(messageCount, userType = 'normal', username = null) {
-  detectAndSetMode();
+  refreshMode();
   const needsReinforce = tickReinforce();
   const reinforceBlock = needsReinforce
     ? `\nRECUERDA QUIÉN ERES: Eres dios_fua. Gracioso, directo, con criterio propio. Nunca genérico. Nunca pelota. El FUA no se diluye con el tiempo.`
@@ -283,15 +296,14 @@ REGLAS ABSOLUTAS (no negociables):
 - Eres EXPERTO en videojuegos: cualquier consola, PC, movil, genero y epoca. Responde con datos reales.
 - Puedes hablar de CUALQUIER tema: ciencia, historia, deportes, musica, cultura general.
 - Si no sabes algo: admitelo con humor ("ni idea") pero NUNCA inventes datos especificos.
-- Maximo 2 frases cortas (400 chars). Directo al grano. Sin presentarte ni saludar.
+- Maximo 2 frases cortas (400 chars), salvo que el MODO indique otra longitud: entonces manda el MODO. Directo al grano. Sin presentarte ni saludar.
 - El FUA se usa con caracter real, no de relleno. El momento exacto es DURANTE la dificultad, cuando el streamer esta a punto de rendirse — "¡FUAAA, carácter!" — no despues de superarlo. Tambien: cuando alguien llega con energia ("¡Trae el FUA!"), cuando el chat muerto necesita despertar, o en epica genuina. Ocasionalmente puedes hacer referencias absurdas con humor: "con suficiente FUA hasta los muertos reviven". Si el juego tiene transformaciones epicas o momentos Ki (Dragon Ball, accion intensa): el FUA y el Ki son lo mismo. Variantes: FUA, FUAAA, "el FUA", "sacar el FUA", "tienes el FUA". Solo cuando hay momento real — no en cada mensaje.
 - SOLO usa emotes de esta lista. NUNCA inventes emotes que no esten aqui. Emotes del canal (visibles para TODOS): parlus1Esteeselrollo (buen rollo/compañerismo), parlus1Kelokekelowa (incredulidad/meme), parlus1Streambrothers5 (momentos de stream/hype), parlus1Alataqueel (cuando atacan o hay accion), parlus1PORELPODERDELFUAAAAA (momentos FUA/epicos). Para momentos FUA usa parlus1PORELPODERDELFUAAAAA. Globales (opcionales): KEKW (risa fuerte), Pog (sorpresa/hype), LUL (risa), monkaS (nervios/susto), Kappa (sarcasmo), OMEGALUL (risa extrema). Maximo 1-2 emotes por respuesta, solo si encaja natural.
 - CRITICO — espaciado de emotes: los emotes del canal SIEMPRE van separados por espacios. NUNCA pegados a puntuacion. MAL: "¡texto! parlus1Alataqueel." o "parlus1KelokeKelowa," BIEN: "parlus1Alataqueel" o "texto parlus1KelokeKelowa texto". Un emote pegado a un punto o coma NO se renderiza en Twitch.
 - Sin "Lo siento". Sin "como IA". Sin formalismos.
 - Si tu contexto incluye MEMORIA DEL CANAL con frases recurrentes o momentos epicos de streams anteriores, mencionalos de forma espontanea y natural cuando encaje — el canal tiene historia propia y el chat lo aprecia.`;
 
-  const modes = channelConfig.personality_modes || {};
-  const modeConfig = modes[getPersonalityMode()] || modes.normal || {};
+  const modeConfig = getModeConfig();
   const modeExt = modeConfig.prompt_extension ? `\n${modeConfig.prompt_extension}` : '';
   const gameNote = getGameContextFailed() ? ' NOTA INTERNA: no tenemos datos del juego actual — evita mencionarlo.' : '';
   const suffix = messageCount >= 20 ? ' Chat muy activo, se energico y rapido.' : messageCount >= 5 ? ' Chat tranquilo, se amigable.' : ' Chat tranquilo, se acogedor.';
@@ -376,7 +388,8 @@ async function handleCohost(client, channel, { onPause = false } = {}) {
   if (hourlyCapReached(getCohostTimes(), COHOST_MAX_PER_HOUR, now)) return false;
   const pauseId = lastChatMessageTime;
   if (onPause && !canCohostOnPause(pauseId, COHOST_PAUSE_MS, now)) return false;
-  const modeConfig = (channelConfig.personality_modes || {})[getPersonalityMode()] || {};
+  refreshMode();
+  const modeConfig = getModeConfig();
   if (!onPause) {
     const prob = cohostProbability({
       base: COHOST_PROBABILITY, multiplier: modeConfig.cohost_multiplier ?? 1.0,
@@ -424,7 +437,7 @@ async function handleCohost(client, channel, { onPause = false } = {}) {
     const chatSummary = condenseChat(windowLines);
     const response = await groqWithRetry({
       model: GROQ_MODEL_FAST,
-      max_tokens: 90,
+      max_tokens: Math.min(90, modeConfig.max_tokens ?? 90),
       frequency_penalty: 0.8,
       presence_penalty: 0.6,
       messages: [
@@ -854,9 +867,11 @@ async function handleQuestion(client, channel, tags, args) {
       ...userConv,
       { role: 'user', content: `${username}: ${question}` }
     ];
+    const qModeConfig = getModeConfig();
+    const qMaxTokens = qModeConfig.max_tokens ?? 150;
     let response = await groqWithRetry({
       model: GROQ_MODEL_COMPOUND,
-      max_tokens: 150,
+      max_tokens: qMaxTokens,
       tools: [BUSCAR_JUEGO_TOOL],
       tool_choice: 'auto',
       messages
@@ -876,12 +891,11 @@ async function handleQuestion(client, channel, tags, args) {
       }
       response = await groqWithRetry({
         model: GROQ_MODEL_COMPOUND,
-        max_tokens: 150,
+        max_tokens: qMaxTokens,
         messages
       });
     }
     const answer = response.choices[0].message.content;
-    const qModeConfig = (channelConfig.personality_modes || {})[getPersonalityMode()] || {};
     const qMaxChars = qModeConfig.max_chars ?? TWITCH_MAX_LENGTH;
     client.say(channel, truncate(`@${username} ${answer}`, qMaxChars));
     addBotMessage(truncate(answer, qMaxChars));
@@ -1138,14 +1152,8 @@ async function checkCapsRage(client, channel, tags, message) {
 
 // --- Pattern matcher: preguntas naturales sin ! ---
 
-// Menciones directas: cooldown propio (8s global + 10s por usuario)
+// Detección en patterns.js. Menciones directas: cooldown propio (8s global + 10s por usuario), sin escalar por modo
 // Separadas para permitir conversación fluida sin bloquear el global de patrones generales
-const DIRECT_MENTION_PATTERNS = [
-  /@dios_fua\b/i,
-  /\bdios\s*fua\b/i,
-];
-const DIRECT_MENTION_GLOBAL_COOLDOWN = 8 * 1000;
-const DIRECT_MENTION_USER_COOLDOWN = 10 * 1000;
 let lastDirectMentionTime = 0;
 const directMentionUserCooldowns = new Map();
 setInterval(() => {
@@ -1153,25 +1161,7 @@ setInterval(() => {
   for (const [k, v] of directMentionUserCooldowns) if (now > v) directMentionUserCooldowns.delete(k);
 }, 15 * 60 * 1000);
 
-const NATURAL_PATTERNS = [
-  // Preguntas sobre el juego
-  /qu[eé]\s+juego/i,
-  /c[oó]mo\s+se\s+llama\s+el\s+juego/i,
-  /de\s+qu[eé]\s+va\s+(el\s+)?(juego|esto)/i,
-  /qu[eé]\s+(est[aá]n?\s+)?jugando/i,
-  // Duración del stream
-  /cu[aá]nto\s+(tiempo\s+)?(llevas?|lleva)\b/i,
-  // Identidad del bot
-  /eres\s+(un\s+)?(bot|ia|inteligencia\s+artificial|robot|real|humano)/i,
-  /c[oó]mo\s+te\s+llamas/i,
-  /qui[eé]n\s+eres/i,
-  // Dificultad del juego
-  /es\s+(muy\s+)?(dif[ií]cil|complicado|f[aá]cil)\b/i,
-  /qu[eé]\s+(tan\s+)?(dif[ií]cil|f[aá]cil)/i,
-];
-
-const PATTERN_GLOBAL_COOLDOWN = 45 * 1000;
-const PATTERN_USER_COOLDOWN = 30 * 1000;
+// Preguntas naturales: 45s global + 30s por usuario, escalados por pattern_cooldown_multiplier del modo
 let lastPatternTime = 0;
 const patternUserCooldowns = new Map();
 setInterval(() => {
@@ -1179,36 +1169,34 @@ setInterval(() => {
   for (const [k, v] of patternUserCooldowns) if (now > v) patternUserCooldowns.delete(k);
 }, 15 * 60 * 1000);
 
+// false = no era para el bot (el cohost puede hablar); 'blocked' = sí lo era pero no se responde (cooldown, límite); true = respondido
 async function checkPatternMatch(client, channel, tags, message) {
   if (isSilenced() || isTriviaActive()) return false;
 
+  const kind = classifyMessage(message, tags, { botNames: [process.env.BOT_USERNAME] });
+  if (!kind) return false;
+
   const now = Date.now();
   const userId = tags['user-id'] || tags['username'];
+  const isDirect = kind === 'direct';
+  const userCooldowns = isDirect ? directMentionUserCooldowns : patternUserCooldowns;
 
-  const isDirect = DIRECT_MENTION_PATTERNS.some(re => re.test(message));
-
-  if (isDirect) {
-    // 8s global entre usuarios distintos + 10s por usuario
-    if (now - lastDirectMentionTime < DIRECT_MENTION_GLOBAL_COOLDOWN) return false;
-    if (directMentionUserCooldowns.has(userId) && now < directMentionUserCooldowns.get(userId)) return false;
-  } else {
-    if (!NATURAL_PATTERNS.some(re => re.test(message))) return false;
-    if (now - lastPatternTime < PATTERN_GLOBAL_COOLDOWN) return false;
-    if (patternUserCooldowns.has(userId) && now < patternUserCooldowns.get(userId)) return false;
-  }
+  refreshMode();
+  const modeConfig = getModeConfig();
+  const multiplier = modeConfig.pattern_cooldown_multiplier ?? 1;
+  const prevGlobal = isDirect ? lastDirectMentionTime : lastPatternTime;
+  const prevUser = userCooldowns.get(userId);
+  if (!cooldownGate(kind, { now, lastGlobalAt: prevGlobal, userUntil: prevUser || 0, multiplier })) return 'blocked';
 
   const username = tags['display-name'];
   const question = sanitizeForAI(message);
-  if (!question) return false;
-  if (!canMakeRequest()) return false;
+  if (!question) return 'blocked';
+  if (!canMakeRequest()) return 'blocked';
 
-  if (isDirect) {
-    lastDirectMentionTime = now;
-    directMentionUserCooldowns.set(userId, now + DIRECT_MENTION_USER_COOLDOWN);
-  } else {
-    lastPatternTime = now;
-    patternUserCooldowns.set(userId, now + PATTERN_USER_COOLDOWN);
-  }
+  // Se reservan antes de esperar a la IA (evita dobles respuestas) y se devuelven si la IA falla
+  const cd = cooldownMs(kind, multiplier);
+  if (isDirect) lastDirectMentionTime = now; else lastPatternTime = now;
+  userCooldowns.set(userId, now + cd.userMs);
 
   try {
     const userType = getUserType(username, tags);
@@ -1230,7 +1218,7 @@ async function checkPatternMatch(client, channel, tags, message) {
 
     const response = await groqWithRetry({
       model: GROQ_MODEL_FAST,
-      max_tokens: 120,
+      max_tokens: modeConfig.max_tokens ?? 120,
       messages: [
         { role: 'system', content: `${personality}${toneNote}${trapNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol. NUNCA inventes datos de videojuegos (fechas, desarrolladoras, argumentos): si preguntan por un juego que no es el actual, no des datos y sugiere usar !dios_fua; sobre el juego actual solo di lo que sepas con certeza.` },
         ...userConv,
@@ -1239,13 +1227,16 @@ async function checkPatternMatch(client, channel, tags, message) {
     });
 
     const answer = response.choices[0].message.content;
-    client.say(channel, truncate(`@${username} ${answer}`));
-    addBotMessage(truncate(answer));
+    const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
+    client.say(channel, truncate(`@${username} ${answer}`, maxChars));
+    addBotMessage(truncate(answer, maxChars));
     addToUserConversation(userId, 'user', `${username}: ${question}`);
     addToUserConversation(userId, 'assistant', answer);
     return true;
   } catch (err) {
     logger.warn(`Pattern matcher: ${err.message}`);
+    if (isDirect) lastDirectMentionTime = prevGlobal; else lastPatternTime = prevGlobal;
+    if (prevUser) userCooldowns.set(userId, prevUser); else userCooldowns.delete(userId);
     return false;
   }
 }

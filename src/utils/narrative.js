@@ -78,7 +78,43 @@ function hourlyCapReached(stamps, max, now = Date.now()) {
   return pruneHourly(stamps, now).length >= max;
 }
 
+// --- Modo de personalidad: se decide con la narrativa y caduca por la hora de cada evento ---
+const MODE_WINDOWS = { victory: 5 * 60 * 1000, hype: 3 * 60 * 1000, deaths: 10 * 60 * 1000, chat: 5 * 60 * 1000 };
+const MIN_MODE_DWELL_MS = 60 * 1000;   // permanencia mínima, salvo subida a victory/hype/BRB
+const DEATHS_FOR_FOCUS = 3;
+const CALM_CHAT_MAX_MSGS = 5;          // menos mensajes que esto en MODE_WINDOWS.chat = chat tranquilo
+
+const latestTs = (events, types, now, windowMs) =>
+  events.reduce((max, e) => (types.includes(e.type) && now - e.ts < windowMs && e.ts > max ? e.ts : max), 0);
+
+// prev = { mode, variant, setAt } del modo actual. Devuelve { mode, variant } (variant solo en focus: 'brb' | 'deaths').
+function decideMode({ now = Date.now(), events = [], raidActive = false, brb = false, capsRageAt = 0, recentChatCount = 0, prev = null } = {}) {
+  const celebrationTs = latestTs(events, ['victory', 'boss', 'milestone'], now, MODE_WINDOWS.victory);
+  const deathTs = latestTs(events, ['death'], now, MODE_WINDOWS.deaths);
+  const deaths = events.filter(e => e.type === 'death' && now - e.ts < MODE_WINDOWS.deaths).length;
+
+  let next;
+  if (brb) next = { mode: 'focus', variant: 'brb' };
+  else if (celebrationTs && celebrationTs >= deathTs) next = { mode: 'victory', variant: null };
+  else if (raidActive || now - capsRageAt < MODE_WINDOWS.hype || latestTs(events, ['sub', 'raid'], now, MODE_WINDOWS.hype)) next = { mode: 'hype', variant: null };
+  else if (deaths >= DEATHS_FOR_FOCUS) next = { mode: 'focus', variant: 'deaths' };
+  else if (recentChatCount < CALM_CHAT_MAX_MSGS) next = { mode: 'chill', variant: null };
+  else next = { mode: 'normal', variant: null };
+
+  const changed = !prev || prev.mode !== next.mode || (prev.variant ?? null) !== next.variant;
+  const urgent = next.mode === 'victory' || next.mode === 'hype' || next.variant === 'brb';
+  if (changed && prev && !urgent && now - prev.setAt < MIN_MODE_DWELL_MS) return { mode: prev.mode, variant: prev.variant ?? null };
+  return next;
+}
+
+// Config del modo; las variantes (p. ej. focus/brb) sobrescriben al modo base
+function resolveModeConfig(modes, mode, variant = null) {
+  const base = (modes && (modes[mode] || modes.normal)) || {};
+  return variant && base.variants && base.variants[variant] ? { ...base, ...base.variants[variant] } : base;
+}
+
 module.exports = {
   MAX_NARRATIVE_EVENTS, pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
   cohostProbability, pruneHourly, hourlyCapReached,
+  MODE_WINDOWS, MIN_MODE_DWELL_MS, DEATHS_FOR_FOCUS, CALM_CHAT_MAX_MSGS, decideMode, resolveModeConfig,
 };

@@ -52,29 +52,47 @@
   "bot_whitelist": ["nightbot", "streamelements", "fossabot", "moobot", "dios_fua"],
   "personality_modes": {
     "hype": {
-      "prompt_extension": "El chat está ENCENDIDO ahora mismo. Respuestas más cortas y enérgicas, más FUA, más emotes del canal. Máx 2 frases breves.",
+      "prompt_extension": "MODO HYPE: el chat está ENCENDIDO. UNA frase corta (máx ~12 palabras), mayúsculas puntuales, 1-2 emotes del canal, FUA bienvenido. Cero explicaciones.",
       "cohost_multiplier": 1.5,
-      "max_chars": 300
+      "max_chars": 220,
+      "max_tokens": 70,
+      "pattern_cooldown_multiplier": 0.6
     },
     "chill": {
-      "prompt_extension": "El stream está tranquilo. Sé conversacional y cercano. Puedes extenderte un poco más de lo normal.",
-      "cohost_multiplier": 1.0,
-      "max_chars": 490
+      "prompt_extension": "MODO CHILL: stream tranquilo. Sé conversacional y cercano; puedes extenderte hasta 3 frases con una anécdota, un dato o una pregunta que invite a hablar. Máximo 1 emote.",
+      "cohost_multiplier": 0.7,
+      "max_chars": 490,
+      "max_tokens": 170,
+      "pattern_cooldown_multiplier": 1.5
     },
     "focus": {
-      "prompt_extension": "El streamer está fuera o en momento crítico. Respuestas muy breves. No interrumpas el flujo del stream.",
-      "cohost_multiplier": 0.3,
-      "max_chars": 200
+      "prompt_extension": "MODO ÁNIMO: el streamer lleva una racha de muertes. Una frase breve de ánimo real (el FUA es el impulso en el momento de duda), sin chistes ni burlas y sin emotes de risa.",
+      "cohost_multiplier": 0.6,
+      "max_chars": 200,
+      "max_tokens": 60,
+      "pattern_cooldown_multiplier": 1.5,
+      "variants": {
+        "brb": {
+          "prompt_extension": "MODO BRB: el streamer no está. Responde en pocas palabras (máx 8), sin emotes ni comentarios sobre el juego.",
+          "cohost_multiplier": 0.1,
+          "max_chars": 120,
+          "max_tokens": 40,
+          "pattern_cooldown_multiplier": 3
+        }
+      }
     },
     "victory": {
-      "prompt_extension": "¡Acaba de pasar algo ÉPICO en el stream! Celebración total permitida. FUA garantizado. parlus1PORELPODERDELFUAAAAA",
-      "cohost_multiplier": 2.0,
-      "max_chars": 300
+      "prompt_extension": "MODO VICTORIA: acaba de pasar algo ÉPICO. Celebra a lo grande en 1-2 frases, FUA garantizado y parlus1PORELPODERDELFUAAAAA. Alude a lo ocurrido si aparece en <stream_story>.",
+      "cohost_multiplier": 2,
+      "max_chars": 300,
+      "max_tokens": 80,
+      "pattern_cooldown_multiplier": 0.6
     },
     "normal": {
       "prompt_extension": "",
-      "cohost_multiplier": 1.0,
-      "max_chars": 490
+      "cohost_multiplier": 1,
+      "max_chars": 490,
+      "pattern_cooldown_multiplier": 1
     }
   },
   "channel_emotes": [
