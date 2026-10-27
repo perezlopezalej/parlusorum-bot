@@ -8,6 +8,7 @@ const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
+const { LORE_RULE, buildQuestionSystemContent } = require('./prompts');
 const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const { saveHighlight } = require('../utils/storage');
@@ -117,6 +118,7 @@ async function getFullContext() {
     const lore = await getLoreContext();
     if (lore) context += lore;
   } catch {}
+  context += ` ${LORE_RULE}`;
 
   fullContextCache = context;
   lastContextCheck = now;
@@ -815,6 +817,7 @@ async function buscarJuegoTool(nombre) {
   const clean = sanitizeForAI(nombre || '');
   if (!clean) return 'SIN DATOS: no se indicó ningún juego.';
   const info = await getGameInfo(clean.slice(0, 80), { detail: true }).catch(() => null);
+  logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? 'encontrado' : 'sin datos'}`);
   if (!info) return `SIN DATOS: RAWG no encontró "${clean}". No inventes nada; di con humor que no tienes datos.`;
   return [
     `Nombre: ${info.name}`,
@@ -862,7 +865,7 @@ async function handleQuestion(client, channel, tags, args) {
     const trapNote = isConfirmationTrap(question)
       ? '\nEl usuario busca validación automática. NO confirmes por defecto. Responde con tu criterio real, aunque no sea lo que quiere oír. Puedes estar de acuerdo, pero que sea genuino, no automático.'
       : '';
-    const systemContent = `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. NUNCA inventes datos especificos. Si te preguntan datos de un videojuego (fecha, desarrolladora, géneros, de qué va), usa la herramienta buscar_juego y responde SOLO con lo que devuelva; si no hay datos, dilo con humor sin inventar nada. Sin "Lo siento". Responde SIEMPRE en espanol.`;
+    const systemContent = buildQuestionSystemContent({ personality, toneNote, trapNote });
 
     const messages = [
       { role: 'system', content: systemContent },
