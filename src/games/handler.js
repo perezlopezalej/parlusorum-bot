@@ -157,7 +157,8 @@ function isSingleMatch(message, answer) {
 function buildHints(answer) {
   const words = String(answer).trim().split(/\s+/).filter(Boolean);
   const letters = words.join('').length;
-  const hints = [`${words.length > 1 ? `${words.length} palabras, ` : ''}${letters} ${letters === 1 ? "letra" : "letras"}`];
+  const unit = /^\d+$/.test(words.join('')) ? ['cifra', 'cifras'] : ['letra', 'letras'];
+  const hints = [`${words.length > 1 ? `${words.length} palabras, ` : ''}${letters} ${letters === 1 ? unit[0] : unit[1]}`];
   if (letters >= 5) {
     const first = words[0][0].toUpperCase();
     const mask = words.map((w, i) => (i === 0 ? first + '_'.repeat(w.length - 1) : '_'.repeat(w.length))).join(' ');

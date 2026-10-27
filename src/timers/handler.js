@@ -4,7 +4,8 @@ const { isSilenced } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
-const { NARRATOR_BASE } = require('../ai/handler');
+const { getBotPersonality } = require('../ai/handler');
+const { getLoreContext } = require('../lore/handler');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
 
@@ -56,14 +57,16 @@ function start(client, config) {
         ? `${game}${rawg.genres ? ` (${rawg.genres})` : ''}${rawg.rating ? `, ${rawg.rating}/5 en RAWG` : ''}`
         : game;
 
+      const learnedLore = await getLoreContext();
+      const tone =['burla cariñosa', 'épica', 'observación curiosa del juego'][Math.floor(Math.random() * 3)];
       const response = await groqWithRetry({
         max_tokens: 80,
         messages: [
           {
             role: 'system',
-            content: NARRATOR_BASE(`Juego: "${gameContext}".`)
+            content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve sobre el juego con tu personalidad y el lore del canal. Elige UN tono al azar: burla cariñosa, épica, o observación curiosa del juego. Sin metáforas forzadas de otros temas ni estilo de comentarista deportivo. Máx 2 frases cortas. Sin presentarte.`
           },
-          { role: 'user', content: `Narra algo sobre ${game}` }
+          { role: 'user', content: `Comenta algo sobre ${game} (tono: ${tone})` }
         ]
       });
       const msg = truncate(response.choices[0].message.content);

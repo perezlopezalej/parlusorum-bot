@@ -114,6 +114,12 @@ describe('buildHints', () => {
     assert.equal(buildHints('sony')[0], '4 letras');
   });
 
+  test('respuestas numéricas dicen cifra/cifras en vez de letra/letras', () => {
+    assert.equal(buildHints('7')[0], '1 cifra');
+    assert.equal(buildHints('1985')[0], '4 cifras');
+    assert.equal(buildHints('sony')[0], '4 letras');
+  });
+
   test('respuestas cortas (<5 letras) solo dan una pista', () => {
     assert.equal(buildHints('sony').length, 1);
     assert.equal(buildHints('ab').length, 1);
