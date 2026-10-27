@@ -162,6 +162,7 @@ eventSubHandler = createEventSubHandler(client, CHANNEL, {
   startStreamSession,
   invalidateMemoryCache: memory.invalidateMemoryCache,
   onWarmupMode: ai.onWarmupMode,
+  onProphecy: ai.onProphecy,
   postStreamEnd: ai.postStreamEnd,
   getSummary,
   onStreamEnd: memory.onStreamEnd,
@@ -316,6 +317,7 @@ client.on('message', async (channel, tags, message, self) => {
     if (command === 'trivia' || command === 'top') return games.handle(client, channel, tags, command, args);
     if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
     if (command === 'chiste') return ai.handleChiste(client, channel, tags);
+    if (command === 'quemeperdi') return ai.handleQueMePerdi(client, channel, tags);
 
     await commands.handle(client, channel, tags, command, args, config);
   } catch (err) {

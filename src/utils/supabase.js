@@ -160,6 +160,27 @@ async function endStreamSession(stats) {
 
 function getCurrentSessionId() { return currentSessionId; }
 
+// Muertes y juego de las últimas sesiones cerradas (base de la profecía)
+async function getRecentSessionDeaths(limit = 10) {
+  const db = getClient();
+  if (!db) return [];
+
+  try {
+    const { data, error } = await db
+      .from('stream_sessions')
+      .select('game, death_count')
+      .not('ended_at', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    logger.error(`Error obteniendo muertes previas: ${e.message}`);
+    return [];
+  }
+}
+
 // ─── MEMORIA DEL CANAL ────────────────────────────────────────────────────────
 
 async function saveStreamMemory(memoryData) {
@@ -536,6 +557,7 @@ module.exports = {
   startStreamSession,
   endStreamSession,
   getCurrentSessionId,
+  getRecentSessionDeaths,
   saveStreamMemory,
   getRecentStreamMemory,
   saveHighlight,

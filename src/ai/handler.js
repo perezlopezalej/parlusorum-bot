@@ -1,12 +1,12 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
-const { persistCooldown } = require('../utils/supabase');
+const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const { saveHighlight } = require('../utils/storage');
 const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
@@ -501,6 +501,133 @@ function postStreamEnd(client, channel, aiSummary) {
     ? `🎬 ¡Fin del stream! ${aiSummary} ¡Hasta la próxima! FUA! 💜🔥`
     : pickRandom(streamEndMessages);
   throttleSay(client, channel, truncate(msg));
+  postProphecyResult(client, channel).catch(err => logger.warn(`Profecía resultado: ${err.message}`));
+}
+
+// --- Profecía de muertes ---
+const prophecyMsgs = messagesConfig.prophecy;
+
+// Media de muertes de sesiones previas (prioriza el mismo juego); null si no hay histórico
+async function predictDeaths(game) {
+  const rows = (await getRecentSessionDeaths(10)).filter(r => Number.isFinite(r.death_count));
+  if (rows.length === 0) return null;
+  const sameGame = game ? rows.filter(r => r.game === game) : [];
+  const pool = sameGame.length >= 2 ? sameGame : rows;
+  const avg = pool.reduce((s, r) => s + r.death_count, 0) / pool.length;
+  return { deaths: Math.max(1, Math.round(avg)), basis: sameGame.length >= 2 ? `${sameGame.length} streams anteriores de ${game}` : `${pool.length} streams anteriores`, history: pool.map(r => r.death_count) };
+}
+
+// Llamado desde eventsub.js poco después del warmup
+async function onProphecy(client, channel, game) {
+  if (isSilenced() || getProphecy()) return;
+  const prediction = await predictDeaths(game);
+  // Sin histórico: número al azar y tono más vago
+  const deaths = prediction ? prediction.deaths : 3 + Math.floor(Math.random() * 6);
+  let text = truncate(prophecyMsgs.fallback.replace('{deaths}', deaths));
+  if (canMakeRequest()) {
+    try {
+      const basis = prediction ? `Base: ${prediction.basis}, muertes en cada uno: ${prediction.history.join(', ')}.` : 'No hay streams anteriores: improvisa con aire de oráculo.';
+      const response = await groqWithRetry({
+        max_tokens: 120,
+        messages: [
+          { role: 'system', content: NARRATOR_BASE(game ? `Juego de hoy: "${game}".` : '') },
+          { role: 'user', content: `Profetiza, como oráculo del FUA, que hoy el streamer morirá EXACTAMENTE ${deaths} veces. ${basis} El número ${deaths} debe aparecer en el mensaje. Máx 2 frases.` }
+        ]
+      });
+      const out = (response.choices[0].message.content || '').trim();
+      if (out && out.includes(String(deaths))) text = truncate(out);
+    } catch (err) {
+      logger.warn(`Profecía IA: ${err.message}`);
+    }
+  }
+  setProphecy({ deaths, text, game: game || null, ts: Date.now() });
+  throttleSay(client, channel, `🔮 ${text.replace(/^🔮\s*/, '')}`);
+  logger.info(`🔮 Profecía: ${deaths} muertes`);
+}
+
+// Al cierre del stream: compara la profecía con las muertes reales (!muertes) y presume o se excusa
+async function postProphecyResult(client, channel) {
+  const prophecy = getProphecy();
+  if (!prophecy) return;
+  clearProphecy();
+  const actual = getDeathCount();
+  if (actual === 0) {
+    throttleSay(client, channel, truncate(prophecyMsgs.result_untracked.replace('{predicted}', prophecy.deaths)));
+    return;
+  }
+  const diff = Math.abs(actual - prophecy.deaths);
+  const outcome = diff === 0 ? 'exact' : diff === 1 ? 'close' : 'miss';
+  let msg = prophecyMsgs[`result_${outcome}`].replace('{predicted}', prophecy.deaths).replace('{actual}', actual);
+  if (canMakeRequest()) {
+    try {
+      const tone = outcome === 'miss'
+        ? 'Te equivocaste: pon una excusa absurda y orgullosa, nunca admitas el error.'
+        : 'Acertaste (o casi): presume sin piedad.';
+      const response = await groqWithRetry({
+        max_tokens: 120,
+        messages: [
+          { role: 'system', content: NARRATOR_BASE(prophecy.game ? `Juego de hoy: "${prophecy.game}".` : '') },
+          { role: 'user', content: `Al empezar el stream profetizaste ${prophecy.deaths} muertes y han sido ${actual}. ${tone} Ambos números deben aparecer. Máx 2 frases.` }
+        ]
+      });
+      const out = (response.choices[0].message.content || '').trim();
+      if (out && out.includes(String(actual)) && out.includes(String(prophecy.deaths))) msg = out;
+    } catch (err) {
+      logger.warn(`Profecía resultado IA: ${err.message}`);
+    }
+  }
+  throttleSay(client, channel, truncate(`🔮 ${msg.replace(/^🔮\s*/, '')}`));
+}
+
+// --- !quemeperdi ---
+const queMePerdiCooldowns = new Map();
+const QUEMEPERDI_COOLDOWN_MS = 120000;
+setInterval(() => { const now = Date.now(); for (const [k,v] of queMePerdiCooldowns) if (now > v) queMePerdiCooldowns.delete(k); }, 30 * 60 * 1000);
+
+async function handleQueMePerdi(client, channel, tags) {
+  if (isSilenced()) return;
+  const username = tags['display-name'];
+  const userId = tags['user-id'] || tags['username'] || username;
+  const msgs = messagesConfig.quemeperdi;
+  if (!getStreamIsLive()) { client.say(channel, truncate(msgs.offline.replace('{username}', username))); return; }
+
+  const now = Date.now();
+  const until = queMePerdiCooldowns.get(userId);
+  if (until && now < until) {
+    client.say(channel, truncate(msgs.cooldown.replace('{username}', username).replace('{seconds}', Math.ceil((until - now) / 1000))));
+    return;
+  }
+
+  const chat = getStreamChatBuffer();
+  const narrative = getStreamNarrative();
+  if (!chat && narrative.length === 0) { client.say(channel, truncate(msgs.nothing_yet.replace('{username}', username))); return; }
+  queMePerdiCooldowns.set(userId, now + QUEMEPERDI_COOLDOWN_MS);
+
+  const gameInfo = await getCurrentGame().catch(() => null);
+  const game = gameInfo?.game || null;
+  const startedAt = getStreamStartedAt();
+  const minutes = startedAt ? Math.floor((now - startedAt) / 60000) : 0;
+  const deaths = getDeathCount();
+
+  if (!canMakeRequest() || !canUserMakeRequest(userId, getUserType(username, tags))) {
+    client.say(channel, truncate(msgs.fallback.replace('{minutes}', minutes).replace('{game}', game || 'directo').replace('{deaths}', deaths)));
+    return;
+  }
+  try {
+    const story = narrative.length > 0 ? `\n<stream_story>${narrative.map(e => `[${e.type}] ${e.description}`).join(' | ')}</stream_story>` : '';
+    const response = await groqWithRetry({
+      max_tokens: 150,
+      messages: [
+        { role: 'system', content: NARRATOR_BASE(game ? `Juego: "${game}".` : '') },
+        { role: 'user', content: `Un espectador llega tarde y pregunta qué se ha perdido. Datos: ${minutes} min de stream, ${deaths} muertes del streamer.${story}\n<chat>\n${chat}\n</chat>\nResume en EXACTAMENTE 2 frases lo que ha pasado hasta ahora, con tu personalidad. No inventes nada que no esté en los datos.` }
+      ]
+    });
+    client.say(channel, truncate(`@${username} ${(response.choices[0].message.content || '').trim()}`));
+  } catch (err) {
+    logger.warn(`!quemeperdi: ${err.message}`);
+    queMePerdiCooldowns.delete(userId);
+    client.say(channel, truncate(msgs.fallback.replace('{minutes}', minutes).replace('{game}', game || 'directo').replace('{deaths}', deaths)));
+  }
 }
 
 // --- Conversation hooks --- FIX #6: game hooks enriquecidos con RAWG + comentarios IA espontáneos
@@ -1114,7 +1241,7 @@ function restoreCooldowns(data) {
 }
 
 module.exports = {
-  handleCohost, handleChiste, handleQuestion, handleShoutout,
+  handleCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi, onProphecy,
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
   initStreamStatus, invalidateContextCache, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,

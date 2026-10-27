@@ -49,6 +49,19 @@
     "anongiftpaidupgrade": "💜 @{username} continua la sub que le regalaron! Gracias! 🎉"
   },
   "warmup_fallback": "¡El stream acaba de empezar! Bienvenidos 🔥 FUA!",
+  "quemeperdi": {
+    "offline": "@{username} no hay stream en directo ahora mismo 😴",
+    "cooldown": "@{username} espera {seconds}s para otro resumen.",
+    "nothing_yet": "@{username} el stream acaba de arrancar, aún no hay nada que contar 👀 FUA!",
+    "fallback": "📜 Llevamos {minutes} min de {game} con {deaths} muertes. El FUA sigue vivo, el streamer no tanto 💀"
+  },
+  "prophecy": {
+    "fallback": "🔮 El FUA ha hablado: hoy habrá {deaths} muertes. Quedáis avisados. FUAAA",
+    "result_untracked": "🔮 Nadie llevó la cuenta de las muertes, así que mi profecía de {predicted} queda en el misterio. El FUA lo sabe 🤫",
+    "result_exact": "🔮 Profecía cumplida: predije {predicted} muertes y hubo {actual}. Exacto. Inclinaos ante el FUA 👑",
+    "result_close": "🔮 Predije {predicted} muertes y hubo {actual}. Casi clavado, el FUA no falla, redondea 😎",
+    "result_miss": "🔮 Predije {predicted} muertes y hubo {actual}. La culpa es del lag, del streamer y de Mercurio retrógrado. El FUA no se equivoca 🙃"
+  },
   "stream_start_messages": [
     "LIVE! Bienvenidos todos! FUA! 💪🔥",
     "El canal ha arrancado! A disfrutar! FUA! 🔥",

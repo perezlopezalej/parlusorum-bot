@@ -28,6 +28,7 @@ const helpTexts = {
   'chiste': 'Chiste real del banco de 169 chistes.',
   'trivia': 'Pregunta de trivia. Responde directamente en el chat.',
   'top': 'Ranking total de victorias en la trivia (top 5).',
+  'quemeperdi': 'Resumen en 2 frases de lo que ha pasado en el stream hasta ahora.',
   'dios_fua': 'Preguntame cualquier cosa. Uso: !dios_fua [pregunta]',
   'juego': 'Juego actual del canal con info de RAWG.',
   'estadisticas': 'Stats del stream en tiempo real.',
@@ -314,7 +315,7 @@ function handleAyuda(client, channel, args) {
   if (sub && helpTexts[sub]) {
     client.say(channel, `❓ !${sub}: ${helpTexts[sub]}`);
   } else {
-    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !top !dios_fua !juego !estadisticas !uptime !score | Mods: !so !brb !silencio !muertes !boss !clip !marker !resumen !lore | !ayuda [cmd] para más info`);
+    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !top !quemeperdi !dios_fua !juego !estadisticas !uptime !score | Mods: !so !brb !silencio !muertes !boss !clip !marker !resumen !lore | !ayuda [cmd] para más info`);
   }
 }
 

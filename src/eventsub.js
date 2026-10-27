@@ -8,7 +8,7 @@ const {
   setStreamIsLive, getStreamIsLive, isSilenced,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount,
-  resetStreamNarrative, resetBotHistory, resetReinforceCounter,
+  resetStreamNarrative, resetBotHistory, resetReinforceCounter, clearProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
 } = require('./utils/state');
 
@@ -269,6 +269,7 @@ function createEventSubHandler(client, channel, deps) {
     startStreamSession,
     invalidateMemoryCache,
     onWarmupMode,
+    onProphecy,
     postStreamEnd,
     getSummary,
     onStreamEnd,
@@ -344,6 +345,7 @@ function createEventSubHandler(client, channel, deps) {
         try { resetSessionCounters(); } catch {}
         try { resetStreamChatBuffer(); } catch {}
         try { resetStreamNarrative(); } catch {}
+        try { clearProphecy(); } catch {}
         try { resetBotHistory(); } catch {}
         try { resetReinforceCounter(); } catch {}
         try { clearUserFactsCache(); } catch {}
@@ -369,6 +371,14 @@ function createEventSubHandler(client, channel, deps) {
                   }
                 } catch (e) { logger.warn(`Warmup check: ${e.message}`); }
               }, 60 * 1000);
+
+              // Profecía de muertes: tras el warmup (60s), a los 90s
+              setTimeout(async () => {
+                try {
+                  if (!isLiveViaEventSub() || client.readyState() !== 'OPEN') return;
+                  await onProphecy(client, channel, warmupGame);
+                } catch (e) { logger.warn(`Profecía: ${e.message}`); }
+              }, 90 * 1000);
             } catch (e) { logger.warn(`Supabase session start: ${e.message}`); }
           })());
           await getSessionStarting().finally(() => { clearSessionStarting(); });
