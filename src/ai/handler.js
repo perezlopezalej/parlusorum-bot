@@ -5,6 +5,7 @@ const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUserna
 const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached, decideMode, resolveModeConfig, MODE_WINDOWS } = require('../utils/narrative');
 const { classifyMessage, cooldownMs, cooldownGate } = require('./patterns');
 const { sanitizeForAI } = require('../utils/filter');
+const { classifyGameMatch } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
@@ -817,8 +818,10 @@ async function buscarJuegoTool(nombre) {
   const clean = sanitizeForAI(nombre || '');
   if (!clean) return 'SIN DATOS: no se indicó ningún juego.';
   const info = await getGameInfo(clean.slice(0, 80), { detail: true }).catch(() => null);
-  logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? 'encontrado' : 'sin datos'}`);
-  if (!info) return `SIN DATOS: RAWG no encontró "${clean}". No inventes nada; di con humor que no tienes datos.`;
+  const match = info ? classifyGameMatch(clean, info.name) : 'none';
+  logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? `${info.name} (${match})` : 'sin datos'}`);
+  if (match === 'none') return `SIN DATOS: RAWG no encontró "${clean}". No inventes nada; di con humor que no tienes datos.`;
+  if (match === 'maybe') return `SIN DATOS, quizá se refiera a ${info.name}. No presentes ese juego como el pedido ni uses sus datos; pregunta si se refiere a ese.`;
   return [
     `Nombre: ${info.name}`,
     `Salida: ${info.released || 'desconocida'}`,
