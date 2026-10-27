@@ -611,6 +611,34 @@ function handleChiste(client, channel, tags) {
   client.say(channel, truncate(`😂 ${chistesDB[index]}`));
 }
 
+// --- Herramienta buscar_juego (solo !dios_fua) ---
+const BUSCAR_JUEGO_TOOL = {
+  type: 'function',
+  function: {
+    name: 'buscar_juego',
+    description: 'Busca datos reales de un videojuego en RAWG: fecha de salida, desarrolladora, géneros y descripción corta',
+    parameters: {
+      type: 'object',
+      properties: { nombre: { type: 'string', description: 'Nombre del videojuego' } },
+      required: ['nombre']
+    }
+  }
+};
+
+async function buscarJuegoTool(nombre) {
+  const clean = sanitizeForAI(nombre || '');
+  if (!clean) return 'SIN DATOS: no se indicó ningún juego.';
+  const info = await getGameInfo(clean.slice(0, 80), { detail: true }).catch(() => null);
+  if (!info) return `SIN DATOS: RAWG no encontró "${clean}". No inventes nada; di con humor que no tienes datos.`;
+  return [
+    `Nombre: ${info.name}`,
+    `Salida: ${info.released || 'desconocida'}`,
+    `Desarrolladora: ${info.developers || 'desconocida'}`,
+    `Géneros: ${info.genres || 'desconocidos'}`,
+    `Descripción (puede estar en inglés): ${info.description || 'sin descripción'}`
+  ].join('\n');
+}
+
 // --- !dios_fua --- FIX #4 + #7: prompt mejorado + busqueda web Tavily
 const questionCooldowns = new Map();
 setInterval(() => { const now = Date.now(); for (const [k,v] of questionCooldowns) if (now > v) questionCooldowns.delete(k); }, 30 * 60 * 1000);
@@ -648,17 +676,39 @@ async function handleQuestion(client, channel, tags, args) {
     const trapNote = isConfirmationTrap(question)
       ? '\nEl usuario busca validación automática. NO confirmes por defecto. Responde con tu criterio real, aunque no sea lo que quiere oír. Puedes estar de acuerdo, pero que sea genuino, no automático.'
       : '';
-    const systemContent = `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. NUNCA inventes datos especificos. Sin "Lo siento". Responde SIEMPRE en espanol.`;
+    const systemContent = `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. NUNCA inventes datos especificos. Si te preguntan datos de un videojuego (fecha, desarrolladora, géneros, de qué va), usa la herramienta buscar_juego y responde SOLO con lo que devuelva; si no hay datos, dilo con humor sin inventar nada. Sin "Lo siento". Responde SIEMPRE en espanol.`;
 
-    const response = await groqWithRetry({
+    const messages = [
+      { role: 'system', content: systemContent },
+      ...userConv,
+      { role: 'user', content: `${username}: ${question}` }
+    ];
+    let response = await groqWithRetry({
       model: GROQ_MODEL_COMPOUND,
       max_tokens: 150,
-      messages: [
-        { role: 'system', content: systemContent },
-        ...userConv,
-        { role: 'user', content: `${username}: ${question}` }
-      ]
+      tools: [BUSCAR_JUEGO_TOOL],
+      tool_choice: 'auto',
+      messages
     });
+    // Una sola ronda de herramienta: ejecutar buscar_juego y pedir la respuesta final sin tools
+    const toolCalls = response.choices[0]?.message?.tool_calls;
+    if (toolCalls?.length) {
+      messages.push(response.choices[0].message);
+      for (const call of toolCalls.slice(0, 2)) {
+        let result = 'Herramienta desconocida.';
+        if (call.function?.name === 'buscar_juego') {
+          let nombre = '';
+          try { nombre = String(JSON.parse(call.function.arguments || '{}').nombre || ''); } catch { /* args inválidos */ }
+          result = await buscarJuegoTool(nombre);
+        }
+        messages.push({ role: 'tool', tool_call_id: call.id, content: result });
+      }
+      response = await groqWithRetry({
+        model: GROQ_MODEL_COMPOUND,
+        max_tokens: 150,
+        messages
+      });
+    }
     const answer = response.choices[0].message.content;
     const qModeConfig = (channelConfig.personality_modes || {})[getPersonalityMode()] || {};
     const qMaxChars = qModeConfig.max_chars ?? TWITCH_MAX_LENGTH;
@@ -1011,7 +1061,7 @@ async function checkPatternMatch(client, channel, tags, message) {
       model: GROQ_MODEL_FAST,
       max_tokens: 120,
       messages: [
-        { role: 'system', content: `${personality}${toneNote}${trapNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol.` },
+        { role: 'system', content: `${personality}${toneNote}${trapNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol. NUNCA inventes datos de videojuegos (fechas, desarrolladoras, argumentos): si preguntan por un juego que no es el actual, no des datos y sugiere usar !dios_fua; sobre el juego actual solo di lo que sepas con certeza.` },
         ...userConv,
         { role: 'user', content: `${username}: ${question}` }
       ]

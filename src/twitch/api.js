@@ -298,12 +298,15 @@ const rawgCacheCleanupInterval = setInterval(() => {
 }, 6 * 60 * 60 * 1000);
 rawgCacheCleanupInterval.unref();
 
-async function getGameInfo(gameName) {
+// detail=true hace una 2ª llamada a /games/{id} (el listado no trae descripción
+// ni desarrolladora). Solo la usan !dios_fua y la trivia; el resto sigue rápido.
+async function getGameInfo(gameName, { detail = false } = {}) {
   if (!gameName) return null;
-  if (gameInfoCache.has(gameName)) {
-    const cached = gameInfoCache.get(gameName);
+  const cacheKey = detail ? `${gameName}|detail` : gameName;
+  if (gameInfoCache.has(cacheKey)) {
+    const cached = gameInfoCache.get(cacheKey);
     if (Date.now() - cached.ts <= RAWG_CACHE_TTL) return cached.data;
-    gameInfoCache.delete(gameName);
+    gameInfoCache.delete(cacheKey);
   }
 
   const apiKey = process.env.RAWG_API_KEY;
@@ -312,22 +315,31 @@ async function getGameInfo(gameName) {
   try {
     const query = encodeURIComponent(gameName);
     const res = await fetch(
-      `https://api.rawg.io/api/games?key=${apiKey}&search=${query}&page_size=1`,
+      `https://api.rawg.io/api/games?key=${apiKey}&search=${query}&search_precise=true&page_size=1`,
       { headers: { 'Accept': 'application/json' } }
     );
     const data = await res.json();
-    const game = data.results?.[0];
+    let game = data.results?.[0];
     if (!game) return null;
+
+    if (detail && game.id) {
+      const detRes = await fetch(
+        `https://api.rawg.io/api/games/${game.id}?key=${apiKey}`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+      if (detRes.ok) game = { ...game, ...(await detRes.json()) };
+    }
 
     const info = {
       name: game.name,
-      description: game.description_raw?.slice(0, 300) || null,
+      description: game.description_raw?.slice(0, detail ? 600 : 300) || null,
       genres: game.genres?.map(g => g.name).join(', ') || null,
       released: game.released || null,
-      rating: game.rating || null
+      rating: game.rating || null,
+      developers: game.developers?.map(d => d.name).join(', ') || null
     };
 
-    gameInfoCache.set(gameName, { data: info, ts: Date.now() });
+    gameInfoCache.set(cacheKey, { data: info, ts: Date.now() });
     return info;
   } catch (e) {
     logger.error(`Error RAWG: ${e.message.replace(apiKey, '[REDACTED]')}`);

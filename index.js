@@ -132,6 +132,9 @@ async function connectChat() {
   try {
     while (!chatStatus.connected) {
       try {
+        // tmi.js no protege connect(): un segundo socket dejaría el primero huérfano
+        const state = client.readyState();
+        if (state === 'OPEN' || state === 'CONNECTING') return;
         await client.connect();
         return;
       } catch (err) {
@@ -184,22 +187,17 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 let timersStarted = false;
-let lastMessageTime = Date.now();
 
 // BUG FIX #1: deduplicación de mensajes para evitar doble respuesta en reconexiones
 const processedMessages = new Set();
 setInterval(() => processedMessages.clear(), 60 * 1000);
 
 // --- Watchdog ---
-const WATCHDOG_TIMEOUT = parseInt(process.env.WATCHDOG_TIMEOUT_MS || '1800000', 10);
-setInterval(async () => {
-  const { isLiveViaEventSub } = require('./src/eventsub');
-  if (!isLiveViaEventSub()) return;
-  if (Date.now() - lastMessageTime > WATCHDOG_TIMEOUT) {
-    logger.warn('⚠️ Watchdog: reconectando...');
-    client.connect().catch(logger.error);
-    lastMessageTime = Date.now();
-  }
+// Solo actúa si el estado real de la conexión es "caída" (en directo o no); un chat callado no cuenta.
+setInterval(() => {
+  if (chatStatus.connected) return;
+  logger.warn('⚠️ Watchdog: chat desconectado, reconectando...');
+  connectChat();
 }, 5 * 60 * 1000);
 
 client.on('connected', async (addr, port) => {
@@ -274,7 +272,6 @@ client.on('message', async (channel, tags, message, self) => {
     processedMessages.add(msgId);
   }
 
-  lastMessageTime = Date.now();
   checkNewUser(tags);
   trackMessage();
 

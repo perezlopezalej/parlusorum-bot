@@ -115,7 +115,6 @@ GROQ_MODEL_FAST            default openai/gpt-oss-20b
 GROQ_MODEL_COMPOUND        !dios_fua model (default = GROQ_MODEL; groq/compound withdrawn)
 NODE_ENV                   production | development
 RAWG_API_KEY               Game info for !juego, timers, hooks
-WATCHDOG_TIMEOUT_MS        Reconnect if no chat while live (default 1800000)
 AI_TIMER_INTERVAL_MS       AI game commentary interval (default 1500000)
 COHOST_PROBABILITY         0–1 (default 0.25)
 COHOST_COOLDOWN_MS         default 120000
@@ -135,6 +134,7 @@ LURKER_THRESHOLD_MS        Silence before greeting a returning lurker (default 9
 - **Cooldowns**: Maps keyed `${command}-${userId}` (per-user) or `${command}` (global); pruned every 30 min via `setInterval`.
 - **Permissions**: mod-only commands check `tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1'`.
 - **IRC throttle**: `irc-ratelimit.js` wraps `client.say()` once at startup; messages to a disconnected client are discarded with a warning.
+- **Watchdog IRC**: cada 5 min, en directo o no, si `chatStatus.connected` es false llama a `connectChat()` (ignora la inactividad del chat); `connectChat()` tiene guarda `chatConnecting` y no abre otro socket si `client.readyState()` es OPEN/CONNECTING.
 - **Tokens**: broadcaster token loaded from Supabase on startup (overrides .env if fresher), refreshed on 401 via `refreshBroadcasterToken()` and persisted back. `/auth/broadcaster` → `/auth/callback` re-authorizes it manually. **Two tokens, two uses**: the App Access Token (cached 23 h) is used *only* to create/list/delete EventSub webhook subscriptions (and read-only public `streams` checks in `eventsub.js`); every Helix call acting on behalf of the channel (clips, markers, bans, followers — anything in `BROADCASTER_SCOPES`) uses the broadcaster token.
 - **Storage fallback**: without Supabase env vars, `storage.js` uses npoint.io and migrates when Supabase is configured later.
 - **Cross-stream memory**: on `stream.offline`, Groq summarizes the stream into Supabase; last 5 summaries go into the AI system prompt (10-min cache).
