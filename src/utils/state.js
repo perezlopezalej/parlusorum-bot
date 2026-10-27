@@ -255,7 +255,17 @@ function getLoreSample() {
 }
 function resetLoreSample() { loreSample = []; loreSampleSeen = 0; }
 
+// --- Uso de modelos de reserva de Groq en el stream ("pedido→usado" → nº de peticiones) ---
+const groqFallbackUse = new Map();
+function recordGroqFallback(requested, used) {
+  const key = `${requested}→${used}`;
+  groqFallbackUse.set(key, (groqFallbackUse.get(key) || 0) + 1);
+}
+function getGroqFallbackUse() { return Object.fromEntries(groqFallbackUse); }
+function resetGroqFallbackUse() { groqFallbackUse.clear(); }
+
 module.exports = {
+  recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
   addLoreSample, getLoreSample, resetLoreSample,
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,

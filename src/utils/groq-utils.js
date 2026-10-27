@@ -1,6 +1,7 @@
 const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
 const logger = require('./logger');
+const { recordGroqFallback } = require('./state');
 
 // Modelos configurables via env var. Groq retira modelos con frecuencia:
 // toda la familia llama-3.x/llama-4 y los groq/compound devuelven 404 model_not_found
@@ -77,8 +78,11 @@ async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_
     } else if (model !== requested) {
       delete p.reasoning_effort;
     }
-    try { return await requestWithRetry(create, p, maxRetries); }
-    catch (err) {
+    try {
+      const result = await requestWithRetry(create, p, maxRetries);
+      if (model !== requested) recordGroqFallback(requested, model);
+      return result;
+    } catch (err) {
       if (!isModelGone(err) || i === chain.length - 1) throw err;
       logger.warn(`⚠️ Groq: modelo ${model} retirado (${err.status || 'sin status'}), probando ${chain[i + 1]}. Actualiza GROQ_MODEL*.`);
       lastErr = err;

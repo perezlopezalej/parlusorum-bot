@@ -115,6 +115,7 @@ PORT                       HTTP port (default 3000; Render injects)
 GROQ_MODEL                 default openai/gpt-oss-120b
 GROQ_MODEL_FAST            default openai/gpt-oss-20b
 GROQ_MODEL_COMPOUND        !dios_fua model (default = GROQ_MODEL; groq/compound withdrawn)
+GROQ_MODEL_FALLBACKS       Modelos de reserva separados por comas, en orden, si el pedido devuelve 404/decommissioned (default = GROQ_MODEL_FAST). Recomendado: openai/gpt-oss-20b,qwen/qwen3.8-27b. Cada petición servida por uno de reserva se cuenta (state.js) y el resumen de fin de stream del log (`bot.log`, nunca el chat) lista "pedido→usado: n"
 NODE_ENV                   production | development
 RAWG_API_KEY               Game info for !juego, timers, hooks
 AI_TIMER_INTERVAL_MS       AI game commentary interval (default 1500000)
@@ -138,7 +139,7 @@ LURKER_THRESHOLD_MS        Silence before greeting a returning lurker (default 9
 
 - **Cooldowns**: Maps keyed `${command}-${userId}` (per-user) or `${command}` (global); pruned every 30 min via `setInterval`.
 - **Permissions**: mod-only commands check `tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1'`.
-- **IRC throttle**: `irc-ratelimit.js` wraps `client.say()` once at startup; messages to a disconnected client are discarded with a warning.
+- **IRC throttle**: `irc-ratelimit.js` wraps `client.say()` once at startup; messages to a disconnected client are discarded with a warning. On SIGTERM/SIGINT it flushes the pending queue (respecting the rate limit, max 5 s) before `process.exit`; whatever does not fit is logged as discarded.
 - **Watchdog IRC**: cada 5 min, en directo o no, si `chatStatus.connected` es false llama a `connectChat()` (ignora la inactividad del chat); `connectChat()` tiene guarda `chatConnecting` y no abre otro socket si `client.readyState()` es OPEN/CONNECTING.
 - **Tokens**: broadcaster token loaded from Supabase on startup (overrides .env if fresher), refreshed on 401 via `refreshBroadcasterToken()` and persisted back. `/auth/broadcaster` → `/auth/callback` re-authorizes it manually. **Two tokens, two uses**: the App Access Token (cached 23 h) is used *only* to create/list/delete EventSub webhook subscriptions (and read-only public `streams` checks in `eventsub.js`); every Helix call acting on behalf of the channel (clips, markers, bans, followers — anything in `BROADCASTER_SCOPES`) uses the broadcaster token.
 - **Storage fallback**: without Supabase env vars, `storage.js` uses npoint.io and migrates when Supabase is configured later.

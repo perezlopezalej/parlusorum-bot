@@ -12,40 +12,31 @@ const MAX_QUEUE   = 50;
 const _window = [];   // timestamps de mensajes enviados (sliding window)
 const _queue  = [];   // { sayFn, channel, msg } pendientes
 let   _timer  = null; // handle del próximo drain programado
+let   _closing = false; // apagado en curso: no se programan más drains
 
 function _scheduleDrain(delayMs) {
-  if (_timer !== null) return; // ya hay un drain programado
+  if (_timer !== null || _closing) return; // ya hay un drain programado, o apagando
   _timer = setTimeout(_drain, delayMs);
 }
 
-async function _drain() {
-  _timer = null;
-  if (_queue.length === 0) return;
-
-  const now = Date.now();
-
+// ms que hay que esperar antes de poder enviar el siguiente mensaje (0 = ya se puede)
+function _waitMs(now) {
   // Limpiar timestamps fuera de la ventana de 30 s
   while (_window.length && _window[0] < now - WINDOW_MS) _window.shift();
 
   // ¿Ventana llena? Esperar hasta que expire el timestamp más antiguo
-  if (_window.length >= MAX_IN_WIN) {
-    _scheduleDrain(WINDOW_MS - (now - _window[0]) + 10);
-    return;
-  }
+  if (_window.length >= MAX_IN_WIN) return WINDOW_MS - (now - _window[0]) + 10;
 
   // ¿Muy poco tiempo desde el último mensaje? Esperar el gap mínimo
-  const last = _window.at(-1) ?? 0;
-  const gap  = now - last;
-  if (gap < MIN_GAP_MS) {
-    _scheduleDrain(MIN_GAP_MS - gap + 10);
-    return;
-  }
+  const gap = now - (_window.at(-1) ?? 0);
+  return gap < MIN_GAP_MS ? MIN_GAP_MS - gap + 10 : 0;
+}
 
-  // Enviar siguiente mensaje de la cola
+// Envía el primer mensaje de la cola (asume que _waitMs() ya dio 0)
+async function _sendNext() {
   const { sayFn, channel, msg, client } = _queue.shift();
   if (client && client.readyState() !== 'OPEN') {
     logger.warn('IRC: mensaje descartado — cliente no conectado');
-    if (_queue.length > 0) _scheduleDrain(MIN_GAP_MS);
     return;
   }
   _window.push(Date.now());
@@ -54,7 +45,16 @@ async function _drain() {
   } catch (e) {
     logger.warn(`IRC say error: ${e.message}`);
   }
+}
 
+async function _drain() {
+  _timer = null;
+  if (_queue.length === 0) return;
+
+  const wait = _waitMs(Date.now());
+  if (wait > 0) { _scheduleDrain(wait); return; }
+
+  await _sendNext();
   if (_queue.length > 0) _scheduleDrain(MIN_GAP_MS);
 }
 
@@ -76,7 +76,27 @@ function wrapClientSay(client) {
   };
 }
 
-function _logQueueOnExit(signal) {
+// Al apagar (Render manda SIGTERM) envía lo pendiente respetando el rate limit,
+// hasta SHUTDOWN_FLUSH_MS; lo que no quepa se descarta y se registra.
+const SHUTDOWN_FLUSH_MS = 5_000;
+
+async function _flushOnExit(signal) {
+  if (_closing) return;
+  _closing = true;
+  clearTimeout(_timer);
+  _timer = null;
+
+  const deadline = Date.now() + SHUTDOWN_FLUSH_MS;
+  let sent = 0;
+  while (_queue.length > 0) {
+    const wait = _waitMs(Date.now());
+    if (Date.now() + wait > deadline) break;
+    if (wait > 0) { await new Promise(r => setTimeout(r, wait)); continue; }
+    await _sendNext();
+    sent++;
+  }
+
+  if (sent > 0) logger.info(`IRC: ${signal} — ${sent} msg(s) de la cola enviados antes de cerrar`);
   if (_queue.length > 0) {
     const items = _queue
       .map(({ channel, msg }) => `${channel}: "${String(msg).slice(0, 60)}"`)
@@ -86,7 +106,7 @@ function _logQueueOnExit(signal) {
   process.exit(0);
 }
 
-process.on('SIGTERM', () => _logQueueOnExit('SIGTERM'));
-process.on('SIGINT',  () => _logQueueOnExit('SIGINT'));
+process.on('SIGTERM', () => _flushOnExit('SIGTERM'));
+process.on('SIGINT',  () => _flushOnExit('SIGINT'));
 
 module.exports = { wrapClientSay };

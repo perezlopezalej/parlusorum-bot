@@ -47,3 +47,18 @@ describe('cadena de modelos de reserva', () => {
     assert.equal(seen.plain.max_tokens, 100);
   });
 });
+
+describe('contador de modelos de reserva', () => {
+  const { getGroqFallbackUse, resetGroqFallbackUse } = require('../src/utils/state');
+
+  test('cuenta solo las peticiones servidas por un modelo de reserva', async () => {
+    resetGroqFallbackUse();
+    const create = async p => { if (p.model === 'a') throw gone(); return {}; };
+    await runWithFallback(create, { model: 'a' }, 0, ['b']);
+    await runWithFallback(create, { model: 'a' }, 0, ['b']);
+    await runWithFallback(create, { model: 'b' }, 0, ['b']); // modelo pedido vivo: no cuenta
+    assert.deepEqual(getGroqFallbackUse(), { 'a→b': 2 });
+    resetGroqFallbackUse();
+    assert.deepEqual(getGroqFallbackUse(), {});
+  });
+});
