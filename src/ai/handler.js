@@ -99,6 +99,12 @@ async function getFullContext() {
     if (memory) context += memory;
   } catch {}
 
+  // Campeón del ranking de trivia
+  try {
+    const champion = await require('../games/handler').getChampion();
+    if (champion) context += ` Campeón actual de la trivia del chat: @${sanitizeForAI(champion.username)} con ${champion.count} victorias; puedes aludirle si encaja, sin forzarlo.`;
+  } catch {}
+
   // Lore aprendido (el manual ya va en getChannelContext, con prioridad)
   try {
     const lore = await getLoreContext();

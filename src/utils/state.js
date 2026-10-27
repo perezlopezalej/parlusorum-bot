@@ -173,6 +173,19 @@ function resetTriviaStats() {
   triviaStats = { aciertos: 0, fallos: 0, rachaActual: 0 };
 }
 
+// --- Ranking de trivia: racha de victorias seguidas del mismo usuario + caché del top ---
+let triviaStreak = { username: null, count: 0 };
+let triviaTopCache = { data: null, ts: 0 };
+
+function bumpTriviaStreak(username) {
+  const u = String(username).toLowerCase();
+  triviaStreak = { username: u, count: triviaStreak.username === u ? triviaStreak.count + 1 : 1 };
+  return triviaStreak.count;
+}
+function getTriviaTopCache() { return { ...triviaTopCache }; }
+function setTriviaTopCache(data) { triviaTopCache = { data, ts: Date.now() }; }
+function invalidateTriviaTopCache() { triviaTopCache = { data: null, ts: 0 }; }
+
 // --- Muestra de chat para aprender lore (reservoir sampling: uniforme sobre todo el stream) ---
 const LORE_SAMPLE_SIZE = 400;
 let loreSample = [];
@@ -210,4 +223,5 @@ module.exports = {
   getDeathCount, incrementDeathCount, resetDeathCount,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getTriviaStats, registrarAcierto, registrarFallo, resetTriviaStats,
+  bumpTriviaStreak, getTriviaTopCache, setTriviaTopCache, invalidateTriviaTopCache,
 };

@@ -434,6 +434,51 @@ async function getUserFacts(username) {
   }
 }
 
+// Contador acumulado (sin caducidad) en user_facts. Devuelve el nuevo total o null sin Supabase/error.
+// Lectura+escritura sin atomicidad: seguro porque solo hay una trivia activa a la vez.
+async function incrementUserCounter(username, factType) {
+  const db = getClient();
+  if (!db) return null;
+  try {
+    const user = username.toLowerCase();
+    const { data, error } = await db.from('user_facts').select('value')
+      .eq('username', user).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
+    if (error) throw error;
+    const next = (parseInt(data?.value, 10) || 0) + 1;
+    const { error: upErr } = await db.from('user_facts').upsert({
+      username: user,
+      channel: CHANNEL_NAME,
+      fact_type: factType,
+      value: String(next),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'username,channel,fact_type' });
+    if (upErr) throw upErr;
+    return next;
+  } catch (e) {
+    logger.warn(`incrementUserCounter ${username}/${factType}: ${e.message}`);
+    return null;
+  }
+}
+
+// Top N por contador (value es texto: se ordena en JS). [{ username, count }]
+async function getCounterLeaderboard(factType, limit) {
+  const db = getClient();
+  if (!db) return [];
+  try {
+    const { data, error } = await db.from('user_facts').select('username, value')
+      .eq('channel', CHANNEL_NAME).eq('fact_type', factType);
+    if (error) throw error;
+    return (data || [])
+      .map(r => ({ username: r.username, count: parseInt(r.value, 10) || 0 }))
+      .filter(r => r.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit);
+  } catch (e) {
+    logger.warn(`getCounterLeaderboard ${factType}: ${e.message}`);
+    return [];
+  }
+}
+
 // ─── LORE APRENDIDO ──────────────────────────────────────────────────────────
 
 async function getLoreRows(statuses) {
@@ -504,4 +549,6 @@ module.exports = {
   deleteCooldown,
   saveUserFact,
   getUserFacts,
+  incrementUserCounter,
+  getCounterLeaderboard,
 };

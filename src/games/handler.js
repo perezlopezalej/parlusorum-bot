@@ -2,7 +2,12 @@ const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
 const { canMakeRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
-const { setTriviaActive, getTriviaStats, registrarAcierto, registrarFallo } = require('../utils/state');
+const { setTriviaActive, getTriviaStats, registrarAcierto, registrarFallo, bumpTriviaStreak, getTriviaTopCache, setTriviaTopCache, invalidateTriviaTopCache } = require('../utils/state');
+const { incrementUserCounter, getCounterLeaderboard } = require('../utils/supabase');
+const msgs = require('../../config/messages.json').trivia_rank;
+
+const WINS_FACT = 'trivia_wins';
+const TOP_CACHE_TTL = 5 * 60 * 1000;
 
 // --- Trivia (general + canal) ---
 const triviaQuestions = [
@@ -239,12 +244,56 @@ function checkTriviaAnswer(client, channel, tags, message) {
     const username = tags['display-name'];
     clearTimeout(triviaTimeout);
     const curiosidadWin = activeTriviaQuestion.curiosidad ? ` 💡 ${activeTriviaQuestion.curiosidad}` : '';
-    client.say(channel, truncate(`🎉 ¡@${username} ha acertado! ¡Enhorabuena! 🏆${curiosidadWin}`));
     activeTriviaQuestion = null;
     triviaHintStage = 0;
     registrarAcierto();
     setTriviaActive(false);
+    announceWin(client, channel, username, curiosidadWin)
+      .catch(err => logger.error(`Trivia ranking: ${err.message}`));
   }
+}
+
+// Top N con caché de 5 min (se invalida en cada victoria)
+async function getTop(limit = 5) {
+  const cache = getTriviaTopCache();
+  if (cache.data && Date.now() - cache.ts < TOP_CACHE_TTL) return cache.data.slice(0, limit);
+  const top = await getCounterLeaderboard(WINS_FACT, 10);
+  setTriviaTopCache(top);
+  return top.slice(0, limit);
+}
+
+async function announceWin(client, channel, username, curiosidad) {
+  const fill = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k]);
+  const wins = await incrementUserCounter(username, WINS_FACT);
+  const streak = bumpTriviaStreak(username);
+  let text = fill(msgs.win, { username });
+  if (wins) {
+    invalidateTriviaTopCache();
+    const top = await getTop(5);
+    const position = top.findIndex(r => r.username === username.toLowerCase()) + 1;
+    const vars = { username, wins, streak, position };
+    if (position === 1 && wins > 1) text = fill(msgs.win_champion, vars);
+    else if (streak >= 2) text = fill(msgs.win_streak, vars);
+    else if (position > 0) text = fill(msgs.win_position, vars);
+    else text = fill(msgs.win_total, vars);
+  }
+  client.say(channel, truncate(`${text}${curiosidad}`));
+}
+
+async function handleTop(client, channel) {
+  const top = await getTop(5);
+  if (!top.length) {
+    client.say(channel, truncate(msgs.top_empty));
+    return;
+  }
+  const medals = ['🥇', '🥈', '🥉', '4º', '5º'];
+  client.say(channel, truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${r.count})`).join(' · ')));
+}
+
+// Campeón actual para el contexto de la IA (null si no hay ranking)
+async function getChampion() {
+  const [first] = await getTop(1);
+  return first || null;
 }
 
 function handle(client, channel, tags, command, args) {
@@ -252,7 +301,10 @@ function handle(client, channel, tags, command, args) {
     case 'trivia':
       handleTrivia(client, channel).catch(err => logger.error(`Trivia: ${err.message}`));
       return;
+    case 'top':
+      handleTop(client, channel).catch(err => logger.error(`!top: ${err.message}`));
+      return;
   }
 }
 
-module.exports = { handle, checkTriviaAnswer, isAnswerMatch, buildHints, normalizeAnswer };
+module.exports = { handle, checkTriviaAnswer, getChampion, isAnswerMatch, buildHints, normalizeAnswer };

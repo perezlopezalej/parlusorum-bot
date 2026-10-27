@@ -313,7 +313,7 @@ client.on('message', async (channel, tags, message, self) => {
 
     logger.debug(`💬 [${username}] !${command}`);
 
-    if (command === 'trivia') return games.handle(client, channel, tags, command, args);
+    if (command === 'trivia' || command === 'top') return games.handle(client, channel, tags, command, args);
     if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
     if (command === 'chiste') return ai.handleChiste(client, channel, tags);
 
