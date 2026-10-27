@@ -569,6 +569,21 @@ async function incrementUserCounter(username, factType) {
   }
 }
 
+// Lee un contador acumulado sin la caducidad de 30 días de getUserFacts. 0 sin Supabase/error.
+async function getUserCounter(username, factType) {
+  const db = getClient();
+  if (!db) return 0;
+  try {
+    const { data, error } = await db.from('user_facts').select('value')
+      .eq('username', username.toLowerCase()).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
+    if (error) throw error;
+    return parseInt(data?.value, 10) || 0;
+  } catch (e) {
+    logger.warn(`getUserCounter ${username}/${factType}: ${e.message}`);
+    return 0;
+  }
+}
+
 // Top N por contador (value es texto: se ordena en JS). [{ username, count }]
 async function getCounterLeaderboard(factType, limit) {
   const db = getClient();
@@ -665,5 +680,6 @@ module.exports = {
   saveUserFact,
   getUserFacts,
   incrementUserCounter,
+  getUserCounter,
   getCounterLeaderboard,
 };

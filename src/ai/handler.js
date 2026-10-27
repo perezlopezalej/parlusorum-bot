@@ -57,8 +57,10 @@ setInterval(() => {
 async function getCachedUserFacts(username) {
   const cached = userFactsCache.get(username);
   if (cached && Date.now() - cached.ts < USER_FACTS_TTL) return cached.data;
-  const { getUserFacts } = require('../utils/supabase');
-  const data = await getUserFacts(username);
+  const { getUserFacts, getUserCounter } = require('../utils/supabase');
+  const [facts, wins] = await Promise.all([getUserFacts(username), getUserCounter(username, 'trivia_wins')]);
+  // trivia_wins es un contador sin caducidad: se lee aparte del filtro de 30 días
+  const data = [...facts.filter(f => f.fact_type !== 'trivia_wins'), ...(wins > 0 ? [{ fact_type: 'trivia_wins', value: String(wins) }] : [])];
   userFactsCache.set(username, { data, ts: Date.now() });
   return data;
 }
@@ -1268,6 +1270,6 @@ module.exports = {
   checkEmoteSpam, checkCapsRage, checkPatternMatch,
   getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
   getStreamChatBuffer, resetStreamChatBuffer,
-  restoreCooldowns, clearUserFactsCache,
+  restoreCooldowns, clearUserFactsCache, getCachedUserFacts,
   getBotPersonality, NARRATOR_BASE,
 };

@@ -60,6 +60,13 @@ function getManualLore() {
   ].filter(Boolean).join(' ');
 }
 
+// Apodo oficial del lore manual (config/lore.json, "nicknames": { "nick": "apodo" }); null si no hay
+function getNickname(username) {
+  const nick = (loreConfig.nicknames || {})[String(username || '').toLowerCase()];
+  const clean = nick ? sanitizeForAI(String(nick)) : '';
+  return clean && !touchesAvoidedTopic(clean) ? clean : null;
+}
+
 // ─── LORE APRENDIDO: INYECCIÓN EN EL PROMPT ──────────────────────────────────
 
 let loreCache = null;
@@ -283,6 +290,8 @@ async function deleteLore(id) {
 
 module.exports = {
   getManualLore,
+  getNickname,
+  touchesAvoidedTopic,
   getLoreContext,
   invalidateLoreCache,
   onStreamEndLore,

@@ -3,7 +3,10 @@ const { getCurrentGame, getGameInfo } = require('../twitch/api');
 const { canMakeRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
 const { setTriviaActive, getTriviaStats, registrarAcierto, registrarFallo, bumpTriviaStreak, getTriviaTopCache, setTriviaTopCache, invalidateTriviaTopCache } = require('../utils/state');
-const { incrementUserCounter, getCounterLeaderboard } = require('../utils/supabase');
+const { incrementUserCounter, getCounterLeaderboard, getRecentSessionDeaths, getLoreRows } = require('../utils/supabase');
+const { touchesAvoidedTopic } = require('../lore/handler');
+const { sanitizeForAI } = require('../utils/filter');
+const { buildChannelQuestion } = require('./channel-questions');
 const msgs = require('../../config/messages.json').trivia_rank;
 
 const WINS_FACT = 'trivia_wins';
@@ -83,6 +86,21 @@ function rememberQuestion(game, question) {
   list.push(question);
   if (list.length > RECENT_PER_GAME) list.shift();
   recentQuestions.set(game, list);
+}
+
+// Pregunta sobre la historia del canal (muertes, ranking, lore activo), sin IA y sin repetir
+const CHANNEL_QUESTION_CHANCE = 0.25;
+const CHANNEL_KEY = '__canal__';
+
+async function getChannelQuestion() {
+  const [sessions, [champion], loreRows] = await Promise.all([getRecentSessionDeaths(50), getTop(1), getLoreRows(['active'])]);
+  const lore = loreRows
+    .map(r => ({ kind: r.kind, term: sanitizeForAI(r.term) }))
+    .filter(r => r.term && !touchesAvoidedTopic(r.term));
+  const picked = buildChannelQuestion({ sessions, champion, lore }, { isRecent: question => isRecentQuestion(CHANNEL_KEY, question) });
+  if (!picked) return null;
+  rememberQuestion(CHANNEL_KEY, picked.question);
+  return { ...picked, aliases: picked.aliases || [], pistas: buildHints(picked.answer), game: null, ts: Date.now() };
 }
 
 const winsText = n => `${n} ${n === 1 ? 'victoria' : 'victorias'}`;
@@ -175,7 +193,11 @@ async function handleTrivia(client, channel) {
 
   let q = null;
 
-  if (canMakeRequest()) {
+  if (Math.random() < CHANNEL_QUESTION_CHANCE) {
+    q = await getChannelQuestion().catch(err => { logger.warn(`Trivia canal: ${err.message}`); return null; });
+  }
+
+  if (!q && canMakeRequest()) {
     try {
       const gameInfo = await getCurrentGame();
       const game = gameInfo?.game;
