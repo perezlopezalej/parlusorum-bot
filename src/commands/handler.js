@@ -187,6 +187,7 @@ async function handleEstadisticas(client, channel) {
 async function handleBoss(client, channel) {
   sessionWins++;
   incrementChannelStat('total_wins').catch(() => {});
+  addNarrativeEvent('boss', `Boss derrotado (#${sessionWins} de este stream)`);
   client.say(channel, `¡Boss eliminado! 💀 ${sessionWins} boss${sessionWins !== 1 ? 'es' : ''} este stream`);
 }
 

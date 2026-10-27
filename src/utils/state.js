@@ -1,4 +1,5 @@
 // Estado compartido entre módulos — evita dependencias circulares
+const { pruneNarrative, restoreNarrative, pruneHourly } = require('./narrative');
 
 // --- Trivia ---
 let triviaActive = false;
@@ -69,15 +70,54 @@ setInterval(() => {
 }, 10 * 60 * 1000).unref();
 
 // --- Narrativa del stream ---
-const MAX_NARRATIVE_EVENTS = 5;
 let streamNarrative = [];
+let narrativeListener = null;
+
+// Un único listener (la persistencia en Supabase) se entera de cada cambio
+function onNarrativeChange(fn) { narrativeListener = fn; }
+function notifyNarrative() {
+  if (!narrativeListener) return;
+  try { narrativeListener(getStreamNarrative()); } catch {}
+}
 
 function addNarrativeEvent(type, description) {
   streamNarrative.push({ type, description, ts: Date.now() });
-  if (streamNarrative.length > MAX_NARRATIVE_EVENTS) streamNarrative.shift();
+  streamNarrative = pruneNarrative(streamNarrative);
+  notifyNarrative();
 }
 function getStreamNarrative() { return [...streamNarrative]; }
 function resetStreamNarrative() { streamNarrative = []; }
+// Recuperación tras reinicio: no vuelve a persistir lo que acaba de leer
+function setStreamNarrative(events) { streamNarrative = restoreNarrative(events); }
+
+// --- Cohost: marcas de tiempo (tope por hora) y turnos hook/cohost dentro de una pausa del chat ---
+let cohostTimes = [];
+let lastCohostTime = 0;
+let pauseState = { id: null, hookAt: 0, cohostDone: false };
+
+// counts=false (fallo de la IA): solo reinicia el cooldown, sin gastar cupo de la hora
+function recordCohost(now = Date.now(), counts = true) {
+  lastCohostTime = now;
+  if (!counts) return;
+  cohostTimes = pruneHourly(cohostTimes, now);
+  cohostTimes.push(now);
+}
+function getLastCohostTime() { return lastCohostTime; }
+function getCohostTimes() { return [...cohostTimes]; }
+
+// Una pausa del chat se identifica por la hora de su último mensaje. Habla por turnos: primero el hook
+// (como mucho uno) y, si el silencio sigue, el cohost (como mucho uno) pasado un tiempo desde el hook.
+function claimHookPause(pauseId, now = Date.now()) {
+  if (pauseState.id === pauseId && pauseState.hookAt) return false;
+  pauseState = { id: pauseId, hookAt: now, cohostDone: false };
+  return true;
+}
+function canCohostOnPause(pauseId, afterMs, now = Date.now()) {
+  return pauseState.id === pauseId && !!pauseState.hookAt && !pauseState.cohostDone && now - pauseState.hookAt >= afterMs;
+}
+function markCohostPause(pauseId) {
+  if (pauseState.id === pauseId) pauseState.cohostDone = true;
+}
 
 // --- Modo de personalidad ---
 let currentMode = 'normal';
@@ -218,7 +258,8 @@ module.exports = {
   setRaidActive, isRaidActive, getRaidUsername,
   markGiftBatch, isGiftBatch,
   setPersonalityMode, getPersonalityMode, getModeSetAt,
-  addNarrativeEvent, getStreamNarrative, resetStreamNarrative,
+  addNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
+  recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, canCohostOnPause, markCohostPause,
   addBotMessage, getBotHistory, resetBotHistory,
   getLastCohostContextHash, setLastCohostContextHash,
   tickReinforce, resetReinforceCounter,

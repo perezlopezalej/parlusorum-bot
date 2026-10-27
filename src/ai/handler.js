@@ -1,7 +1,8 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, canCohostOnPause, markCohostPause } = require('../utils/state');
+const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached } = require('../utils/narrative');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
@@ -12,9 +13,12 @@ const { saveHighlight } = require('../utils/storage');
 const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
-// FIX #5: cohost mas activo — probability 0.08->0.15, cooldown 180s->120s
-const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '120000', 10);
-const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.25');
+// Cohost: COOLDOWN = mínimo entre cohosts; PROBABILITY = prob. por mensaje al salir del cooldown (crece con el silencio del cohost);
+// MAX_PER_HOUR = tope; PAUSE_MS = silencio del chat tras el que habla sí o sí (si no habló ya un hook en esa pausa)
+const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '180000', 10);
+const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.08');
+const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || '10', 10);
+const COHOST_PAUSE_MS = parseInt(process.env.COHOST_PAUSE_MS || '150000', 10);
 const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
 
 // FIX #1: roles claramente definidos
@@ -347,7 +351,6 @@ function getUserType(username, tags) {
 }
 
 // --- Co-host ---
-let lastCohostTime = 0;
 let cohostRunning = false;
 
 function detectChatMood(messages) {
@@ -363,25 +366,37 @@ function detectChatMood(messages) {
   return 'NEUTRO';
 }
 
-async function handleCohost(client, channel) {
-  if (isSilenced() || isTriviaActive() || cohostRunning) return;
+// Devuelve true si el cohost habló. onPause: turno del cohost en una pausa del chat, COHOST_PAUSE_MS después del hook
+// (sin tirada aleatoria ni comparación de contexto; sí respeta cooldown y tope por hora; uno por pausa).
+async function handleCohost(client, channel, { onPause = false } = {}) {
+  if (isSilenced() || isTriviaActive() || cohostRunning || !getEventSubLiveStatus()) return false;
   const now = Date.now();
-  if (now - lastCohostTime < COHOST_COOLDOWN) return;
+  const sinceLast = now - getLastCohostTime();
+  if (sinceLast < COHOST_COOLDOWN) return false;
+  if (hourlyCapReached(getCohostTimes(), COHOST_MAX_PER_HOUR, now)) return false;
+  const pauseId = lastChatMessageTime;
+  if (onPause && !canCohostOnPause(pauseId, COHOST_PAUSE_MS, now)) return false;
   const modeConfig = (channelConfig.personality_modes || {})[getPersonalityMode()] || {};
-  const effectiveProb = COHOST_PROBABILITY * (modeConfig.cohost_multiplier ?? 1.0);
-  if (Math.random() > effectiveProb) return;
+  if (!onPause) {
+    const prob = cohostProbability({
+      base: COHOST_PROBABILITY, multiplier: modeConfig.cohost_multiplier ?? 1.0,
+      elapsedMs: getLastCohostTime() ? sinceLast : COHOST_COOLDOWN * 2, cooldownMs: COHOST_COOLDOWN,
+    });
+    if (Math.random() > prob) return false;
+  }
   const recentContext = getRecentHistory(5);
-  if (!recentContext) return;
-  if (!canMakeRequest()) return;
+  if (!recentContext) return false;
+  if (!canMakeRequest()) return false;
 
   const contextFingerprint = recentContext.slice(0, 200);
-  const prevHash = getLastCohostContextHash();
-  const currWords = new Set(contextFingerprint.toLowerCase().split(/\s+/));
-  const prevWords = new Set(prevHash.toLowerCase().split(/\s+/));
-  const shared = [...currWords].filter(w => prevWords.has(w)).length;
-  const similarity = prevWords.size > 0 ? shared / prevWords.size : 0;
-  if (similarity > 0.8) return;
-  setLastCohostContextHash(contextFingerprint);
+  if (!onPause) {
+    const prevHash = getLastCohostContextHash();
+    const currWords = new Set(contextFingerprint.toLowerCase().split(/\s+/));
+    const prevWords = new Set(prevHash.toLowerCase().split(/\s+/));
+    const shared = [...currWords].filter(w => prevWords.has(w)).length;
+    const similarity = prevWords.size > 0 ? shared / prevWords.size : 0;
+    if (similarity > 0.8) return false;
+  }
 
   const botHistory = getBotHistory();
   const botBlock = botHistory.length > 0
@@ -392,7 +407,6 @@ async function handleCohost(client, channel) {
     : '';
 
   cohostRunning = true;
-  lastCohostTime = now;
 
   try {
     const gameInfo = await getCurrentGame();
@@ -404,6 +418,10 @@ async function handleCohost(client, channel) {
     const mood = detectChatMood(recentMsgs);
     const moodNote = `\nEl chat está en modo ${mood} ahora mismo. Ajusta el tono de tu comentario a ese ambiente.`;
     const personalityBase = await getPersonality(recentMessages.length);
+    const startedAt = getStreamStartedAt();
+    const streamNote = ` Llevan ${startedAt ? Math.floor((now - startedAt) / 60000) : '?'} min de stream y ${getDeathCount()} muertes del streamer.`;
+    const windowLines = chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).slice(-25);
+    const chatSummary = condenseChat(windowLines);
     const response = await groqWithRetry({
       model: GROQ_MODEL_FAST,
       max_tokens: 90,
@@ -412,17 +430,24 @@ async function handleCohost(client, channel) {
       messages: [
         {
           role: 'system',
-          content: `${personalityBase} ${game}${raidNote} Haz un comentario espontáneo sobre lo que pasa. Sin saludos. Sin presentarte. 1 frase en español. ${moodNote}${botHistory.length > 0 ? `\nTUS RESPUESTAS ANTERIORES — NO repetir ni parafrasear ninguna:\n${botHistory.map(e => `- "${e.msg}"`).join('\n')}` : ''}`
+          content: `${personalityBase} ${game}${streamNote}${raidNote} Haz un comentario espontáneo sobre lo que pasa. Sin saludos. Sin presentarte. 1 frase en español. ${moodNote}${botHistory.length > 0 ? `\nTUS RESPUESTAS ANTERIORES — NO repetir ni parafrasear ninguna:\n${botHistory.map(e => `- "${e.msg}"`).join('\n')}` : ''}`
         },
-        { role: 'user', content: `Chat reciente:\n${recentContext}${(() => { const n = getStreamNarrative(); return n.length > 0 ? `\n<stream_story>${n.map(e => `[${e.type}] ${e.description}`).join(' | ')}</stream_story>` : ''; })()}\nComenta algo natural sobre lo que se habla.` }
+        { role: 'user', content: `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nComenta algo natural sobre lo que se habla.${onPause ? ' El chat lleva un rato callado: rompe el silencio sin preguntar nada genérico.' : ''}` }
       ]
     });
     const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
     const cohostReply = truncate(response.choices[0].message.content, maxChars);
+    if (!cohostReply) { recordCohost(Date.now(), false); return false; }
     client.say(channel, cohostReply);
     addBotMessage(cohostReply);
+    recordCohost();
+    if (onPause) markCohostPause(pauseId);
+    setLastCohostContextHash(contextFingerprint);
+    return true;
   } catch (err) {
     logger.error(`Co-host: ${err.message}`);
+    recordCohost(Date.now(), false); // fallo de la IA: cooldown completo, sin gastar cupo horario
+    return false;
   } finally { cohostRunning = false; }
 }
 
@@ -614,7 +639,7 @@ async function handleQueMePerdi(client, channel, tags) {
     return;
   }
   try {
-    const story = narrative.length > 0 ? `\n<stream_story>${narrative.map(e => `[${e.type}] ${e.description}`).join(' | ')}</stream_story>` : '';
+    const story = buildStoryBlock(narrative);
     const response = await groqWithRetry({
       max_tokens: 150,
       messages: [
@@ -640,12 +665,16 @@ async function checkChatHook(client, channel) {
   if (isSilenced() || isTriviaActive()) return;
   if (!getEventSubLiveStatus()) return;
   const now = Date.now();
-  if (now - lastHookTime < HOOK_INTERVAL) return;
-
   const silenceTime = now - lastChatMessageTime;
+
+  // Turnos en una pausa: primero el hook (más abajo); si el silencio sigue, el cohost habla una vez a COHOST_PAUSE_MS del hook.
+  if (await handleCohost(client, channel, { onPause: true })) return;
+
+  if (now - lastHookTime < HOOK_INTERVAL) return;
 
   // Si hay raid activa y el chat lleva al menos 1 min sin actividad, dar bienvenida a raiders
   if (isRaidActive() && silenceTime >= 60000) {
+    if (!claimHookPause(lastChatMessageTime, now)) return;
     lastHookTime = now;
     client.say(channel, `👋 Bienvenidos a los raiders de @${getRaidUsername()}! Si tenéis preguntas sobre el canal usad !dios_fua, y si os apetece un desafío probad !trivia 🔥`);
     return;
@@ -658,6 +687,7 @@ async function checkChatHook(client, channel) {
     if (viewers !== null && viewers < MIN_VIEWERS_FOR_HOOKS) return;
   } catch {}
 
+  if (!claimHookPause(lastChatMessageTime, now)) return; // en esta pausa ya habló un hook
   lastHookTime = now;
   const gameInfo = await getCurrentGame().catch(() => null);
   const game = gameInfo?.game;
@@ -677,7 +707,7 @@ async function checkChatHook(client, channel) {
             role: 'system',
             content: NARRATOR_BASE(gameContext ? `Juego: "${gameContext}".` : '')
           },
-          { role: 'user', content: (() => { const n = getStreamNarrative(); const storyBlock = n.length > 0 ? ` Momentos clave del stream hasta ahora: ${n.map(e => `[${e.type}] ${e.description}`).join(', ')}.` : ''; return `Narra algo sobre ${game} para llenar el silencio.${storyBlock}`; })() }
+          { role: 'user', content: `Narra algo sobre ${game} para llenar el silencio.${buildStoryBlock(getStreamNarrative())}` }
         ]
       });
       client.say(channel, truncate(response.choices[0].message.content));

@@ -3,7 +3,7 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const logger = require('../utils/logger');
 const { loadUsers, saveUser } = require('../utils/storage');
-const { setRaidActive, markGiftBatch, isGiftBatch, isSilenced } = require('../utils/state');
+const { setRaidActive, markGiftBatch, isGiftBatch, isSilenced, addNarrativeEvent } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const { sanitizeForAI } = require('../utils/filter');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
@@ -269,22 +269,32 @@ async function announceSub(client, channel, kind, vars, userMessage) {
   }
 }
 
+// Los nombres entran en prompts: pasan por sanitizeForAI antes de guardarse en la narrativa
+function narrate(type, text) {
+  addNarrativeEvent(type, text);
+}
+const who = name => sanitizeForAI(String(name || '')) || 'alguien';
+
 function onSub(client, channel, username, methods, userMessage) {
+  narrate('sub', `${who(username)} se suscribió`);
   return announceSub(client, channel, 'sub', { username, tier: tierLabel(methods) }, userMessage);
 }
 
 function onResub(client, channel, username, months, methods, userMessage) {
+  narrate('sub', `${who(username)} renovó su sub (${Number(months) || '?'} meses)`);
   return announceSub(client, channel, 'resub', { username, months, tier: tierLabel(methods) }, userMessage);
 }
 
 // Regalo individual; los subgift que pertenecen a un submysterygift ya anunciado se ignoran.
 function onSubGift(client, channel, gifter, recipient, methods, tags) {
   if (isGiftBatch(tags?.['msg-param-origin-id'])) return;
+  narrate('sub', `${who(gifter || ANON_GIFTER)} regaló una sub a ${who(recipient)}`);
   return announceSub(client, channel, 'subgift', { gifter: gifter || ANON_GIFTER, recipient, tier: tierLabel(methods) });
 }
 
 function onMysteryGift(client, channel, gifter, count, methods, tags) {
   markGiftBatch(tags?.['msg-param-origin-id']);
+  narrate('sub', `${who(gifter || ANON_GIFTER)} regaló ${Number(count) || '?'} subs a la comunidad`);
   return announceSub(client, channel, 'mysterygift', { gifter: gifter || ANON_GIFTER, count, tier: tierLabel(methods) });
 }
 
@@ -294,6 +304,7 @@ function onGiftUpgrade(client, channel, username, gifter) {
 }
 
 function onBits(client, channel, username, bits) {
+  if (bits >= 500) narrate('sub', `${who(username)} donó ${Number(bits)} bits`);
   if (bits >= 1000) throttleSay(client, channel, `💎 WOW! @${username} acaba de donar ${bits} bits! INCREIBLE! 🔥🔥🔥`);
   else if (bits >= 100) throttleSay(client, channel, `💜 @${username} ha donado ${bits} bits! Muchas gracias! 🎉`);
   else throttleSay(client, channel, `✨ Gracias @${username} por los ${bits} bits! 💜`);
@@ -301,6 +312,7 @@ function onBits(client, channel, username, bits) {
 
 async function onRaid(client, channel, username, viewers) {
   const { getBotPersonality } = require('../ai/handler'); // lazy: circular dep alerts↔ai
+  narrate('raid', `Raid de ${who(username)} con ${Number(viewers) || '?'} viewers`);
   if (!isSilenced()) client.say(channel, `⚔️ RAID de @${username} con ${viewers} viewers! Bienvenidos a todos! 🔥`);
   if (isSilenced() || !canMakeRequest()) { setRaidActive(username); return; }
   try {
@@ -336,8 +348,9 @@ async function checkFollowerMilestones(client, channel) {
   const current = await getFollowerCount(broadcasterId);
   if (current === null || current === lastFollowerCount) return;
   for (const milestone of milestones) {
-    if (lastFollowerCount < milestone && current >= milestone && !isSilenced()) {
-      client.say(channel, `🎊 EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! INCREIBLE! 🥳🔥`);
+    if (lastFollowerCount < milestone && current >= milestone) {
+      narrate('milestone', `El canal llegó a ${milestone} seguidores`);
+      if (!isSilenced()) client.say(channel, `🎊 EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! INCREIBLE! 🥳🔥`);
     }
   }
   lastFollowerCount = current;

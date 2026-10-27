@@ -2,16 +2,19 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
-const { restoreOpenSession } = require('./utils/supabase');
+const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative } = require('./utils/supabase');
 const { throttleSay } = require('./alerts/handler');
 const {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive, isSilenced,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, setDeathCount,
-  resetStreamNarrative, resetBotHistory, resetReinforceCounter, clearProphecy,
+  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter, clearProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
 } = require('./utils/state');
+
+// La narrativa de la sesión se persiste en Supabase en cada cambio (escritura diferida)
+onNarrativeChange(saveSessionNarrative);
 
 const TWITCH_MESSAGE_ID = 'twitch-eventsub-message-id';
 const TWITCH_MESSAGE_TIMESTAMP = 'twitch-eventsub-message-timestamp';
@@ -106,6 +109,10 @@ async function initStreamState() {
       logger.info(`📺 Stream en directo al arrancar (uptime: ${getStreamUptime()})`);
       const deaths = await restoreOpenSession(getStreamStartedAt());
       if (deaths) { setDeathCount(deaths); logger.info(`💀 Muertes recuperadas: ${deaths}`); }
+      if (deaths !== null) {
+        setStreamNarrative(await restoreSessionNarrative());
+        logger.info(`📖 Narrativa recuperada: ${getStreamNarrative().length} eventos`);
+      }
     } else {
       setStreamIsLive(false);
       setStreamStartedAt(null);

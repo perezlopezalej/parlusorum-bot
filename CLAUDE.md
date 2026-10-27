@@ -118,8 +118,10 @@ GROQ_MODEL_COMPOUND        !dios_fua model (default = GROQ_MODEL; groq/compound 
 NODE_ENV                   production | development
 RAWG_API_KEY               Game info for !juego, timers, hooks
 AI_TIMER_INTERVAL_MS       AI game commentary interval (default 1500000)
-COHOST_PROBABILITY         0–1 (default 0.25)
-COHOST_COOLDOWN_MS         default 120000
+COHOST_PROBABILITY         0–1, prob. por mensaje al salir del cooldown; crece con el tiempo sin cohost (default 0.08)
+COHOST_COOLDOWN_MS         Mínimo entre cohosts (default 180000)
+COHOST_MAX_PER_HOUR        Tope de cohosts por hora (default 10)
+COHOST_PAUSE_MS            Tras un hook anti-silencio, si el silencio sigue, el cohost habla una vez a este tiempo del hook. Por pausa: máx. un hook y un cohost, en ese orden (default 150000)
 QUESTION_COOLDOWN_MS       Global !dios_fua cooldown (default 10000)
 AI_MAX_RPM                 Global Groq requests/min (default 20)
 HOOK_INTERVAL_MS           Min gap between AI hooks (default 600000)

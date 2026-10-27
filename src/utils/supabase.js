@@ -212,6 +212,42 @@ async function restoreOpenSession(streamStartedAtMs) {
   }
 }
 
+// ─── NARRATIVA DE LA SESIÓN ───────────────────────────────────────────────────
+// Columna stream_sessions.narrative (jsonb). Misma escritura diferida que las muertes.
+
+const NARRATIVE_SAVE_DELAY_MS = 3000;
+let _narrativeTimer = null;
+let _narrativeWarned = false;
+
+function saveSessionNarrative(events) {
+  clearTimeout(_narrativeTimer);
+  _narrativeTimer = setTimeout(async () => {
+    const db = getClient();
+    if (!db || !currentSessionId) return;
+    try {
+      const { error } = await db.from('stream_sessions').update({ narrative: events }).eq('id', currentSessionId);
+      if (error) throw error;
+    } catch (e) {
+      if (!_narrativeWarned) { _narrativeWarned = true; logger.warn(`Narrativa no persistida (¿falta la columna narrative?): ${e.message}`); }
+    }
+  }, NARRATIVE_SAVE_DELAY_MS);
+  _narrativeTimer.unref?.();
+}
+
+// Tras restoreOpenSession(): lee la narrativa de la sesión recuperada ([] si no hay)
+async function restoreSessionNarrative() {
+  const db = getClient();
+  if (!db || !currentSessionId) return [];
+  try {
+    const { data, error } = await db.from('stream_sessions').select('narrative').eq('id', currentSessionId).single();
+    if (error) throw error;
+    return Array.isArray(data?.narrative) ? data.narrative : [];
+  } catch (e) {
+    logger.warn(`Narrativa no recuperada: ${e.message}`);
+    return [];
+  }
+}
+
 // Muertes y juego de las últimas sesiones cerradas (base de la profecía)
 async function getRecentSessionDeaths(limit = 10) {
   const db = getClient();
@@ -611,6 +647,8 @@ module.exports = {
   getCurrentSessionId,
   saveSessionDeaths,
   restoreOpenSession,
+  saveSessionNarrative,
+  restoreSessionNarrative,
   pickOpenSession,
   getRecentSessionDeaths,
   saveStreamMemory,
