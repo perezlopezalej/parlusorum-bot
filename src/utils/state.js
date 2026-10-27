@@ -173,7 +173,25 @@ function resetTriviaStats() {
   triviaStats = { aciertos: 0, fallos: 0, rachaActual: 0 };
 }
 
+// --- Muestra de chat para aprender lore (reservoir sampling: uniforme sobre todo el stream) ---
+const LORE_SAMPLE_SIZE = 400;
+let loreSample = [];
+let loreSampleSeen = 0;
+
+function addLoreSample(username, message) {
+  const idx = loreSampleSeen++;
+  const entry = { idx, username, message };
+  if (loreSample.length < LORE_SAMPLE_SIZE) { loreSample.push(entry); return; }
+  const j = Math.floor(Math.random() * (idx + 1));
+  if (j < LORE_SAMPLE_SIZE) loreSample[j] = entry;
+}
+function getLoreSample() {
+  return [...loreSample].sort((a, b) => a.idx - b.idx).map(m => `${m.username}: ${m.message}`).join('\n');
+}
+function resetLoreSample() { loreSample = []; loreSampleSeen = 0; }
+
 module.exports = {
+  addLoreSample, getLoreSample, resetLoreSample,
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,
   setBrbMode, isBrb, getBrbDuration,

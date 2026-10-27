@@ -287,7 +287,7 @@ client.on('message', async (channel, tags, message, self) => {
 
     const PREFIX = process.env.PREFIX || '!';
     if (!msg.startsWith(PREFIX)) {
-      ai.checkForHighlight(client, channel, msg).catch(err =>
+      ai.checkForHighlight(client, channel, msg, tags['user-id'] || username).catch(err =>
         logger.warn(`checkForHighlight error: ${err.message}`)
       );
       const patternHandled = await ai.checkPatternMatch(client, channel, tags, msg);

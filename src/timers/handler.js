@@ -21,7 +21,7 @@ function start(client, config) {
   config.timers.forEach((timer, index) => {
     const ref = setInterval(() => {
       // Usar EventSub para saber si está en directo (fiable)
-      if (!isLiveViaEventSub()) return;
+      if (!isLiveViaEventSub() || isSilenced()) return;
 
       const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
       const msg = timer.message + suffix;
@@ -34,7 +34,7 @@ function start(client, config) {
 
   // Timer de duración del stream cada 40 min — usa EventSub (fiable)
   streamDurationInterval = setInterval(() => {
-    if (!isLiveViaEventSub()) return;
+    if (!isLiveViaEventSub() || isSilenced()) return;
 
     const uptime = getStreamUptime();
     if (!uptime) return;

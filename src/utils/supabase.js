@@ -42,12 +42,19 @@ async function loadUsers() {
   if (!db) { usersCache = usersCache || {}; return usersCache; }
 
   try {
-    const { data, error } = await db.from('users').select('*');
-    if (error) throw error;
+    // Supabase corta en 1000 filas por petición: paginar con range()
+    const PAGE = 1000;
+    const rows = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db.from('users').select('*').order('user_id').range(from, from + PAGE - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE) break;
+    }
 
     // Convertir array a objeto keyed por user_id (compatible con el código existente)
     usersCache = {};
-    for (const row of data || []) {
+    for (const row of rows) {
       usersCache[row.user_id] = {
         username: row.username,
         firstSeen: row.first_seen,
@@ -427,7 +434,56 @@ async function getUserFacts(username) {
   }
 }
 
+// ─── LORE APRENDIDO ──────────────────────────────────────────────────────────
+
+async function getLoreRows(statuses) {
+  const db = getClient();
+  if (!db) return [];
+  try {
+    let q = db.from('channel_lore').select('*').eq('channel', CHANNEL_NAME);
+    if (statuses?.length) q = q.in('status', statuses);
+    const { data, error } = await q.order('id', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    logger.error(`getLoreRows: ${e.message}`);
+    return [];
+  }
+}
+
+// rows sin id: el conflicto (channel, term_key) decide si inserta o actualiza
+async function upsertLoreRows(rows) {
+  const db = getClient();
+  if (!db || !rows.length) return false;
+  try {
+    const { error } = await db.from('channel_lore')
+      .upsert(rows.map(r => ({ ...r, channel: CHANNEL_NAME })), { onConflict: 'channel,term_key' });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    logger.error(`upsertLoreRows: ${e.message}`);
+    return false;
+  }
+}
+
+// Devuelve la fila actualizada, null si no existe o no estaba en un estado permitido
+async function updateLoreStatus(id, status, fromStatuses) {
+  const db = getClient();
+  if (!db) return null;
+  const patch = { status };
+  if (status === 'active') { patch.missed_streams = 0; patch.needs_approval = false; }
+  const { data, error } = await db.from('channel_lore')
+    .update(patch)
+    .eq('id', id).eq('channel', CHANNEL_NAME).in('status', fromStatuses)
+    .select().maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 module.exports = {
+  getLoreRows,
+  upsertLoreRows,
+  updateLoreStatus,
   getClient,
   loadUsers,
   saveUsers,

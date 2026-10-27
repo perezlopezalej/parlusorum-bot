@@ -5,7 +5,7 @@ const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils
 const { throttleSay } = require('./alerts/handler');
 const {
   setStreamStartedAt, getStreamStartedAt,
-  setStreamIsLive, getStreamIsLive,
+  setStreamIsLive, getStreamIsLive, isSilenced,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount,
   resetStreamNarrative, resetBotHistory, resetReinforceCounter,
@@ -332,7 +332,7 @@ function createEventSubHandler(client, channel, deps) {
       if (type === 'channel.follow' && event?.user_name) {
         logger.info(`👤 Nuevo seguidor: ${event.user_name}`);
         const msg = followMessages[Math.floor(Math.random() * followMessages.length)].replace('{username}', event.user_name);
-        client.say(channel, msg);
+        if (!isSilenced()) client.say(channel, msg);
       }
 
       if (type === 'stream.online') {
@@ -429,7 +429,7 @@ function createEventSubHandler(client, channel, deps) {
         const { level = 1, is_golden_kappa_train = false } = event || {};
         const goldenNote = is_golden_kappa_train ? ' ¡¡Es un GOLDEN KAPPA TRAIN!! 🏆' : '';
         logger.info(`🚂 Hype Train begin: nivel ${level}${is_golden_kappa_train ? ' (golden kappa)' : ''}`);
-        client.say(channel, `🚂 ¡HYPE TRAIN nivel ${level} ha comenzado!${goldenNote} ¡Contribuye con bits o subs! FUA 🔥`);
+        if (!isSilenced()) client.say(channel, `🚂 ¡HYPE TRAIN nivel ${level} ha comenzado!${goldenNote} ¡Contribuye con bits o subs! FUA 🔥`);
       }
 
       if (type === 'channel.hype_train.progress') {
@@ -442,7 +442,7 @@ function createEventSubHandler(client, channel, deps) {
         const winners = winner_count ? ` ¡${winner_count} ganadores!` : '';
         const golden = is_golden_kappa_train ? ' 🏆 ¡GOLDEN KAPPA!' : '';
         logger.info(`🏁 Hype Train end: nivel ${level}${is_golden_kappa_train ? ' (golden kappa)' : ''}`);
-        client.say(channel, `🏁 ¡Hype Train terminado en nivel ${level}!${winners} ¡Gracias por el hype!${golden} 💜`);
+        if (!isSilenced()) client.say(channel, `🏁 ¡Hype Train terminado en nivel ${level}!${winners} ¡Gracias por el hype!${golden} 💜`);
       }
 
       const { getBotPersonality } = require('./ai/handler'); // lazy: circular dep eventsub↔ai

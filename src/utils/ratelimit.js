@@ -39,7 +39,7 @@ function canUserMakeRequest(userId, userType = 'normal') {
   const cutoff = now - 60000;
   const timestamps = (userTimestamps.get(userId) || []).filter(ts => ts > cutoff);
 
-  const limit = userType === 'creator' ? MAX_RPM_CREATOR
+  const limit = userType === 'creator' || userType === 'streamer' ? MAX_RPM_CREATOR
     : userType === 'mod' ? MAX_RPM_MOD
     : MAX_RPM_USER;
 

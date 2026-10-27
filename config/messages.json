@@ -60,5 +60,16 @@
     "Stream terminado! Gracias por acompanarhos! FUA! 🔥",
     "Eso es todo por hoy! Gracias a la comunidad! FUA! 💜",
     "Se acabo! FUA y nos vemos pronto! 🔥💪"
-  ]
+  ],
+  "lore": {
+    "mods_only": "@{username} solo mods.",
+    "usage": "@{username} uso: !lore | !lore aprobar <id> | !lore borrar <id>",
+    "empty": "📖 Aún no hay lore aprendido. El lore manual está en config/lore.json.",
+    "active_prefix": "📖 Activo: ",
+    "pending_prefix": "⏳ Pendiente: ",
+    "approved": "✅ Lore #{id} aprobado: \"{term}\".",
+    "deleted": "🗑️ Lore #{id} borrado: \"{term}\".",
+    "not_found": "@{username} no encuentro el lore #{id}.",
+    "error": "@{username} no pude actualizar el lore ahora."
+  }
 }

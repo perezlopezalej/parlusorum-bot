@@ -13,6 +13,7 @@ const {
 const logger = require('../utils/logger');
 const { containsBlockedContent } = require('../utils/filter');
 const { groqWithRetry } = require('../utils/groq-utils');
+const { onStreamEndLore } = require('../lore/handler');
 
 
 // ─── GENERAR RESUMEN AL ACABAR EL STREAM ─────────────────────────────────────
@@ -87,6 +88,9 @@ async function onStreamEnd(streamStats, chatSample) {
 
     logger.info(`🧠 Memoria del stream guardada: "${memory.summary?.slice(0, 60)}"`);
 
+    // 3b. Aprender lore del canal (no bloquea el resto si falla)
+    await onStreamEndLore(memory);
+
     // 4. Persistir hechos de usuarios activos (fire-and-forget)
     try {
       const { saveUserFact } = require('../utils/supabase');
@@ -95,9 +99,21 @@ async function onStreamEnd(streamStats, chatSample) {
         saveUserFact(username, 'is_regular', 'true');
         if (streamStats.game) saveUserFact(username, 'last_game_mentioned', streamStats.game);
       }
-      if (memory.recurringPhrases?.length > 0) {
-        for (const username of activeUsers.slice(0, 5)) {
-          saveUserFact(username, 'recurring_joke', memory.recurringPhrases[0]);
+      // Solo a quien dijo de verdad la frase en la muestra de chat (formato "usuario: mensaje")
+      const phrases = (memory.recurringPhrases || []).map(p => sanitizeMemoryField(p, 100)).filter(p => p.length >= 4);
+      if (phrases.length > 0 && chatSample) {
+        const assigned = new Set();
+        for (const line of chatSample.split('\n')) {
+          const sep = line.indexOf(': ');
+          if (sep < 1) continue;
+          const user = line.slice(0, sep).toLowerCase();
+          const text = line.slice(sep + 2).toLowerCase();
+          if (assigned.has(user) || !activeUsers.includes(user)) continue;
+          const phrase = phrases.find(p => text.includes(p.toLowerCase()));
+          if (phrase) {
+            assigned.add(user);
+            saveUserFact(user, 'recurring_joke', phrase);
+          }
         }
       }
     } catch (e) {

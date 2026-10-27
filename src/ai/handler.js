@@ -1,10 +1,11 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, getLastCohostContextHash, setLastCohostContextHash } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
+const { getManualLore, getLoreContext } = require('../lore/handler');
 const { persistCooldown } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const { saveHighlight } = require('../utils/storage');
@@ -34,7 +35,7 @@ function getEventSubLiveStatus() { return getStreamIsLive(); }
 // FIX #1: contexto con roles clarificados
 function getChannelContext() {
   const games = (channelConfig.games_played || []).slice(0, 4).join(', ');
-  return `Canal: ${channelConfig.streamer} (streamer/host). Bot creado por: @${CREATOR_USERNAME} (amo creador, NO es el streamer). ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${channelConfig.inside_jokes || ''}`;
+  return `Canal: ${channelConfig.streamer} (streamer/host). Bot creado por: @${CREATOR_USERNAME} (amo creador, NO es el streamer). ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${getManualLore()}`;
 }
 
 let fullContextCache = null;
@@ -98,6 +99,12 @@ async function getFullContext() {
     if (memory) context += memory;
   } catch {}
 
+  // Lore aprendido (el manual ya va en getChannelContext, con prioridad)
+  try {
+    const lore = await getLoreContext();
+    if (lore) context += lore;
+  } catch {}
+
   fullContextCache = context;
   lastContextCheck = now;
   return fullContextCache;
@@ -110,7 +117,7 @@ function invalidateContextCache() {
 
 function getMinimalContext() {
   const games = (channelConfig.games_played || []).slice(0, 3).join(', ');
-  return `Canal de ${channelConfig.streamer}: ${channelConfig.vibe}. Juegos: ${games}. ${channelConfig.inside_jokes || ''}`;
+  return `Canal de ${channelConfig.streamer}: ${channelConfig.vibe}. Juegos: ${games}. ${getManualLore()}`;
 }
 
 // --- Usuarios activos en el stream actual ---
@@ -153,6 +160,7 @@ function addToHistory(username, message) {
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
   streamChatBuffer.push({ username, message: safe });
   if (streamChatBuffer.length > MAX_STREAM_BUFFER) streamChatBuffer.shift();
+  addLoreSample(username, safe);
   lastChatMessageTime = Date.now();
   trackActiveUser(username);
   const lc = (username || '').toLowerCase();
@@ -257,7 +265,7 @@ async function getPersonality(messageCount, userType = 'normal', username = null
   }
 
   // FIX #4: prompt reforzado con experto en gaming + español forzado
-  const base = `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" El FUA no es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}.
+  const base = `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" FUA significa "Fuerza Universal Aplicada" y además es un grito. No es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}.
 ${context}${specialNote}
 
 REGLAS ABSOLUTAS (no negociables):
@@ -284,7 +292,6 @@ REGLAS ABSOLUTAS (no negociables):
       const facts = await getCachedUserFacts(username);
       if (facts.length > 0) {
         const factLines = facts
-          .filter(f => f.fact_type !== 'recurring_joke')
           .map(f => `${f.fact_type}: ${sanitizeForAI(String(f.value))}`)
           .filter(line => line.split(': ')[1])
           .join(', ');
@@ -307,7 +314,7 @@ function getBotPersonality() {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
   const emotes = (channelConfig.channel_emotes || []).join(', ');
   return `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. ${channelConfig.bot_personality || ''}
-Canal: ${channelConfig.vibe || ''}. ${channelConfig.inside_jokes || ''}
+Canal: ${channelConfig.vibe || ''}. ${getManualLore()}
 Emotes del canal (usa solo si encajan, máx 1-2, separados por espacios, NUNCA pegados a puntuación): ${emotes}.
 REGLAS ABSOLUTAS: SIEMPRE en español. Máx 2 frases cortas. Sin presentarte ni saludar. Sin "Lo siento". Sin "como IA". Sin inventar datos.
 NO hagas: pelota automática al chat, tono de asistente genérico, repetir lo que ya se dijo.
@@ -328,6 +335,7 @@ function getUserType(username, tags) {
   const lower = username.toLowerCase();
   if (CREATOR_USERNAME && lower === CREATOR_USERNAME) return 'creator';
   if (STREAMER_USERNAME && lower === STREAMER_USERNAME) return 'streamer';
+  if (tags?.mod || tags?.['user-type'] === 'mod' || tags?.badges?.moderator) return 'mod';
   if (tags?.subscriber || tags?.badges?.subscriber || tags?.badges?.founder) return 'sub';
   return 'normal';
 }
@@ -765,11 +773,11 @@ const highlightKeywords = [
 ];
 const recentHighlightMsgs = [];
 const HIGHLIGHT_WINDOW = 15 * 1000;
-const HIGHLIGHT_THRESHOLD = 4;
+const HIGHLIGHT_THRESHOLD = 4; // usuarios distintos
 let lastMarkerTime = 0;
 const MARKER_COOLDOWN = 3 * 60 * 1000;
 
-async function checkForHighlight(client, channel, message) {
+async function checkForHighlight(client, channel, message, userId) {
   if (!getEventSubLiveStatus()) return;
   const now = Date.now();
   if (now - lastMarkerTime < MARKER_COOLDOWN) return;
@@ -777,12 +785,12 @@ async function checkForHighlight(client, channel, message) {
   const lower = message.toLowerCase();
   if (!highlightKeywords.some(kw => lower.includes(kw))) return;
 
-  recentHighlightMsgs.push({ ts: now, message });
+  recentHighlightMsgs.push({ ts: now, message, userId });
   while (recentHighlightMsgs.length > 0 && recentHighlightMsgs[0].ts < now - HIGHLIGHT_WINDOW) {
     recentHighlightMsgs.shift();
   }
 
-  if (recentHighlightMsgs.length >= HIGHLIGHT_THRESHOLD) {
+  if (new Set(recentHighlightMsgs.map(e => e.userId)).size >= HIGHLIGHT_THRESHOLD) {
     const triggerMessages = recentHighlightMsgs.map(e => e.message);
     recentHighlightMsgs.length = 0;
     lastMarkerTime = now;
@@ -1085,6 +1093,7 @@ function getStreamChatBuffer() {
 
 function resetStreamChatBuffer() {
   streamChatBuffer.length = 0;
+  resetLoreSample();
 }
 
 // Restaurar cooldowns desde Supabase al arrancar (prefijos: question-, chiste-)

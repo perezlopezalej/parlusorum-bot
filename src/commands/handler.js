@@ -2,11 +2,14 @@ const { canMakeRequest } = require('../utils/ratelimit');
 const { getChannelStats, incrementChannelStat, persistCooldown } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
-const { handleShoutout } = require('../ai/handler');
+const { handleShoutout, invalidateContextCache } = require('../ai/handler');
+const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
+const { sanitizeForAI } = require('../utils/filter');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
+const loreMsgs = require('../../config/messages.json').lore;
 const logger = require('../utils/logger');
 
 function resetSessionCounters() { resetDeathCount(); sessionWins = 0; resetStreamMetrics(); resetTriviaStats(); }
@@ -37,6 +40,7 @@ const helpTexts = {
   'clip': '(Mods) Crea un clip del momento actual.',
   'marker': '(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]',
   'resumen': '(Mods) Resumen completo del stream actual.',
+  'lore': '(Mods) Lore del canal. Uso: !lore | !lore aprobar <id> | !lore borrar <id>',
 };
 
 // --- Handler principal ---
@@ -87,6 +91,9 @@ async function handle(client, channel, tags, command, args, config) {
     case 'resumen':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return await handleResumen(client, channel);
+    case 'lore':
+      if (!isMod) { client.say(channel, truncate(loreMsgs.mods_only.replace('{username}', username))); return; }
+      return await handleLore(client, channel, username, args);
     case 'ayuda': return handleAyuda(client, channel, args);
     case 'moneda':
     case 'titulo':
@@ -275,12 +282,38 @@ async function handleResumen(client, channel) {
   }
 }
 
+async function handleLore(client, channel, username, args) {
+  const say = text => client.say(channel, truncate(text));
+  const sub = args[1]?.toLowerCase();
+  try {
+    if (!sub) {
+      const { active, pending } = await getLoreOverview();
+      if (!active.length && !pending.length) return say(loreMsgs.empty);
+      const parts = [];
+      if (active.length) parts.push(loreMsgs.active_prefix + active.join(' | '));
+      if (pending.length) parts.push(loreMsgs.pending_prefix + pending.join(' | '));
+      return say(parts.join('  '));
+    }
+    if (sub !== 'aprobar' && sub !== 'borrar') return say(loreMsgs.usage.replace('{username}', username));
+    const id = parseInt(args[2], 10);
+    if (!Number.isInteger(id) || id < 1) return say(loreMsgs.usage.replace('{username}', username));
+    const row = sub === 'aprobar' ? await approveLore(id) : await deleteLore(id);
+    if (!row) return say(loreMsgs.not_found.replace('{username}', username).replace('{id}', id));
+    invalidateContextCache();
+    const tpl = sub === 'aprobar' ? loreMsgs.approved : loreMsgs.deleted;
+    return say(tpl.replace('{id}', id).replace('{term}', sanitizeForAI(row.term) || '?'));
+  } catch (err) {
+    logger.error(`!lore: ${err.message}`);
+    return say(loreMsgs.error.replace('{username}', username));
+  }
+}
+
 function handleAyuda(client, channel, args) {
   const sub = args[1]?.toLowerCase();
   if (sub && helpTexts[sub]) {
     client.say(channel, `❓ !${sub}: ${helpTexts[sub]}`);
   } else {
-    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !dios_fua !juego !estadisticas !uptime !score | Mods: !so !brb !silencio !muertes !boss !clip !marker !resumen | !ayuda [cmd] para más info`);
+    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !dios_fua !juego !estadisticas !uptime !score | Mods: !so !brb !silencio !muertes !boss !clip !marker !resumen !lore | !ayuda [cmd] para más info`);
   }
 }
 

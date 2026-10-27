@@ -3,7 +3,7 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const logger = require('../utils/logger');
 const { loadUsers, saveUser } = require('../utils/storage');
-const { setRaidActive, markGiftBatch, isGiftBatch } = require('../utils/state');
+const { setRaidActive, markGiftBatch, isGiftBatch, isSilenced } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const { sanitizeForAI } = require('../utils/filter');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
@@ -49,6 +49,7 @@ const MAX_DROPPABLE_QUEUED = 6;
 const droppedNames = [];
 
 function throttleSay(client, channel, msg, { droppable = false, name = null } = {}) {
+  if (isSilenced()) return;
   if (droppable) {
     const pending = messageQueue.filter(m => m.droppable);
     if (pending.length >= MAX_DROPPABLE_QUEUED) {
@@ -300,8 +301,8 @@ function onBits(client, channel, username, bits) {
 
 async function onRaid(client, channel, username, viewers) {
   const { getBotPersonality } = require('../ai/handler'); // lazy: circular dep alerts↔ai
-  client.say(channel, `⚔️ RAID de @${username} con ${viewers} viewers! Bienvenidos a todos! 🔥`);
-  if (!canMakeRequest()) { setRaidActive(username); return; }
+  if (!isSilenced()) client.say(channel, `⚔️ RAID de @${username} con ${viewers} viewers! Bienvenidos a todos! 🔥`);
+  if (isSilenced() || !canMakeRequest()) { setRaidActive(username); return; }
   try {
     const raidInfo = await getChannelInfo(username);
     const game = raidInfo?.game_name || null;
@@ -314,7 +315,7 @@ async function onRaid(client, channel, username, viewers) {
       ]
     });
     const extra = response.choices[0].message.content.trim();
-    if (extra) client.say(channel, truncate(extra));
+    if (extra && !isSilenced()) client.say(channel, truncate(extra));
   } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
 
   setRaidActive(username);
@@ -335,7 +336,7 @@ async function checkFollowerMilestones(client, channel) {
   const current = await getFollowerCount(broadcasterId);
   if (current === null || current === lastFollowerCount) return;
   for (const milestone of milestones) {
-    if (lastFollowerCount < milestone && current >= milestone) {
+    if (lastFollowerCount < milestone && current >= milestone && !isSilenced()) {
       client.say(channel, `🎊 EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! INCREIBLE! 🥳🔥`);
     }
   }
