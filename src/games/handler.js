@@ -89,6 +89,7 @@ const winsText = n => `${n} ${n === 1 ? 'victoria' : 'victorias'}`;
 
 // --- Normalización, similitud y pistas ---
 const ARTICLES = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'the', 'a', 'an']);
+const CONNECTORS = new Set(['de', 'del', 'y', 'en']);
 const SIMILARITY_THRESHOLD = 0.85;
 
 function normalizeAnswer(text) {
@@ -97,7 +98,24 @@ function normalizeAnswer(text) {
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/).filter(Boolean);
   const noArticles = words.filter(w => !ARTICLES.has(w));
-  return (noArticles.length ? noArticles : words).join(' ');
+  const base = noArticles.length ? noArticles : words;
+  // Conectores solo se ignoran en respuestas de varias palabras
+  const noConnectors = base.length > 1 ? base.filter(w => !CONNECTORS.has(w)) : base;
+  return (noConnectors.length ? noConnectors : base).join(' ');
+}
+
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// Devuelve { d, m, y } si el texto es una fecha completa ("22 de junio de 2023", "22 junio 2023", "22/06/2023", "2023-06-22")
+function parseDate(text) {
+  const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  let d, m, y, r;
+  if ((r = t.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/))) { y = +r[1]; m = +r[2]; d = +r[3]; }
+  else if ((r = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/))) { d = +r[1]; m = +r[2]; y = +r[3]; }
+  else if ((r = t.match(/^(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})$/))) {
+    d = +r[1]; m = MONTHS.indexOf(r[2]) + 1; y = +r[3];
+  } else return null;
+  return m >= 1 && m <= 12 && d >= 1 && d <= 31 ? { d, m, y } : null;
 }
 
 function levenshtein(a, b) {
@@ -119,6 +137,11 @@ function isAnswerMatch(message, answer, aliases = []) {
 }
 
 function isSingleMatch(message, answer) {
+  const ad = parseDate(answer);
+  if (ad) {
+    const md = parseDate(message);
+    return !!md && md.d === ad.d && md.m === ad.m && md.y === ad.y;
+  }
   const m = normalizeAnswer(message);
   const a = normalizeAnswer(answer);
   if (!m || !a) return false;
@@ -204,7 +227,7 @@ async function handleTrivia(client, channel) {
               tool_choice: { type: 'function', function: { name: 'generate_trivia' } },
               messages: [{
                 role: 'user',
-                content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nUsa EXCLUSIVAMENTE estos datos: la pregunta, la respuesta y la curiosidad deben salir SOLO de ellos; no añadas nada de tu memoria.\nRedacta SIEMPRE en español (traduce lo que esté en inglés): la pregunta y la respuesta principal en español; en respuestas_alternativas pon el nombre original en inglés, siglas o variantes habituales. La respuesta debe ser de 1-3 palabras y no debe aparecer en la pregunta.${dificultadHint}${evitar}\n\nDATOS:\n${datos}`
+                content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nUsa EXCLUSIVAMENTE estos datos: la pregunta, la respuesta y la curiosidad deben salir SOLO de ellos; no añadas nada de tu memoria.\nRedacta SIEMPRE en español (traduce lo que esté en inglés): la pregunta y la respuesta principal en español; en respuestas_alternativas pon el nombre original en inglés, siglas o variantes habituales. La respuesta debe ser de 1-3 palabras y no debe aparecer en la pregunta. Si la pregunta es sobre una fecha, pregunta preferentemente solo por el año (respuesta de 4 dígitos, fácil de escribir en el chat).${dificultadHint}${evitar}\n\nDATOS:\n${datos}`
               }]
             });
             const choice = response.choices[0];
