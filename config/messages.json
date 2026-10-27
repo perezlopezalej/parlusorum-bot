@@ -21,6 +21,33 @@
       "parlus1PORELPODERDELFUAAAAA"
     ]
   },
+  "anonymous_gifter": "un alma generosa anónima",
+  "sub_overflow": "Y gracias también a {names} por sus subs! 💜",
+  "sub_messages": {
+    "sub": [
+      "🎉 Muchisimas gracias @{username} por suscribirte{tier}! Eres increible! 💜",
+      "💜 @{username} se ha suscrito{tier}! La familia crece! Gracias! 🎊",
+      "🥳 @{username} acaba de suscribirse{tier}! Eres un crack! 🔥",
+      "⭐ Nuevo suscriptor! Bienvenid@ al club @{username}{tier}! 💜🎉"
+    ],
+    "resub": [
+      "🔁 @{username} renueva{tier} y ya van {months} meses! Gracias por tanto! 💜",
+      "🎉 {months} meses con nosotros: @{username}{tier}! Eres parte de la familia! 💪",
+      "💜 @{username} sigue al pie del cañon{tier}: {months} meses! Gracias! 🔥"
+    ],
+    "subgift": [
+      "🎁 {gifter} le regala una sub{tier} a @{recipient}! Gracias! 💜",
+      "🎊 @{recipient} recibe una sub{tier} cortesia de {gifter}! FUA! 🔥",
+      "💝 {gifter} reparte amor{tier}: sub para @{recipient}! 🎉"
+    ],
+    "mysterygift": [
+      "🎁 {gifter} suelta {count} subs{tier} para la comunidad! Locura! 🔥💜",
+      "💝 {count} subs{tier} cortesia de {gifter}! El chat explota! 🎉",
+      "🎊 {gifter} regala {count} subs{tier}! Gracias por tanta generosidad! 💜"
+    ],
+    "giftpaidupgrade": "💜 @{username} continua la sub que le regalo {gifter}! Gracias! 🎉",
+    "anongiftpaidupgrade": "💜 @{username} continua la sub que le regalaron! Gracias! 🎉"
+  },
   "warmup_fallback": "¡El stream acaba de empezar! Bienvenidos 🔥 FUA!",
   "stream_start_messages": [
     "LIVE! Bienvenidos todos! FUA! 💪🔥",

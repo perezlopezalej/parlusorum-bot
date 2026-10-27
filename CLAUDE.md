@@ -122,6 +122,7 @@ QUESTION_COOLDOWN_MS       Global !dios_fua cooldown (default 10000)
 AI_MAX_RPM                 Global Groq requests/min (default 20)
 HOOK_INTERVAL_MS           Min gap between AI hooks (default 600000)
 HOOK_SILENCE_MS            Chat silence required before a hook (default 300000)
+TRIVIA_DURATION_MS         Trivia total duration, hints spread evenly (default 30000, min 10000)
 LURKER_THRESHOLD_MS        Silence before greeting a returning lurker (default 900000)
 ```
 

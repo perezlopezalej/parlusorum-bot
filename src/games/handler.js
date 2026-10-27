@@ -45,6 +45,7 @@ const triviaQuestions = [
 let activeTriviaQuestion = null;
 let triviaTimeout = null;
 let triviaHintStage = 0;
+const TRIVIA_DURATION_MS = Math.max(10000, parseInt(process.env.TRIVIA_DURATION_MS || '30000', 10) || 30000);
 const askedQuestions = new Set();
 
 // Evita llamar a Groq más de una vez cada 2 min para el mismo juego
@@ -202,12 +203,13 @@ async function handleTrivia(client, channel) {
   setTriviaActive(true);
 
   const hasPistas = q.pistas.length > 0;
-  client.say(channel, truncate(`🧠 TRIVIA: ${q.question} (${hasPistas ? '15s — habrá pistas si nadie responde' : '30 segundos para responder'})`));
+  const totalSecs = Math.round(TRIVIA_DURATION_MS / 1000);
+  client.say(channel, truncate(`🧠 TRIVIA: ${q.question} (${totalSecs}s${hasPistas ? ' — habrá pistas si nadie responde' : ' para responder'})`));
   scheduleNextTriviaPhase(client, channel);
 }
 
-// Gestiona las fases: pista 1 (15s) → pista 2 (15s) → respuesta (15s).
-// Sin pistas (banco estático): una sola fase de 30s, igual que antes.
+// Reparte TRIVIA_DURATION_MS en (pistas + 1) fases iguales: pista 1 → pista 2 → respuesta.
+// Sin pistas (banco estático): una sola fase con toda la duración.
 function scheduleNextTriviaPhase(client, channel) {
   const q = activeTriviaQuestion;
   if (!q) return;
@@ -227,7 +229,7 @@ function scheduleNextTriviaPhase(client, channel) {
       registrarFallo();
       setTriviaActive(false);
     }
-  }, pistas.length > 0 ? 15000 : 30000);
+  }, Math.round(TRIVIA_DURATION_MS / (pistas.length + 1)));
 }
 
 function checkTriviaAnswer(client, channel, tags, message) {

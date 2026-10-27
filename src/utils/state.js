@@ -52,6 +52,22 @@ function setRaidActive(username, durationMs = RAID_DURATION_MS) {
 function isRaidActive() { return Date.now() < raidActiveUntil; }
 function getRaidUsername() { return raidUsername; }
 
+// --- Lotes de subs regaladas (origin-id de submysterygift → expiración) ---
+const GIFT_BATCH_TTL_MS = 10 * 60 * 1000;
+const giftBatches = new Map();
+
+function markGiftBatch(originId) {
+  if (originId) giftBatches.set(originId, Date.now() + GIFT_BATCH_TTL_MS);
+}
+function isGiftBatch(originId) {
+  const exp = originId && giftBatches.get(originId);
+  return !!exp && exp > Date.now();
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, exp] of giftBatches) if (exp <= now) giftBatches.delete(id);
+}, 10 * 60 * 1000).unref();
+
 // --- Narrativa del stream ---
 const MAX_NARRATIVE_EVENTS = 5;
 let streamNarrative = [];
@@ -162,6 +178,7 @@ module.exports = {
   setSilenceMode, isSilenced,
   setBrbMode, isBrb, getBrbDuration,
   setRaidActive, isRaidActive, getRaidUsername,
+  markGiftBatch, isGiftBatch,
   setPersonalityMode, getPersonalityMode, getModeSetAt,
   addNarrativeEvent, getStreamNarrative, resetStreamNarrative,
   addBotMessage, getBotHistory, resetBotHistory,

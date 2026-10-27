@@ -323,7 +323,17 @@ client.on('message', async (channel, tags, message, self) => {
   }
 });
 
-client.on('subscription', (channel, username) => alerts.onSub(client, channel, username));
+const subSafe = (fn) => (...a) => Promise.resolve(fn(...a)).catch(err => logger.error(`Alerta de sub: ${err.message}`));
+// Meses acumulados: msg-param-cumulative-months en los tags (streakMonths puede ser 0 sin racha compartida)
+client.on('subscription', subSafe((channel, username, methods, msg) => alerts.onSub(client, channel, username, methods, msg)));
+client.on('resub', subSafe((channel, username, streak, msg, tags, methods) =>
+  alerts.onResub(client, channel, username, parseInt(tags?.['msg-param-cumulative-months'], 10) || streak || 1, methods, msg)));
+client.on('subgift', subSafe((channel, username, streak, recipient, methods, tags) => alerts.onSubGift(client, channel, username, recipient, methods, tags)));
+client.on('anonsubgift', subSafe((channel, streak, recipient, methods, tags) => alerts.onSubGift(client, channel, null, recipient, methods, tags)));
+client.on('submysterygift', subSafe((channel, username, count, methods, tags) => alerts.onMysteryGift(client, channel, username, count, methods, tags)));
+client.on('anonsubmysterygift', subSafe((channel, count, methods, tags) => alerts.onMysteryGift(client, channel, null, count, methods, tags)));
+client.on('giftpaidupgrade', subSafe((channel, username, sender) => alerts.onGiftUpgrade(client, channel, username, sender)));
+client.on('anongiftpaidupgrade', subSafe((channel, username) => alerts.onGiftUpgrade(client, channel, username, null)));
 client.on('cheer', (channel, userstate) => {
   const username = userstate['display-name'];
   const bits = parseInt(userstate.bits, 10);
