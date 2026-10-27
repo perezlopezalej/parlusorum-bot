@@ -1,5 +1,6 @@
 const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
+const logger = require('./logger');
 
 // Modelos configurables via env var. Groq retira modelos con frecuencia:
 // toda la familia llama-3.x/llama-4 y los groq/compound devuelven 404 model_not_found
@@ -30,14 +31,24 @@ const _emoteAfterRe  = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-async function groqWithRetry(params, maxRetries = 2) {
-  params.model = params.model || GROQ_MODEL;
-  if (isReasoningModel(params.model)) {
-    params.reasoning_effort = params.reasoning_effort || 'low';
-    if (params.max_tokens) params.max_tokens += REASONING_HEADROOM;
-  }
+// Modelos de reserva (GROQ_MODEL_FALLBACKS, separados por comas) para cuando el
+// modelo pedido ha sido retirado. Por defecto, el modelo rápido.
+const GROQ_MODEL_FALLBACKS = (process.env.GROQ_MODEL_FALLBACKS || GROQ_MODEL_FAST)
+  .split(',').map(m => m.trim()).filter(Boolean);
+
+// 404 model_not_found / model_decommissioned: el modelo ya no existe en Groq
+function isModelGone(err) {
+  const text = `${err?.code || ''} ${err?.error?.error?.code || ''} ${err?.message || ''}`;
+  return err?.status === 404 || /model_not_found|model_decommissioned|decommissioned/i.test(text);
+}
+
+function buildModelChain(model, fallbacks = GROQ_MODEL_FALLBACKS) {
+  return [...new Set([model, ...fallbacks])];
+}
+
+async function requestWithRetry(create, params, maxRetries) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try { return await groq.chat.completions.create(params); }
+    try { return await create(params); }
     catch (err) {
       if ((err.status === 429 || err.message?.includes('rate')) && attempt < maxRetries) {
         const retryAfterSec = parseInt(err.headers?.['retry-after'] || '0');
@@ -52,6 +63,34 @@ async function groqWithRetry(params, maxRetries = 2) {
   }
 }
 
+async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_MODEL_FALLBACKS) {
+  const requested = params.model || GROQ_MODEL;
+  const chain = buildModelChain(requested, fallbacks);
+  let lastErr;
+  for (let i = 0; i < chain.length; i++) {
+    const model = chain[i];
+    const p = { ...params, model };
+    // Los parámetros de razonamiento dependen del modelo, no se arrastran al de reserva
+    if (isReasoningModel(model)) {
+      p.reasoning_effort = params.reasoning_effort || 'low';
+      if (params.max_tokens) p.max_tokens = params.max_tokens + REASONING_HEADROOM;
+    } else if (model !== requested) {
+      delete p.reasoning_effort;
+    }
+    try { return await requestWithRetry(create, p, maxRetries); }
+    catch (err) {
+      if (!isModelGone(err) || i === chain.length - 1) throw err;
+      logger.warn(`⚠️ Groq: modelo ${model} retirado (${err.status || 'sin status'}), probando ${chain[i + 1]}. Actualiza GROQ_MODEL*.`);
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
+function groqWithRetry(params, maxRetries = 2) {
+  return runWithFallback(p => groq.chat.completions.create(p), params, maxRetries);
+}
+
 function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   if (!msg) return '';
   let clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
@@ -62,4 +101,4 @@ function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   return clean.slice(0, limit - 3) + '...';
 }
 
-module.exports = { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND };
+module.exports = { groqWithRetry, runWithFallback, isModelGone, buildModelChain, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND };

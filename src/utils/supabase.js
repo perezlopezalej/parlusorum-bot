@@ -160,6 +160,58 @@ async function endStreamSession(stats) {
 
 function getCurrentSessionId() { return currentSessionId; }
 
+// ─── MUERTES DE LA SESIÓN ─────────────────────────────────────────────────────
+// Usa stream_sessions.death_count (ya existe): se escribe con retardo y se lee al arrancar.
+
+const DEATHS_SAVE_DELAY_MS = 3000;
+const SESSION_MATCH_TOLERANCE_MS = 10 * 60 * 1000;
+let _deathsTimer = null;
+
+function saveSessionDeaths(count) {
+  clearTimeout(_deathsTimer);
+  _deathsTimer = setTimeout(async () => {
+    const db = getClient();
+    if (!db || !currentSessionId) return;
+    try {
+      const { error } = await db.from('stream_sessions').update({ death_count: count }).eq('id', currentSessionId);
+      if (error) throw error;
+    } catch (e) {
+      logger.warn(`Muertes no persistidas: ${e.message}`);
+    }
+  }, DEATHS_SAVE_DELAY_MS);
+  _deathsTimer.unref?.();
+}
+
+// Sesión abierta (sin ended_at) más reciente que empezó con el stream en curso
+function pickOpenSession(rows, streamStartedAtMs) {
+  if (!Number.isFinite(streamStartedAtMs)) return null;
+  return (rows || [])
+    .filter(r => !r.ended_at && new Date(r.started_at).getTime() >= streamStartedAtMs - SESSION_MATCH_TOLERANCE_MS)
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0] || null;
+}
+
+// Al arrancar con el stream en directo: recupera la sesión abierta y devuelve sus muertes (o null)
+async function restoreOpenSession(streamStartedAtMs) {
+  const db = getClient();
+  if (!db) return null;
+  try {
+    const { data, error } = await db.from('stream_sessions')
+      .select('id, started_at, ended_at, death_count')
+      .is('ended_at', null)
+      .order('started_at', { ascending: false })
+      .limit(5);
+    if (error) throw error;
+    const row = pickOpenSession(data, streamStartedAtMs);
+    if (!row) return null;
+    currentSessionId = row.id;
+    logger.info(`📺 Sesión de stream recuperada: ID ${row.id} (${row.death_count || 0} muertes)`);
+    return row.death_count || 0;
+  } catch (e) {
+    logger.warn(`Sesión abierta no recuperada: ${e.message}`);
+    return null;
+  }
+}
+
 // Muertes y juego de las últimas sesiones cerradas (base de la profecía)
 async function getRecentSessionDeaths(limit = 10) {
   const db = getClient();
@@ -557,6 +609,9 @@ module.exports = {
   startStreamSession,
   endStreamSession,
   getCurrentSessionId,
+  saveSessionDeaths,
+  restoreOpenSession,
+  pickOpenSession,
   getRecentSessionDeaths,
   saveStreamMemory,
   getRecentStreamMemory,

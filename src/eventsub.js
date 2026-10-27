@@ -2,12 +2,13 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
+const { restoreOpenSession } = require('./utils/supabase');
 const { throttleSay } = require('./alerts/handler');
 const {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive, isSilenced,
   setSessionStarting, getSessionStarting, clearSessionStarting,
-  getDeathCount,
+  getDeathCount, setDeathCount,
   resetStreamNarrative, resetBotHistory, resetReinforceCounter, clearProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
 } = require('./utils/state');
@@ -103,6 +104,8 @@ async function initStreamState() {
       setStreamIsLive(true);
       setStreamStartedAt(stream.started_at ? new Date(stream.started_at).getTime() : Date.now());
       logger.info(`📺 Stream en directo al arrancar (uptime: ${getStreamUptime()})`);
+      const deaths = await restoreOpenSession(getStreamStartedAt());
+      if (deaths) { setDeathCount(deaths); logger.info(`💀 Muertes recuperadas: ${deaths}`); }
     } else {
       setStreamIsLive(false);
       setStreamStartedAt(null);

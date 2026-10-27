@@ -1,0 +1,25 @@
+{
+  "commands": [
+    { "name": "lurk", "help": "Anúnciate como lurker. El bot te despide con estilo." },
+    { "name": "chiste", "help": "Chiste real del banco de 169 chistes." },
+    { "name": "trivia", "help": "Pregunta de trivia. Responde directamente en el chat." },
+    { "name": "top", "help": "Ranking total de victorias en la trivia (top 5)." },
+    { "name": "quemeperdi", "help": "Resumen en 2 frases de lo que ha pasado en el stream hasta ahora." },
+    { "name": "dios_fua", "help": "Preguntame cualquier cosa. Uso: !dios_fua [pregunta]" },
+    { "name": "juego", "help": "Juego actual del canal con info de RAWG." },
+    { "name": "estadisticas", "help": "Stats del stream en tiempo real." },
+    { "name": "uptime", "help": "Tiempo que lleva activo el stream (o el bot si está offline)." },
+    { "name": "score", "help": "Marcador de bosses y muertes. Session actual + total histórico." },
+    { "name": "muertes", "help": "Contador de muertes. Mods: !muertes +1 / !muertes reset" },
+    { "name": "comandos", "help": "Lista de comandos disponibles." },
+    { "name": "ayuda", "help": "Ayuda de un comando. Uso: !ayuda [comando]" },
+    { "name": "silencio", "mod": true, "help": "(Mods) Activa/desactiva todos los mensajes automaticos del bot." },
+    { "name": "brb", "mod": true, "help": "(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min." },
+    { "name": "so", "mod": true, "help": "(Mods) Shoutout con IA. Uso: !so @usuario" },
+    { "name": "boss", "mod": true, "help": "(Mods) Suma un boss eliminado al marcador." },
+    { "name": "clip", "mod": true, "help": "(Mods) Crea un clip del momento actual." },
+    { "name": "marker", "mod": true, "help": "(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]" },
+    { "name": "resumen", "mod": true, "help": "(Mods) Resumen completo del stream actual." },
+    { "name": "lore", "mod": true, "modOnlyVisible": true, "help": "(Mods) Lore del canal. Uso: !lore | !lore aprobar <id> | !lore borrar <id>" }
+  ]
+}

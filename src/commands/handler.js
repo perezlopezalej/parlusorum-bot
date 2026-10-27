@@ -1,9 +1,10 @@
 const { canMakeRequest } = require('../utils/ratelimit');
-const { getChannelStats, incrementChannelStat, persistCooldown } = require('../utils/supabase');
+const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths } = require('../utils/supabase');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
 const { handleShoutout, invalidateContextCache } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
+const { buildCommandList, getHelpText } = require('./help');
 const { sanitizeForAI } = require('../utils/filter');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
@@ -20,30 +21,6 @@ let sessionWins = 0;
 // --- Cooldowns ---
 const cooldowns = new Map();
 setInterval(() => { const now = Date.now(); for (const [k,v] of cooldowns) if (now > v) cooldowns.delete(k); }, 30 * 60 * 1000);
-
-// --- Textos de ayuda actualizados ---
-const helpTexts = {
-  'lurk': 'Anúnciate como lurker. El bot te despide con estilo.',
-  'comandos': 'Lista de comandos disponibles.',
-  'chiste': 'Chiste real del banco de 169 chistes.',
-  'trivia': 'Pregunta de trivia. Responde directamente en el chat.',
-  'top': 'Ranking total de victorias en la trivia (top 5).',
-  'quemeperdi': 'Resumen en 2 frases de lo que ha pasado en el stream hasta ahora.',
-  'dios_fua': 'Preguntame cualquier cosa. Uso: !dios_fua [pregunta]',
-  'juego': 'Juego actual del canal con info de RAWG.',
-  'estadisticas': 'Stats del stream en tiempo real.',
-  'uptime': 'Tiempo que lleva activo el bot.',
-  'silencio': '(Mods) Activa/desactiva todos los mensajes automaticos del bot.',
-  'brb': '(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min.',
-  'so': '(Mods) Shoutout con IA. Uso: !so @usuario',
-  'muertes': 'Contador de muertes. Mods: !muertes +1 / !muertes reset',
-  'boss': '(Mods) Suma un boss eliminado al marcador.',
-  'score': 'Marcador de bosses y muertes. Session actual + total histórico.',
-  'clip': '(Mods) Crea un clip del momento actual.',
-  'marker': '(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]',
-  'resumen': '(Mods) Resumen completo del stream actual.',
-  'lore': '(Mods) Lore del canal. Uso: !lore | !lore aprobar <id> | !lore borrar <id>',
-};
 
 // --- Handler principal ---
 async function handle(client, channel, tags, command, args, config) {
@@ -96,7 +73,8 @@ async function handle(client, channel, tags, command, args, config) {
     case 'lore':
       if (!isMod) { client.say(channel, truncate(loreMsgs.mods_only.replace('{username}', username))); return; }
       return await handleLore(client, channel, username, args);
-    case 'ayuda': return handleAyuda(client, channel, args);
+    case 'comandos': return handleComandos(client, channel, username, userId, isMod);
+    case 'ayuda': return handleAyuda(client, channel, args, isMod);
     case 'moneda':
     case 'titulo':
     case 'loss':
@@ -223,8 +201,8 @@ async function handleScore(client, channel) {
 }
 
 function handleMuertes(client, channel, args, isMod) {
-  if (isMod && args[1] === '+1') { const n = incrementDeathCount(); addNarrativeEvent('death', `Muerte #${n} del streamer en este stream`); client.say(channel, `💀 Muerte #${n} en este stream 😅`); }
-  else if (isMod && args[1] === 'reset') { resetDeathCount(); client.say(channel, `💀 Contador reseteado.`); }
+  if (isMod && args[1] === '+1') { const n = incrementDeathCount(); saveSessionDeaths(n); addNarrativeEvent('death', `Muerte #${n} del streamer en este stream`); client.say(channel, `💀 Muerte #${n} en este stream 😅`); }
+  else if (isMod && args[1] === 'reset') { resetDeathCount(); saveSessionDeaths(0); client.say(channel, `💀 Contador reseteado.`); }
   else client.say(channel, `💀 Muertes hoy: ${getDeathCount()}`);
 }
 
@@ -310,13 +288,22 @@ async function handleLore(client, channel, username, args) {
   }
 }
 
-function handleAyuda(client, channel, args) {
-  const sub = args[1]?.toLowerCase();
-  if (sub && helpTexts[sub]) {
-    client.say(channel, `❓ !${sub}: ${helpTexts[sub]}`);
-  } else {
-    client.say(channel, `❓ Comandos: !lurk !chiste !trivia !top !quemeperdi !dios_fua !juego !estadisticas !uptime !score | Mods: !so !brb !silencio !muertes !boss !clip !marker !resumen !lore | !ayuda [cmd] para más info`);
+function handleComandos(client, channel, username, userId, isMod) {
+  const key = `comandos-${userId}`;
+  const now = Date.now();
+  if (cooldowns.has(key) && now < cooldowns.get(key)) {
+    client.say(channel, `@${username} espera ${Math.ceil((cooldowns.get(key) - now) / 1000)}s.`);
+    return;
   }
+  cooldowns.set(key, now + 10 * 1000);
+  client.say(channel, truncate(buildCommandList(isMod)));
+}
+
+function handleAyuda(client, channel, args, isMod) {
+  const sub = args[1]?.toLowerCase();
+  const text = getHelpText(sub, isMod);
+  if (text) client.say(channel, truncate(`❓ !${sub}: ${text}`));
+  else client.say(channel, truncate(`❓ ${buildCommandList(isMod).replace('📋 ', '')} | !ayuda [cmd] para más info`));
 }
 
 function restoreCooldowns(data) {

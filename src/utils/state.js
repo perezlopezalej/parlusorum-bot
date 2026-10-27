@@ -150,6 +150,7 @@ let deathCount = 0;
 function getDeathCount() { return deathCount; }
 function incrementDeathCount() { deathCount++; return deathCount; }
 function resetDeathCount() { deathCount = 0; }
+function setDeathCount(n) { deathCount = Math.max(0, Math.floor(n) || 0); }
 
 // --- Profecía de muertes del stream ({ deaths, text, game, ts } o null) ---
 let streamProphecy = null;
@@ -226,7 +227,7 @@ module.exports = {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive,
   setSessionStarting, getSessionStarting, clearSessionStarting,
-  getDeathCount, incrementDeathCount, resetDeathCount,
+  getDeathCount, incrementDeathCount, resetDeathCount, setDeathCount,
   getProphecy, setProphecy, clearProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getTriviaStats, registrarAcierto, registrarFallo, resetTriviaStats,
