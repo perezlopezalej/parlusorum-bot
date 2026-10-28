@@ -1,5 +1,5 @@
 -- Solo documentación del esquema: SQL original ya ejecutado en Supabase.
-create table public.channel_lore (
+create table if not exists public.channel_lore (
   id bigint generated always as identity primary key,
   channel text not null,
   term text not null,
