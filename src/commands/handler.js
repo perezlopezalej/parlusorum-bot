@@ -1,5 +1,7 @@
 const { canMakeRequest } = require('../utils/ratelimit');
-const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths } = require('../utils/supabase');
+const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths, getSessionsDeathsByGame, getCurrentSessionId } = require('../utils/supabase');
+const { loadUsers } = require('../utils/storage');
+const { MAX_DEATHS_ADD, parseMuertesArgs, sumGameDeaths, formatSince, findUserByName } = require('./stats');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
 const { handleShoutout, invalidateContextCache } = require('../ai/handler');
@@ -10,7 +12,10 @@ const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
-const loreMsgs = require('../../config/messages.json').lore;
+const allMsgs = require('../../config/messages.json');
+const loreMsgs = allMsgs.lore;
+const muertesMsgs = allMsgs.muertes;
+const tiempoMsgs = allMsgs.tiempo;
 const logger = require('../utils/logger');
 
 function resetSessionCounters() { resetDeathCount(); sessionWins = 0; resetStreamMetrics(); resetTriviaStats(); }
@@ -49,7 +54,8 @@ async function handle(client, channel, tags, command, args, config) {
     case 'uptime': return handleUptime(client, channel);
     case 'juego': return await handleJuego(client, channel);
     case 'estadisticas': return await handleEstadisticas(client, channel);
-    case 'muertes': return handleMuertes(client, channel, args, isMod);
+    case 'muertes': return await handleMuertes(client, channel, args, isMod, username);
+    case 'tiempo': return await handleTiempo(client, channel, username, userId, args[1]);
     case 'boss':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return await handleBoss(client, channel);
@@ -201,10 +207,56 @@ async function handleScore(client, channel) {
   }
 }
 
-function handleMuertes(client, channel, args, isMod) {
-  if (isMod && args[1] === '+1') { const n = incrementDeathCount(); saveSessionDeaths(n); addNarrativeEvent('death', `Muerte #${n} del streamer en este stream`); client.say(channel, `💀 Muerte #${n} en este stream 😅`); }
-  else if (isMod && args[1] === 'reset') { resetDeathCount(); saveSessionDeaths(0); client.say(channel, `💀 Contador reseteado.`); }
-  else client.say(channel, `💀 Muertes hoy: ${getDeathCount()}`);
+async function handleMuertes(client, channel, args, isMod, username) {
+  const cmd = parseMuertesArgs(args);
+  if (cmd.type === 'add' || cmd.type === 'reset') {
+    if (!isMod) { client.say(channel, truncate(muertesMsgs.mods_only.replace('{username}', username))); return; }
+  }
+  if (cmd.type === 'add') {
+    let total = getDeathCount();
+    for (let i = 0; i < cmd.n; i++) total = incrementDeathCount();
+    saveSessionDeaths(total);
+    addNarrativeEvent('death', cmd.n === 1 ? `Muerte #${total} del streamer en este stream` : `${cmd.n} muertes más del streamer (${total} en este stream)`);
+    client.say(channel, cmd.n === 1 ? `💀 Muerte #${total} en este stream 😅` : truncate(muertesMsgs.added.replace('{n}', cmd.n).replace('{total}', total)));
+  } else if (cmd.type === 'reset') {
+    resetDeathCount(); saveSessionDeaths(0); client.say(channel, `💀 Contador reseteado.`);
+  } else if (cmd.type === 'bad_format') {
+    client.say(channel, truncate(muertesMsgs.bad_format.replace('{max}', MAX_DEATHS_ADD)));
+  } else if (cmd.type === 'game') {
+    const rows = await getSessionsDeathsByGame();
+    const sid = getCurrentSessionId();
+    const res = sumGameDeaths(cmd.game, rows, sid != null ? { id: sid, deaths: getDeathCount() } : null);
+    const tpl = res.total > 0 ? muertesMsgs.total : muertesMsgs.total_none;
+    client.say(channel, truncate(tpl.replace('{game}', sanitizeForAI(res.game) || cmd.game).replace('{total}', res.total).replace('{streams}', res.streams)));
+  } else {
+    client.say(channel, `💀 Muertes hoy: ${getDeathCount()}`);
+  }
+}
+
+async function handleTiempo(client, channel, username, userId, targetArg) {
+  const key = `tiempo-${userId}`;
+  const now = Date.now();
+  if (cooldowns.has(key) && now < cooldowns.get(key)) return;
+  cooldowns.set(key, now + 15 * 1000);
+
+  const target = String(targetArg || '').replace(/^@/, '').trim() || username;
+  if (!/^\w{1,25}$/.test(target)) return;
+  const isSelf = target.toLowerCase() === username.toLowerCase();
+  let user;
+  try {
+    user = findUserByName(await loadUsers(), target);
+  } catch (err) {
+    logger.warn(`!tiempo: ${err.message}`);
+    client.say(channel, truncate(tiempoMsgs.unavailable));
+    return;
+  }
+  const first = user?.firstSeen ? new Date(user.firstSeen).getTime() : NaN;
+  if (!Number.isFinite(first)) {
+    client.say(channel, truncate(tiempoMsgs.unknown.replace('{target}', target)));
+    return;
+  }
+  const tpl = isSelf ? tiempoMsgs.self : tiempoMsgs.other;
+  client.say(channel, truncate(tpl.replace('{username}', username).replace('{target}', user.username || target).replace('{since}', formatSince(first, now))));
 }
 
 function handleBrb(client, channel, username) {

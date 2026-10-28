@@ -55,6 +55,19 @@
     "nothing_yet": "@{username} el stream acaba de arrancar, aún no hay nada que contar 👀 FUA!",
     "fallback": "📜 Llevamos {minutes} min de {game} con {deaths} muertes. El FUA sigue vivo, el streamer no tanto 💀"
   },
+  "muertes": {
+    "total": "💀 Muertes en {game}: {total} en {streams} stream(s) (incluye el de hoy)",
+    "total_none": "💀 No tengo muertes anotadas de \"{game}\"",
+    "added": "💀 +{n} muertes: {total} en este stream 😅",
+    "bad_format": "💀 Uso: !muertes +N (N de 1 a {max}) | !muertes reset | !muertes <juego> para el total de un juego",
+    "mods_only": "@{username} solo mods pueden sumar muertes. Mira el total de un juego con !muertes <juego>"
+  },
+  "tiempo": {
+    "self": "⏳ @{username}, te tengo fichado desde hace {since} (desde tu primer mensaje que registré, no desde el follow)",
+    "other": "⏳ A @{target} lo tengo fichado desde hace {since} (desde su primer mensaje que registré, no desde el follow)",
+    "unknown": "⏳ No tengo ningún mensaje registrado de @{target} todavía",
+    "unavailable": "⏳ Ahora mismo no puedo consultar el registro, prueba en un rato"
+  },
   "prophecy": {
     "fallback": "🔮 El FUA ha hablado: hoy habrá {deaths} muertes. Quedáis avisados. FUAAA",
     "result_untracked": "🔮 Nadie llevó la cuenta de las muertes, así que mi profecía de {predicted} queda en el misterio. El FUA lo sabe 🤫",

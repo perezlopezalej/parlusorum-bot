@@ -10,6 +10,26 @@ const { getLoreContext } = require('../lore/handler');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
 
+// Separación mínima entre mensajes de timer: si varios coinciden en el mismo minuto salen espaciados
+const MIN_TIMER_GAP_MS = parseInt(process.env.TIMER_MIN_GAP_MS || String(90 * 1000), 10);
+const MAX_TIMER_QUEUE = 4;
+const timerQueue = [];
+let timerDrainRef = null;
+
+function enqueueTimerMessage(send) {
+  if (timerQueue.length >= MAX_TIMER_QUEUE) return;
+  timerQueue.push(send);
+  if (!timerDrainRef) drainTimerQueue();
+}
+
+function drainTimerQueue() {
+  const send = timerQueue.shift();
+  if (!send) { timerDrainRef = null; return; }
+  try { if (isLiveViaEventSub() && !isSilenced()) send(); } catch (err) { logger.warn(`Timer: ${err.message}`); }
+  timerDrainRef = setTimeout(drainTimerQueue, MIN_TIMER_GAP_MS);
+  timerDrainRef.unref?.();
+}
+
 const timerRefs = [];
 let lastMessages = [];
 let streamDurationInterval = null;
@@ -28,7 +48,7 @@ function start(client, config) {
       const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
       const msg = timer.message + suffix;
       lastMessages[index] = msg;
-      client.say(`#${process.env.CHANNEL}`, msg);
+      enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, msg)));
     }), timer.interval * 60 * 1000);
 
     timerRefs.push(ref);
@@ -41,7 +61,7 @@ function start(client, config) {
     const uptime = getStreamUptime();
     if (!uptime) return;
 
-    client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`);
+    enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`)));
   }), 40 * 60 * 1000);
 
   // Timer dinámico con IA — comenta sobre el juego actual cada ~25 min
@@ -71,7 +91,7 @@ function start(client, config) {
         ]
       });
       const msg = truncate(response.choices[0].message.content);
-      if (msg) client.say(`#${process.env.CHANNEL}`, msg);
+      if (msg) enqueueTimerMessage(withOrigin('timer_ia', () => client.say(`#${process.env.CHANNEL}`, msg)));
     } catch (err) {
       logger.warn(`Timer IA: ${err.message}`);
     }
@@ -81,8 +101,10 @@ function start(client, config) {
 function stop() {
   timerRefs.forEach(ref => clearInterval(ref));
   timerRefs.length = 0;
+  timerQueue.length = 0;
+  if (timerDrainRef) { clearTimeout(timerDrainRef); timerDrainRef = null; }
   if (streamDurationInterval) { clearInterval(streamDurationInterval); streamDurationInterval = null; }
   logger.info('⏹️ Timers detenidos');
 }
 
-module.exports = { start, stop };
+module.exports = { start, stop, enqueueTimerMessage };

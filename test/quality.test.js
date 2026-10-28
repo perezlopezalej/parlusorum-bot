@@ -136,3 +136,21 @@ describe('cortes en final de frase', () => {
     assert.equal(q.dropTrailingFragment('Ya está hecho.'), 'Ya está hecho.');
   });
 });
+
+describe('validateHook', () => {
+  test('rechaza metáforas de comentarista deportivo', () => {
+    assert.equal(q.validateHook('Clive se lanza con la furia de un delantero de Champions', {}).ok, false);
+    assert.equal(q.validateHook('Cada combo es un gol de último minuto en Valisthea', {}).ok, false);
+  });
+  test('acepta un hook con voz de Dios Fua', () => {
+    assert.equal(q.validateHook('Chat dormido, el FUA os vigila: ¿qué jefe os ha dado más guerra?', { deathCount: 0 }).ok, true);
+  });
+  test('no inventa muertes', () => {
+    assert.equal(q.validateHook('Cuidado con la Muerte #5, el FUA avisa', { deathCount: 4 }).ok, false);
+    assert.equal(q.validateHook('El streamer cae otra vez, qué dolor', { deathCount: 0 }).ok, false);
+  });
+  test('no repite hooks recientes', () => {
+    const t = 'Chat dormido, el FUA os vigila desde las sombras del servidor';
+    assert.equal(q.validateHook(t, { recent: [t] }).ok, false);
+  });
+});

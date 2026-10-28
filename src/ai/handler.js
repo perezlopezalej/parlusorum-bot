@@ -11,7 +11,7 @@ const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
 const { LORE_RULE, SPAIN_RULE, COHOST_RULES, PROVOCATION_RULE, buildQuestionSystemContent } = require('./prompts');
-const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
+const { persistCooldown, getRecentSessionDeaths, saveSessionProphecy } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
 const { saveHighlight } = require('../utils/storage');
@@ -603,7 +603,9 @@ async function onProphecy(client, channel, game) {
       logger.warn(`Profecía IA: ${err.message}`);
     }
   }
-  setProphecy({ deaths, text, game: game || null, ts: Date.now() });
+  const prophecy = { deaths, text, game: game || null, ts: Date.now() };
+  setProphecy(prophecy);
+  saveSessionProphecy(prophecy).catch(() => {});
   throttleSay(client, channel, `🔮 ${text.replace(/^🔮\s*/, '')}`);
   logger.info(`🔮 Profecía: ${deaths} muertes`);
 }
@@ -611,7 +613,7 @@ async function onProphecy(client, channel, game) {
 // Al cierre del stream: compara la profecía con las muertes reales (!muertes) y presume o se excusa
 async function postProphecyResult(client, channel) {
   const prophecy = getProphecy();
-  if (!prophecy) return;
+  if (!prophecy) { logger.info('🔮 Fin de stream sin profecía que comparar (no se hizo o se perdió en un reinicio)'); return; }
   clearProphecy();
   const actual = getDeathCount();
   if (actual === 0) {
@@ -695,6 +697,7 @@ async function handleQueMePerdi(client, channel, tags) {
 
 // --- Conversation hooks --- FIX #6: game hooks enriquecidos con RAWG + comentarios IA espontáneos
 let lastHookTime = 0;
+const recentHooks = [];
 const HOOK_INTERVAL = parseInt(process.env.HOOK_INTERVAL_MS || '600000', 10);
 const HOOK_MIN_SILENCE = parseInt(process.env.HOOK_SILENCE_MS || '300000', 10);
 const MIN_VIEWERS_FOR_HOOKS = 3;
@@ -735,17 +738,34 @@ async function checkChatHook(client, channel) {
         ? `${game} (${rawg.genres || 'sin género'}, ${rawg.rating || '?'}/5 en RAWG, ${rawg.released?.slice(0,4) || '?'})`
         : game;
 
-      const response = await groqWithRetry({
-        max_tokens: 80,
-        messages: [
-          {
-            role: 'system',
-            content: NARRATOR_BASE(gameContext ? `Juego: "${gameContext}".` : '')
-          },
-          { role: 'user', content: `Narra algo sobre ${game} para llenar el silencio.${buildStoryBlock(getStreamNarrative())}` }
-        ]
-      });
-      client.say(channel, truncate(response.choices[0].message.content));
+      const learnedLore = await getLoreContext();
+      const deathCount = getDeathCount();
+      const deathNote = deathCount === 0
+        ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
+        : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
+      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve sobre el juego, con tu voz y el lore del canal. ${deathNote} Sin estilo de narrador ni metáforas deportivas. No nombres a ningún usuario. Máx 2 frases cortas. Sin presentarte.`;
+
+      let text = '';
+      let feedback = '';
+      for (let attempt = 0; attempt < 2 && !text; attempt++) {
+        if (attempt > 0 && !canMakeRequest()) break;
+        const response = await groqWithRetry({
+          max_tokens: 80,
+          messages: [
+            { role: 'system', content: `${system}${feedback ? `
+TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'user', content: `Llena el silencio con algo sobre ${game}.${buildStoryBlock(getStreamNarrative())}` }
+          ]
+        });
+        const out = truncate((response.choices[0].message.content || '').trim());
+        const check = quality.validateHook(out, { deathCount, recent: recentHooks });
+        if (check.ok) text = out;
+        else { feedback = check.reason; logger.info(`Hook descartado (${check.reason}): ${out.slice(0, 80)}`); }
+      }
+      if (!text) throw new Error('hook IA sin respuesta válida');
+      recentHooks.push(text);
+      if (recentHooks.length > 5) recentHooks.shift();
+      client.say(channel, text, { origin: 'hook' });
       return;
     } catch (err) {
       logger.warn(`Hook IA espontaneo fallo: ${err.message}`);

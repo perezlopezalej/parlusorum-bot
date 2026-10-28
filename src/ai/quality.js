@@ -17,6 +17,9 @@ const FORMULAS = [
   /energ[ií]a (?:pura|fua)/i,
 ];
 
+// Metáforas de comentarista deportivo: el hook ya no debe sonar a narrador de fútbol
+const SPORTS_RE = /\b(f[uú]tbol|gol(?:azo)?|goles|delantero|portero|champions|[aá]rbitro|var|penalti|tiempo extra|comentarista|narrador|estadio|afici[oó]n|liga|mundial|partido|balón)\b/i;
+
 const DEATH_WORDS_RE = /\b(muert[eoa]s?|muri[oó]|morir|mori|ca[ií]das?|ca[ey]ó|caer|cae|caen|caerá|cay[oó]|fallece|palm[oó])\b/i;
 
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
@@ -105,6 +108,17 @@ function validateCohost(text, { deathCount = 0, recent = [], named = new Map(), 
   return { ok: true };
 }
 
+// Hook anti-silencio: voz de Dios Fua, sin deporte, sin muertes inventadas ni repetir los últimos hooks
+function validateHook(text, { deathCount = 0, recent = [] } = {}) {
+  if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
+  if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
+  if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
+  if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
+  if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
+  return { ok: true };
+}
+
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 function validateMention(text) {
   if (!text || text.length < 3) return { ok: false, reason: 'vacío' };
@@ -145,5 +159,5 @@ module.exports = {
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
-  validateCohost, validateMention, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
+  validateCohost, validateHook, validateMention, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

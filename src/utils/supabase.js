@@ -248,6 +248,57 @@ async function restoreSessionNarrative() {
   }
 }
 
+// ─── PROFECÍA DE LA SESIÓN ────────────────────────────────────────────────────
+// Columna stream_sessions.prophecy (jsonb): sobrevive a reinicios para compararla al acabar el stream.
+
+let _prophecyWarned = false;
+
+async function saveSessionProphecy(prophecy) {
+  const db = getClient();
+  if (!db || !currentSessionId) return false;
+  try {
+    const { error } = await db.from('stream_sessions').update({ prophecy }).eq('id', currentSessionId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    if (!_prophecyWarned) { _prophecyWarned = true; logger.warn(`Profecía no persistida (¿falta la columna prophecy?): ${e.message}`); }
+    return false;
+  }
+}
+
+// Tras restoreOpenSession(): profecía de la sesión recuperada (o null)
+async function restoreSessionProphecy() {
+  const db = getClient();
+  if (!db || !currentSessionId) return null;
+  try {
+    const { data, error } = await db.from('stream_sessions').select('prophecy').eq('id', currentSessionId).single();
+    if (error) throw error;
+    const p = data?.prophecy;
+    return p && Number.isFinite(p.deaths) ? p : null;
+  } catch (e) {
+    logger.warn(`Profecía no recuperada: ${e.message}`);
+    return null;
+  }
+}
+
+// Juego y muertes de todas las sesiones con muertes anotadas (base de !muertes <juego>)
+async function getSessionsDeathsByGame() {
+  const db = getClient();
+  if (!db) return [];
+  try {
+    const { data, error } = await db.from('stream_sessions')
+      .select('id, game, death_count')
+      .not('game', 'is', null)
+      .gt('death_count', 0)
+      .limit(1000);
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    logger.error(`Error obteniendo muertes por juego: ${e.message}`);
+    return [];
+  }
+}
+
 // Muertes y juego de las últimas sesiones cerradas (base de la profecía)
 async function getRecentSessionDeaths(limit = 10) {
   const db = getClient();
@@ -685,6 +736,9 @@ module.exports = {
   restoreOpenSession,
   saveSessionNarrative,
   restoreSessionNarrative,
+  saveSessionProphecy,
+  restoreSessionProphecy,
+  getSessionsDeathsByGame,
   pickOpenSession,
   getRecentSessionDeaths,
   saveStreamMemory,

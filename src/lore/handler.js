@@ -10,6 +10,7 @@ const { getLoreRows, upsertLoreRows, updateLoreStatus, getCurrentSessionId } = r
 const { getLoreSample } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { groqWithRetry, GROQ_MODEL_FAST } = require('../utils/groq-utils');
+const { classifyGameMatch, tokenize } = require('../utils/game-match');
 const logger = require('../utils/logger');
 
 const MIN_STREAMS = 2;
@@ -36,6 +37,65 @@ function norm(text) {
 
 function hasPhrase(normText, key) {
   return ` ${normText} `.includes(` ${key} `);
+}
+
+// ─── FILTROS DE CANDIDATOS (puros) ───────────────────────────────────────────
+
+const NOISE_WORDS = new Set(['xd', 'xdd', 'lol', 'lul', 'kek', 'kekw', 'omg', 'wtf', 'jsjs', 'haha', 'hehe', 'ufff', 'ostia']);
+
+// Risas y onomatopeyas ("Jajajaja", "jsjsjs", "yiyiyiyi", "Wauuuu"): no son lore
+function isNoiseTerm(term) {
+  const compact = norm(term).replace(/\s/g, '');
+  if (!compact) return true;
+  if (NOISE_WORDS.has(compact)) return true;
+  if (/^[aeiou]?(?:[jh][aeiou])+[jh]?$/.test(compact)) return true; // jaja, jeje, ajaj, haha
+  if (/^(?:js)+$/.test(compact)) return true;
+  if (/^(.{1,4}?)\1{2,}$/.test(compact)) return true;                 // unidad corta repetida
+  if (/(.)\1{2,}/.test(compact)) return true;                         // letra alargada (vamooo, wauuu)
+  return false;
+}
+
+// "people" de lore.json: { "nombre o apodo": "usuario" }; las claves que empiezan por EJEMPLO se ignoran
+function buildPeopleWords(people) {
+  const words = new Set();
+  for (const [name, user] of Object.entries(people || {})) {
+    if (/^\s*EJEMPLO/i.test(name)) continue;
+    for (const w of [...norm(name).split(' '), ...norm(user).split(' ')]) if (w.length >= 2) words.add(w);
+  }
+  return words;
+}
+const PEOPLE_WORDS = buildPeopleWords(loreConfig.people);
+
+// El término nombra a una persona: usuario del chat, nombre del mapa "people" o apodo oficial
+function isPersonTerm(key, chatters, peopleWords = PEOPLE_WORDS) {
+  return key.split(' ').some(w => chatters.has(w) || peopleWords.has(w));
+}
+
+// El término es (casi) el nombre de alguno de los juegos dados
+function matchesGameName(term, games) {
+  const n = tokenize(term).length;
+  return games.some(g => tokenize(g).length <= n + 2 && classifyGameMatch(term, g) === 'match');
+}
+
+// Juegos de sesiones anteriores + RAWG como segunda opinión (coste: 1 consulta por candidato)
+async function isGameTerm(term, playedGames) {
+  if (matchesGameName(term, playedGames)) return true;
+  try {
+    const { getGameInfo } = require('../twitch/api');
+    const info = await getGameInfo(term);
+    return !!info?.name && matchesGameName(term, [info.name]);
+  } catch {
+    return false;
+  }
+}
+
+async function loadPlayedGames() {
+  try {
+    const { getRecentSessionDeaths } = require('../utils/supabase');
+    return [...new Set((await getRecentSessionDeaths(60)).map(r => r.game).filter(Boolean))];
+  } catch {
+    return [];
+  }
 }
 
 // ─── LORE MANUAL ─────────────────────────────────────────────────────────────
@@ -154,7 +214,8 @@ Chat:
 ${fitSample(chatSample)}
 
 Propón como máximo ${MAX_NEW_PER_STREAM} candidatos. El "term" debe aparecer TAL CUAL (1 a 5 palabras) en el chat. Marca "about_person": true si es un apodo o se refiere a una persona concreta.
-Responde SOLO con un JSON array: [{"term":"...","kind":"meme|frase|apodo|chiste|enemigo","about_person":false}]`;
+NO propongas risas ni onomatopeyas (jajaja, xd, yiyiyi), ni nombres de videojuegos (ni los que se juegan ni los que solo se mencionan), ni nombres de pila o usuarios sueltos. Clasifica cada candidato en "category": "lore" | "juego" | "persona" | "risa".
+Responde SOLO con un JSON array: [{"term":"...","kind":"meme|frase|apodo|chiste|enemigo","about_person":false,"category":"lore"}]`;
 
   const response = await groqWithRetry({
     model: GROQ_MODEL_FAST,
@@ -182,9 +243,20 @@ async function onStreamEndLore(memory) {
     const byKey = new Map(rows.map(r => [r.term_key, r]));
     const toSave = [];
 
+    const chatters = new Set(lines.map(l => l.user));
+    const playedGames = await loadPlayedGames();
+
     // 1. Lore ya conocido: contar apariciones reales en el chat y decaer lo que no sale
     for (const row of rows) {
       if (row.status !== 'pending' && row.status !== 'active') continue;
+      // Limpieza de lo aprendido antes de existir los filtros
+      if (isNoiseTerm(row.term) || matchesGameName(row.term, playedGames)) {
+        const rejected = { ...row, status: 'rejected' };
+        delete rejected.id; delete rejected.created_at; delete rejected.channel;
+        toSave.push(rejected);
+        logger.info(`📖 Lore descartado por filtro: "${row.term}"`);
+        continue;
+      }
       const { count, users } = statsFor(row.term_key, lines);
       const next = { ...row };
       delete next.id; delete next.created_at; delete next.channel;
@@ -197,6 +269,11 @@ async function onStreamEndLore(memory) {
         next.missed_streams = 0;
         next.last_seen = now;
         next.last_stream_id = streamId;
+        // Una persona nunca queda activa sin !lore aprobar
+        if (!next.needs_approval && isPersonTerm(row.term_key, chatters)) {
+          next.needs_approval = true;
+          if (next.status === 'active') next.status = 'pending';
+        }
         if (next.status === 'pending' && !next.needs_approval
             && next.streams_count >= MIN_STREAMS && next.users_count >= MIN_USERS) {
           next.status = 'active';
@@ -210,7 +287,6 @@ async function onStreamEndLore(memory) {
     }
 
     // 2. Candidatos nuevos propuestos por la IA
-    const chatters = new Set(lines.map(l => l.user));
     const existingTerms = rows.filter(r => r.status !== 'archived').map(r => r.term);
     let candidates = [];
     try {
@@ -234,10 +310,12 @@ async function onStreamEndLore(memory) {
 
       const { count, users } = statsFor(key, lines);
       if (count === 0) continue; // la IA lo inventó o no está literalmente en el chat
+      if (isNoiseTerm(term) || c.category === 'risa' || c.category === 'juego') continue;
+      if (await isGameTerm(term, playedGames)) continue;
 
       const kind = KINDS.includes(c.kind) ? c.kind : 'meme';
-      const aboutPerson = c.about_person === true || PERSON_KINDS.has(kind)
-        || term.includes('@') || key.split(' ').some(w => chatters.has(w));
+      const aboutPerson = c.about_person === true || c.category === 'persona' || PERSON_KINDS.has(kind)
+        || term.includes('@') || isPersonTerm(key, chatters);
       const userList = [...users].slice(0, MAX_USERS_STORED);
       toSave.push({
         term, term_key: key, kind,
@@ -295,6 +373,7 @@ module.exports = {
   getLoreContext,
   invalidateLoreCache,
   onStreamEndLore,
+  isNoiseTerm, isPersonTerm, matchesGameName, buildPeopleWords,
   getLoreOverview,
   approveLore,
   deleteLore

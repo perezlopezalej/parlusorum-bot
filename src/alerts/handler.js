@@ -168,6 +168,8 @@ function checkAnniversary(client, channel, username, userData, now) {
 
 // --- Lurker Love --- FIX #2: no disparar lurker en los primeros minutos del stream
 const lurkerMap = new Map();
+// Como mucho un aviso de "vuelve el lurker" por persona y stream
+const lurkerGreeted = new Set();
 const LURKER_THRESHOLD = parseInt(process.env.LURKER_THRESHOLD_MS || String(15 * 60 * 1000), 10);
 
 // FIX #2: timestamp de inicio del stream actual
@@ -179,6 +181,7 @@ function onStreamOnline() {
   // Limpiar el lurkerMap para que nadie dispare el lurker
   // al hablar por primera vez nada mas empieza el stream
   lurkerMap.clear();
+  lurkerGreeted.clear();
   logger.info('Lurker map limpiado por inicio de stream');
 }
 
@@ -203,7 +206,8 @@ function trackLurker(client, channel, tags) {
     return;
   }
 
-  if (lurkerMap.has(userId) && now - lurkerMap.get(userId) >= LURKER_THRESHOLD) {
+  if (lurkerMap.has(userId) && now - lurkerMap.get(userId) >= LURKER_THRESHOLD && !lurkerGreeted.has(userId)) {
+    lurkerGreeted.add(userId);
     throttleSay(client, channel, pick(lurkerMessages).replace('{username}', username));
   }
   lurkerMap.set(userId, now);

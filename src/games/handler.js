@@ -185,11 +185,24 @@ function buildHints(answer) {
   return hints;
 }
 
+// Se activa de forma síncrona al entrar: mientras se genera la pregunta (varios await) otro !trivia no lanza una segunda
+let triviaStarting = false;
+
 async function handleTrivia(client, channel) {
   if (activeTriviaQuestion) {
     client.say(channel, truncate(`❓ Ya hay una pregunta activa: "${activeTriviaQuestion.question}"`));
     return;
   }
+  if (triviaStarting) return;
+  triviaStarting = true;
+  try {
+    await startTrivia(client, channel);
+  } finally {
+    triviaStarting = false;
+  }
+}
+
+async function startTrivia(client, channel) {
 
   let q = null;
 
@@ -397,4 +410,4 @@ function handle(client, channel, tags, command, args) {
   }
 }
 
-module.exports = { handle, checkTriviaAnswer, getChampion, isAnswerMatch, buildHints, normalizeAnswer };
+module.exports = { handle, handleTrivia, checkTriviaAnswer, getChampion, isAnswerMatch, buildHints, normalizeAnswer };

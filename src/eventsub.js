@@ -2,14 +2,14 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
-const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative } = require('./utils/supabase');
+const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative, restoreSessionProphecy } = require('./utils/supabase');
 const { throttleSay } = require('./alerts/handler');
 const {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive, isSilenced,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, setDeathCount,
-  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter, clearProphecy,
+  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter, clearProphecy, setProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getGroqFallbackUse, resetGroqFallbackUse,
 } = require('./utils/state');
@@ -113,6 +113,8 @@ async function initStreamState() {
       if (deaths !== null) {
         setStreamNarrative(await restoreSessionNarrative());
         logger.info(`📖 Narrativa recuperada: ${getStreamNarrative().length} eventos`);
+        const prophecy = await restoreSessionProphecy();
+        if (prophecy) { setProphecy(prophecy); logger.info(`🔮 Profecía recuperada: ${prophecy.deaths} muertes`); }
       }
     } else {
       setStreamIsLive(false);
