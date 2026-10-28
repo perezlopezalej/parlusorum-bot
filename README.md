@@ -75,7 +75,28 @@ Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicac
 
 ## Retos y aprendizajes
 
-[RELLENAR]
+## Retos y aprendizajes
+
+**Evitar que la IA se invente cosas.** Al principio, el bot respondía con datos falsos sobre
+videojuegos (fechas, estudios, títulos que no existían). Lo resolví dándole a la IA una
+herramienta, `buscar_juego`, que consulta la API de RAWG, y añadiendo una comprobación de
+similitud para descartar coincidencias falsas. Aprendí que con un LLM no basta con mejorar el
+prompt: hay que darle fuentes de datos reales.
+
+**No depender de un único modelo de IA.** Groq retira modelos cada cierto tiempo, y si el
+modelo que usaba el bot desaparecía, toda la IA dejaba de funcionar. Implementé una cadena de
+modelos de reserva configurable (`GROQ_MODEL_FALLBACKS`): si un modelo devuelve "no
+encontrado" o "retirado", el bot pasa al siguiente y deja un aviso en el log.
+
+**Que el bot participe sin saturar el chat.** El modo cohost, la trivia, las alertas y las
+respuestas automáticas podían pisarse entre sí. Diseñé un sistema de disparadores con límites
+por hora, turnos entre comportamientos y reacciones a los silencios del chat, para que el bot
+parezca un participante más y no un spammer.
+
+**Seguridad y despliegue.** Llegué a subir credenciales al repositorio, así que tuve que
+rotarlas todas. También protegí Supabase con RLS y acceso solo desde el servidor, y corregí
+un fallo del watchdog que creaba conexiones IRC duplicadas en Render. Ahora los secretos van
+siempre en variables de entorno, con un `.env.example` documentado.
 
 Ideas sugeridas a partir del código:
 - Coordinar varios comportamientos automáticos (co-host, hooks de silencio, respuestas a menciones) para que el bot no sature ni se pise con el chat, usando cooldowns, topes por hora y turnos por pausa.
@@ -84,7 +105,9 @@ Ideas sugeridas a partir del código:
 
 ## Autor
 
-Alejandro Pérez López · GitHub: https://github.com/perezlopezalej · LinkedIn: https://www.linkedin.com/in/alejandro-alejandro-perez-dev/
+Alejandro Pérez López 
+· GitHub: https://github.com/perezlopezalej 
+· LinkedIn: https://www.linkedin.com/in/alejandro-alejandro-perez-dev/
 
 ## Licencia
 
