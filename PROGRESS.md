@@ -29,7 +29,6 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - Lore aprendido.
 - `!tiempo`.
 - Muertes por juego.
-- Workflow de CI: comprobar que pasa en GitHub Actions tras el primer push.
 
 ## Ideas futuras
 
