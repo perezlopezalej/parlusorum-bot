@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        env:
+          # Valores falsos: los tests no deben tocar servicios reales
+          BOT_USERNAME: test_bot
+          BOT_TOKEN: fake-token
+          CLIENT_ID: fake-client-id
+          CLIENT_SECRET: fake-client-secret
+          CHANNEL: test_channel
+          GROQ_API_KEY: fake-groq-key
+          BROADCASTER_TOKEN: fake-broadcaster-token
+          EVENTSUB_SECRET: fake-eventsub-secret-0123456789

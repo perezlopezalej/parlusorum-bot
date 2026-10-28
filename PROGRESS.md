@@ -19,6 +19,7 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - **Búsqueda de juegos**: `buscar_juego` con RAWG descartando resultados que no se parecen.
 - **Copia de seguridad**: script `npm run backup` de Supabase.
 - **Infraestructura**: Supabase, despliegue automático en Render, cola anti-límite de IRC, watchdog y tests.
+- **CI**: `.github/workflows/test.yml` ejecuta `npm ci` y `npm test` (Node 22) en cada push y PR a `main`, con variables falsas.
 
 ## Pendiente de probar en directo
 
@@ -28,6 +29,7 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - Lore aprendido.
 - `!tiempo`.
 - Muertes por juego.
+- Workflow de CI: comprobar que pasa en GitHub Actions tras el primer push.
 
 ## Ideas futuras
 
