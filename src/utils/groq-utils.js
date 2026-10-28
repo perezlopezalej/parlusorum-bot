@@ -2,6 +2,7 @@ const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
 const logger = require('./logger');
 const { recordGroqFallback } = require('./state');
+const chatlog = require('./chatlog');
 
 // Modelos configurables via env var. Groq retira modelos con frecuencia:
 // toda la familia llama-3.x/llama-4 y los groq/compound devuelven 404 model_not_found
@@ -79,7 +80,9 @@ async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_
       delete p.reasoning_effort;
     }
     try {
+      const t0 = Date.now();
       const result = await requestWithRetry(create, p, maxRetries);
+      chatlog.noteAiCall(result?.model || model, Date.now() - t0);
       if (model !== requested) recordGroqFallback(requested, model);
       return result;
     } catch (err) {

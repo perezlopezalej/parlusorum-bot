@@ -27,6 +27,8 @@ const { startStreamSession } = require('./src/utils/supabase');
 const memory = require('./src/memory/handler');
 const { wrapClientSay } = require('./src/utils/irc-ratelimit');
 const { checkNewUser } = require('./src/moderation/bot-detector');
+const chatlog = require('./src/utils/chatlog');
+const { runWithOrigin, withOrigin } = chatlog;
 const { handleAuthStart, handleAuthCallback } = require('./src/auth');
 
 const PORT = process.env.PORT || 3000;
@@ -67,7 +69,7 @@ const server = http.createServer((req, res) => {
         if (!res.headersSent && !res.writableEnded) { res.writeHead(413); res.end(); }
         return;
       }
-      if (eventSubHandler) eventSubHandler(req, res, rawBody);
+      if (eventSubHandler) runWithOrigin('alerta', () => eventSubHandler(req, res, rawBody));
       else {
         logger.warn('⚠️ EventSub: handler no listo (503)');
         res.writeHead(503); res.end();
@@ -208,6 +210,7 @@ client.on('connected', async (addr, port) => {
   logger.info(`✅ Bot conectado a #${process.env.CHANNEL}`);
   if (!timersStarted) {
     timers.start(client, config);
+    chatlog.start();
     timersStarted = true;
 
     await loadBroadcasterTokens();
@@ -242,10 +245,10 @@ client.on('connected', async (addr, port) => {
     setInterval(async () => {
       const info = await getStreamInfo().catch(() => null);
       if (info?.viewers) updatePeakViewers(info.viewers);
-      await ai.checkStreamStatus(client, CHANNEL);
+      await runWithOrigin('alerta', () => ai.checkStreamStatus(client, CHANNEL));
     }, 60 * 1000);
 
-    setInterval(() => ai.checkChatHook(client, CHANNEL), 60 * 1000);
+    setInterval(withOrigin('hook', () => ai.checkChatHook(client, CHANNEL)), 60 * 1000);
   }
 });
 
@@ -278,34 +281,35 @@ client.on('message', async (channel, tags, message, self) => {
 
   const msg = message.trim();
   const username = tags['display-name'];
+  chatlog.logUserMessage(username, msg);
 
   try {
     ai.addToHistory(username, msg);
     ai.updateLastChatTime();
-    alerts.handleMessage(client, channel, tags).catch(err =>
+    runWithOrigin('alerta', () => alerts.handleMessage(client, channel, tags)).catch(err =>
       logger.warn(`alerts.handleMessage error: ${err.message}`)
     );
 
     const PREFIX = process.env.PREFIX || '!';
     if (!msg.startsWith(PREFIX)) {
-      ai.checkForHighlight(client, channel, msg, tags['user-id'] || username).catch(err =>
+      runWithOrigin('highlight', () => ai.checkForHighlight(client, channel, msg, tags['user-id'] || username)).catch(err =>
         logger.warn(`checkForHighlight error: ${err.message}`)
       );
-      const patternHandled = await ai.checkPatternMatch(client, channel, tags, msg);
+      const patternHandled = await runWithOrigin('mencion', () => ai.checkPatternMatch(client, channel, tags, msg));
       if (!patternHandled) {
-        ai.handleCohost(client, channel).catch(err =>
+        runWithOrigin('cohost', () => ai.handleCohost(client, channel)).catch(err =>
           logger.warn(`handleCohost error: ${err.message}`)
         );
       }
-      ai.checkEmoteSpam(client, channel, tags, msg).catch(err =>
+      runWithOrigin('emote_spam', () => ai.checkEmoteSpam(client, channel, tags, msg)).catch(err =>
         logger.warn(`checkEmoteSpam error: ${err.message}`)
       );
-      ai.checkCapsRage(client, channel, tags, msg).catch(err =>
+      runWithOrigin('caps_rage', () => ai.checkCapsRage(client, channel, tags, msg)).catch(err =>
         logger.warn(`checkCapsRage error: ${err.message}`)
       );
     }
 
-    games.checkTriviaAnswer(client, channel, tags, msg);
+    runWithOrigin('trivia', () => games.checkTriviaAnswer(client, channel, tags, msg));
 
     if (!msg.startsWith(PREFIX)) return;
 
@@ -314,18 +318,18 @@ client.on('message', async (channel, tags, message, self) => {
 
     logger.debug(`💬 [${username}] !${command}`);
 
-    if (command === 'trivia' || command === 'top') return games.handle(client, channel, tags, command, args);
-    if (command === 'dios_fua') return ai.handleQuestion(client, channel, tags, args);
-    if (command === 'chiste') return ai.handleChiste(client, channel, tags);
-    if (command === 'quemeperdi') return ai.handleQueMePerdi(client, channel, tags);
+    if (command === 'trivia' || command === 'top') return runWithOrigin('trivia', () => games.handle(client, channel, tags, command, args));
+    if (command === 'dios_fua') return runWithOrigin('dios_fua', () => ai.handleQuestion(client, channel, tags, args));
+    if (command === 'chiste') return runWithOrigin('chiste', () => ai.handleChiste(client, channel, tags));
+    if (command === 'quemeperdi') return runWithOrigin('quemeperdi', () => ai.handleQueMePerdi(client, channel, tags));
 
-    await commands.handle(client, channel, tags, command, args, config);
+    await runWithOrigin('comando', () => commands.handle(client, channel, tags, command, args, config));
   } catch (err) {
     logger.error(`Message handler error [${username}]: ${err.message}`);
   }
 });
 
-const subSafe = (fn) => (...a) => Promise.resolve(fn(...a)).catch(err => logger.error(`Alerta de sub: ${err.message}`));
+const subSafe = (fn) => (...a) => Promise.resolve(runWithOrigin('alerta', () => fn(...a))).catch(err => logger.error(`Alerta de sub: ${err.message}`));
 // Meses acumulados: msg-param-cumulative-months en los tags (streakMonths puede ser 0 sin racha compartida)
 client.on('subscription', subSafe((channel, username, methods, msg) => alerts.onSub(client, channel, username, methods, msg)));
 client.on('resub', subSafe((channel, username, streak, msg, tags, methods) =>
@@ -339,9 +343,9 @@ client.on('anongiftpaidupgrade', subSafe((channel, username) => alerts.onGiftUpg
 client.on('cheer', (channel, userstate) => {
   const username = userstate['display-name'];
   const bits = parseInt(userstate.bits, 10);
-  if (username && bits > 0) alerts.onBits(client, channel, username, bits);
+  if (username && bits > 0) runWithOrigin('alerta', () => alerts.onBits(client, channel, username, bits));
 });
-client.on('raided', (channel, username, viewers) => alerts.onRaid(client, channel, username, viewers));
+client.on('raided', (channel, username, viewers) => runWithOrigin('alerta', () => alerts.onRaid(client, channel, username, viewers)));
 
 process.on('unhandledRejection', (reason) => {
   if (reason?.message === 'Not connected to server.') {

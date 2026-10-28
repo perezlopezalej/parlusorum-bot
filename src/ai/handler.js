@@ -12,6 +12,7 @@ const { getManualLore, getLoreContext } = require('../lore/handler');
 const { LORE_RULE, buildQuestionSystemContent } = require('./prompts');
 const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
+const chatlog = require('../utils/chatlog');
 const { saveHighlight } = require('../utils/storage');
 const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
 const { getViewersWithAppToken } = require('../eventsub');
@@ -456,7 +457,7 @@ async function handleCohost(client, channel, { onPause = false } = {}) {
     const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
     const cohostReply = truncate(response.choices[0].message.content, maxChars);
     if (!cohostReply) { recordCohost(Date.now(), false); return false; }
-    client.say(channel, cohostReply);
+    client.say(channel, cohostReply, { origin: 'cohost' });
     addBotMessage(cohostReply);
     recordCohost();
     if (onPause) markCohostPause(pauseId);
@@ -772,7 +773,7 @@ async function checkChatHook(client, channel) {
   }
 
   const allHooks = [...gameHooks, ...genericHooks];
-  client.say(channel, allHooks[Math.floor(Math.random() * allHooks.length)]);
+  client.say(channel, allHooks[Math.floor(Math.random() * allHooks.length)], { origin: 'hook' });
 }
 
 // --- !chiste ---
@@ -893,6 +894,7 @@ async function handleQuestion(client, channel, tags, args) {
         if (call.function?.name === 'buscar_juego') {
           let nombre = '';
           try { nombre = String(JSON.parse(call.function.arguments || '{}').nombre || ''); } catch { /* args inválidos */ }
+          chatlog.noteTool('buscar_juego');
           result = await buscarJuegoTool(nombre);
         }
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });

@@ -649,7 +649,28 @@ async function updateLoreStatus(id, status, fromStatuses) {
   return data;
 }
 
+// ─── REGISTRO DE CHAT ─────────────────────────────────────────────────────────
+// Lanzan si falla: chatlog.js decide qué hacer (reencolar, avisar); nunca llegan al bot.
+
+async function insertChatLog(rows) {
+  const db = getClient();
+  if (!db) throw new Error('Supabase no configurado');
+  const { error } = await db.from('chat_log').insert(rows);
+  if (error) throw error;
+}
+
+// Devuelve cuántas filas borró
+async function deleteChatLogBefore(isoDate) {
+  const db = getClient();
+  if (!db) return 0;
+  const { error, count } = await db.from('chat_log').delete({ count: 'exact' }).lt('created_at', isoDate);
+  if (error) throw error;
+  return count || 0;
+}
+
 module.exports = {
+  insertChatLog,
+  deleteChatLogBefore,
   getLoreRows,
   upsertLoreRows,
   updateLoreStatus,

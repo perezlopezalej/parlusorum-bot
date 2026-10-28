@@ -1,4 +1,7 @@
 const logger = require('./logger');
+const chatlog = require('./chatlog');
+
+const BOT_NAME = process.env.BOT_USERNAME || 'bot';
 
 // Límites oficiales Twitch IRC:
 // - Cuenta normal: 20 msgs / 30 s → usamos 18 como margen
@@ -34,7 +37,7 @@ function _waitMs(now) {
 
 // Envía el primer mensaje de la cola (asume que _waitMs() ya dio 0)
 async function _sendNext() {
-  const { sayFn, channel, msg, client } = _queue.shift();
+  const { sayFn, channel, msg, client, meta } = _queue.shift();
   if (client && client.readyState() !== 'OPEN') {
     logger.warn('IRC: mensaje descartado — cliente no conectado');
     return;
@@ -42,6 +45,7 @@ async function _sendNext() {
   _window.push(Date.now());
   try {
     await sayFn(channel, msg);
+    chatlog.logBotMessage(BOT_NAME, msg, meta);
   } catch (e) {
     logger.warn(`IRC say error: ${e.message}`);
   }
@@ -66,12 +70,14 @@ async function _drain() {
  */
 function wrapClientSay(client) {
   const _say = client.say.bind(client);
-  client.say = (channel, msg) => {
+  // meta opcional (3er arg): { origin, model, usedTool, latencyMs }; pisa lo heredado del contexto
+  client.say = (channel, msg, explicitMeta) => {
     if (_queue.length >= MAX_QUEUE) {
       logger.warn(`IRC queue llena (${MAX_QUEUE}), mensaje descartado: "${String(msg).slice(0, 60)}"`);
       return;
     }
-    _queue.push({ sayFn: _say, channel, msg, client });
+    // El contexto (origen, modelo, latencia) se captura al encolar: al enviar ya no existe
+    _queue.push({ sayFn: _say, channel, msg, client, meta: chatlog.currentMeta(explicitMeta) });
     _scheduleDrain(0);
   };
 }
@@ -102,6 +108,11 @@ async function _flushOnExit(signal) {
       .map(({ channel, msg }) => `${channel}: "${String(msg).slice(0, 60)}"`)
       .join(' | ');
     logger.warn(`IRC: ${signal} — ${_queue.length} msg(s) en cola descartados: ${items}`);
+  }
+  // Después del chat, guarda el log pendiente en lo que quede del margen (flush nunca lanza)
+  const left = deadline - Date.now();
+  if (left > 0) {
+    await Promise.race([chatlog.flush().catch(() => {}), new Promise(r => setTimeout(r, left))]);
   }
   process.exit(0);
 }

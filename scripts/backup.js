@@ -22,6 +22,7 @@ const TABLES = [
   'cooldowns',
   'user_facts',
   'channel_lore',
+  'chat_log',
 ];
 const PAGE = 1000;
 

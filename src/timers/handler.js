@@ -4,6 +4,7 @@ const { isSilenced } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
+const { withOrigin } = require('../utils/chatlog');
 const { getBotPersonality } = require('../ai/handler');
 const { getLoreContext } = require('../lore/handler');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
@@ -20,7 +21,7 @@ function start(client, config) {
   lastMessages = new Array(config.timers.length).fill('');
 
   config.timers.forEach((timer, index) => {
-    const ref = setInterval(() => {
+    const ref = setInterval(withOrigin('timer', () => {
       // Usar EventSub para saber si está en directo (fiable)
       if (!isLiveViaEventSub() || isSilenced()) return;
 
@@ -28,23 +29,23 @@ function start(client, config) {
       const msg = timer.message + suffix;
       lastMessages[index] = msg;
       client.say(`#${process.env.CHANNEL}`, msg);
-    }, timer.interval * 60 * 1000);
+    }), timer.interval * 60 * 1000);
 
     timerRefs.push(ref);
   });
 
   // Timer de duración del stream cada 40 min — usa EventSub (fiable)
-  streamDurationInterval = setInterval(() => {
+  streamDurationInterval = setInterval(withOrigin('timer', () => {
     if (!isLiveViaEventSub() || isSilenced()) return;
 
     const uptime = getStreamUptime();
     if (!uptime) return;
 
     client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`);
-  }, 40 * 60 * 1000);
+  }), 40 * 60 * 1000);
 
   // Timer dinámico con IA — comenta sobre el juego actual cada ~25 min
-  timerRefs.push(setInterval(async () => {
+  timerRefs.push(setInterval(withOrigin('timer_ia', async () => {
     if (!isLiveViaEventSub() || isSilenced() || !canMakeRequest()) return;
 
     const gameInfo = await getCurrentGame().catch(() => null);
@@ -74,7 +75,7 @@ function start(client, config) {
     } catch (err) {
       logger.warn(`Timer IA: ${err.message}`);
     }
-  }, AI_TIMER_INTERVAL_MS));
+  }), AI_TIMER_INTERVAL_MS));
 }
 
 function stop() {

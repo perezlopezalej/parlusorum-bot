@@ -264,7 +264,24 @@ function recordGroqFallback(requested, used) {
 function getGroqFallbackUse() { return Object.fromEntries(groqFallbackUse); }
 function resetGroqFallbackUse() { groqFallbackUse.clear(); }
 
+// --- Cola del registro de chat (se vuelca a Supabase por lotes; ver utils/chatlog.js) ---
+const CHATLOG_MAX_BUFFER = 1000;
+let chatLogBuffer = [];
+
+function pushChatLog(row) {
+  chatLogBuffer.push(row);
+  if (chatLogBuffer.length > CHATLOG_MAX_BUFFER) chatLogBuffer.splice(0, chatLogBuffer.length - CHATLOG_MAX_BUFFER);
+  return chatLogBuffer.length;
+}
+function takeChatLog(n) { return chatLogBuffer.splice(0, n); }
+// Devuelve al principio los que no se pudieron guardar, sin pasar del tope (se pierden los más antiguos)
+function requeueChatLog(rows) {
+  chatLogBuffer = [...rows, ...chatLogBuffer].slice(-CHATLOG_MAX_BUFFER);
+}
+function getChatLogSize() { return chatLogBuffer.length; }
+
 module.exports = {
+  pushChatLog, takeChatLog, requeueChatLog, getChatLogSize,
   recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
   addLoreSample, getLoreSample, resetLoreSample,
   setTriviaActive, isTriviaActive,
