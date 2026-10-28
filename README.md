@@ -45,7 +45,7 @@ Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicac
 
 1. Clona el repositorio e instala las dependencias:
    ```bash
-   git clone <URL-DEL-REPOSITORIO>
+   git clone https://github.com/perezlopezalej/parlusorum-bot
    cd parlusorum-bot
    npm install
    ```
@@ -84,4 +84,8 @@ Ideas sugeridas a partir del código:
 
 ## Autor
 
-[NOMBRE Y CONTACTO]
+Alejandro Pérez López · GitHub: https://github.com/perezlopezalej · LinkedIn: https://www.linkedin.com/in/alejandro-alejandro-perez-dev/
+
+## Licencia
+
+© 2026 Alejandro Pérez López. Todos los derechos reservados. El código es público solo para consulta; para usarlo o adaptarlo, contacta con el autor.
