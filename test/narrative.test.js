@@ -160,20 +160,4 @@ describe('estado: narrativa, cohost y pausas', () => {
     assert.equal(state.claimHookPause(111, 2000), false);
     assert.equal(state.claimHookPause(222, 3000), true);
   });
-
-  test('el cohost solo puede hablar tras el hook de esa pausa, pasado el tiempo, y una vez', () => {
-    assert.equal(state.canCohostOnPause(333, 1000, 5000), false); // aún no habló el hook
-    state.claimHookPause(333, 10000);
-    assert.equal(state.canCohostOnPause(333, 1000, 10500), false); // demasiado pronto
-    assert.equal(state.canCohostOnPause(333, 1000, 11000), true);
-    assert.equal(state.canCohostOnPause(444, 1000, 11000), false); // otra pausa
-    state.markCohostPause(333);
-    assert.equal(state.canCohostOnPause(333, 1000, 20000), false); // ya habló el cohost
-  });
-
-  test('tras el cohost la pausa sigue cerrada al hook (nunca dos mensajes del mismo tipo)', () => {
-    state.claimHookPause(555, 1000);
-    state.markCohostPause(555);
-    assert.equal(state.claimHookPause(555, 9000), false);
-  });
 });

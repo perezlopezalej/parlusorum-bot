@@ -1,15 +1,16 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, canCohostOnPause, markCohostPause } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers } = require('../utils/state');
 const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached, decideMode, resolveModeConfig, MODE_WINDOWS } = require('../utils/narrative');
-const { classifyMessage, cooldownMs, cooldownGate } = require('./patterns');
+const { classifyMessage, cooldownMs, cooldownGate, provocationGate } = require('./patterns');
+const quality = require('./quality');
 const { sanitizeForAI } = require('../utils/filter');
 const { classifyGameMatch } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
-const { LORE_RULE, buildQuestionSystemContent } = require('./prompts');
+const { LORE_RULE, SPAIN_RULE, COHOST_RULES, PROVOCATION_RULE, buildQuestionSystemContent } = require('./prompts');
 const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
@@ -18,11 +19,13 @@ const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL_FAST, GROQ_MODEL_
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
 // Cohost: COOLDOWN = mínimo entre cohosts; PROBABILITY = prob. por mensaje al salir del cooldown (crece con el silencio del cohost);
-// MAX_PER_HOUR = tope; PAUSE_MS = silencio del chat tras el que habla sí o sí (si no habló ya un hook en esa pausa)
-const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '180000', 10);
+// MAX_PER_HOUR = tope; NAME_WINDOW = tiempo sin volver a nombrar al mismo usuario. Los silencios los cubre el hook, no el cohost.
+const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '600000', 10);
 const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.08');
-const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || '10', 10);
-const COHOST_PAUSE_MS = parseInt(process.env.COHOST_PAUSE_MS || '150000', 10);
+const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || '4', 10);
+const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
+// Provocaciones: solo la primera de cada usuario en esta ventana recibe réplica
+const PROVOCATION_WINDOW = parseInt(process.env.PROVOCATION_WINDOW_MS || '600000', 10);
 const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
 
 // FIX #1: roles claramente definidos
@@ -298,7 +301,7 @@ async function getPersonality(messageCount, userType = 'normal', username = null
 ${context}${specialNote}
 
 REGLAS ABSOLUTAS (no negociables):
-- SIEMPRE en espanol. NUNCA uses palabras en ingles si existe equivalente en espanol.
+- SIEMPRE en espanol. NUNCA uses palabras en ingles si existe equivalente en espanol. ${SPAIN_RULE}
 - Eres EXPERTO en videojuegos: cualquier consola, PC, movil, genero y epoca. Responde con datos reales.
 - Puedes hablar de CUALQUIER tema: ciencia, historia, deportes, musica, cultura general.
 - Si no sabes algo: admitelo con humor ("ni idea") pero NUNCA inventes datos especificos.
@@ -384,46 +387,40 @@ function detectChatMood(messages) {
   return 'NEUTRO';
 }
 
-// Devuelve true si el cohost habló. onPause: turno del cohost en una pausa del chat, COHOST_PAUSE_MS después del hook
-// (sin tirada aleatoria ni comparación de contexto; sí respeta cooldown y tope por hora; uno por pausa).
-async function handleCohost(client, channel, { onPause = false } = {}) {
+// Devuelve true si el cohost habló. Solo habla por tirada tras el cooldown; los silencios los cubre el hook.
+// La respuesta se valida en código (tono, muertes, nombres, fórmulas, emotes) con un reintento; si no pasa, se calla.
+async function handleCohost(client, channel) {
   if (isSilenced() || isTriviaActive() || cohostRunning || !getEventSubLiveStatus()) return false;
   const now = Date.now();
   const sinceLast = now - getLastCohostTime();
   if (sinceLast < COHOST_COOLDOWN) return false;
   if (hourlyCapReached(getCohostTimes(), COHOST_MAX_PER_HOUR, now)) return false;
-  const pauseId = lastChatMessageTime;
-  if (onPause && !canCohostOnPause(pauseId, COHOST_PAUSE_MS, now)) return false;
   refreshMode();
   const modeConfig = getModeConfig();
-  if (!onPause) {
-    const prob = cohostProbability({
-      base: COHOST_PROBABILITY, multiplier: modeConfig.cohost_multiplier ?? 1.0,
-      elapsedMs: getLastCohostTime() ? sinceLast : COHOST_COOLDOWN * 2, cooldownMs: COHOST_COOLDOWN,
-    });
-    if (Math.random() > prob) return false;
-  }
+  const prob = cohostProbability({
+    base: COHOST_PROBABILITY, multiplier: modeConfig.cohost_multiplier ?? 1.0,
+    elapsedMs: getLastCohostTime() ? sinceLast : COHOST_COOLDOWN * 2, cooldownMs: COHOST_COOLDOWN,
+  });
+  if (Math.random() > prob) return false;
   const recentContext = getRecentHistory(5);
   if (!recentContext) return false;
   if (!canMakeRequest()) return false;
 
   const contextFingerprint = recentContext.slice(0, 200);
-  if (!onPause) {
-    const prevHash = getLastCohostContextHash();
-    const currWords = new Set(contextFingerprint.toLowerCase().split(/\s+/));
-    const prevWords = new Set(prevHash.toLowerCase().split(/\s+/));
-    const shared = [...currWords].filter(w => prevWords.has(w)).length;
-    const similarity = prevWords.size > 0 ? shared / prevWords.size : 0;
-    if (similarity > 0.8) return false;
-  }
+  const prevHash = getLastCohostContextHash();
+  const currWords = new Set(contextFingerprint.toLowerCase().split(/\s+/));
+  const prevWords = new Set(prevHash.toLowerCase().split(/\s+/));
+  const shared = [...currWords].filter(w => prevWords.has(w)).length;
+  const similarity = prevWords.size > 0 ? shared / prevWords.size : 0;
+  if (similarity > 0.8) return false;
 
   const botHistory = getBotHistory();
-  const botBlock = botHistory.length > 0
-    ? `\n<bot_history>\n${botHistory.map(e => {
-        const mins = Math.round((Date.now() - e.ts) / 60000);
-        return `[hace ${mins}min] ${e.msg}`;
-      }).join('\n')}\n</bot_history>`
-    : '';
+  const recentBot = botHistory.map(e => e.msg);
+  const emotes = channelConfig.channel_emotes || [];
+  const allowEmote = quality.emoteAllowed(recentBot, emotes);
+  const deathCount = getDeathCount();
+  const named = getNamedUsers();
+  const blockedNames = [...named].filter(([, ts]) => now - ts < COHOST_NAME_WINDOW).map(([l]) => l);
 
   cohostRunning = true;
 
@@ -438,29 +435,51 @@ async function handleCohost(client, channel, { onPause = false } = {}) {
     const moodNote = `\nEl chat está en modo ${mood} ahora mismo. Ajusta el tono de tu comentario a ese ambiente.`;
     const personalityBase = await getPersonality(recentMessages.length);
     const startedAt = getStreamStartedAt();
-    const streamNote = ` Llevan ${startedAt ? Math.floor((now - startedAt) / 60000) : '?'} min de stream y ${getDeathCount()} muertes del streamer.`;
+    const deathNote = deathCount === 0
+      ? ' El contador de muertes está a 0: NO menciones muertes, caídas ni que el streamer "cae".'
+      : ` Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
+    const streamNote = ` Llevan ${startedAt ? Math.floor((now - startedAt) / 60000) : '?'} min de stream.${deathNote}`;
+    const nameNote = ` No nombres a ningún usuario${blockedNames.length ? ` (sobre todo no a: ${blockedNames.join(', ')})` : ''}; habla del chat en general.`;
+    const emoteNote = allowEmote ? ' Como mucho 1 emote, solo si encaja de verdad.' : ' NO uses ningún emote en este mensaje.';
     const windowLines = chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).slice(-25);
     const chatSummary = condenseChat(windowLines);
-    const response = await groqWithRetry({
-      model: GROQ_MODEL_FAST,
-      max_tokens: Math.min(90, modeConfig.max_tokens ?? 90),
-      frequency_penalty: 0.8,
-      presence_penalty: 0.6,
-      messages: [
-        {
-          role: 'system',
-          content: `${personalityBase} ${game}${streamNote}${raidNote} Haz un comentario espontáneo sobre lo que pasa. Sin saludos. Sin presentarte. 1 frase en español. ${moodNote}${botHistory.length > 0 ? `\nTUS RESPUESTAS ANTERIORES — NO repetir ni parafrasear ninguna:\n${botHistory.map(e => `- "${e.msg}"`).join('\n')}` : ''}`
-        },
-        { role: 'user', content: `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nComenta algo natural sobre lo que se habla.${onPause ? ' El chat lleva un rato callado: rompe el silencio sin preguntar nada genérico.' : ''}` }
-      ]
-    });
     const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
-    const cohostReply = truncate(response.choices[0].message.content, maxChars);
-    if (!cohostReply) { recordCohost(Date.now(), false); return false; }
-    client.say(channel, cohostReply, { origin: 'cohost' });
-    addBotMessage(cohostReply);
+    const historyNote = botHistory.length > 0
+      ? `\nTUS RESPUESTAS ANTERIORES — NO repetir ni parafrasear ninguna, ni sus fórmulas:\n${botHistory.map(e => `- "${e.msg}"`).join('\n')}`
+      : '';
+
+    let reply = '';
+    let feedback = '';
+    for (let attempt = 0; attempt < 2 && !reply; attempt++) {
+      if (attempt > 0 && !canMakeRequest()) break;
+      const response = await groqWithRetry({
+        model: GROQ_MODEL_FAST,
+        max_tokens: Math.min(90, modeConfig.max_tokens ?? 90),
+        frequency_penalty: 0.8,
+        presence_penalty: 0.6,
+        messages: [
+          {
+            role: 'system',
+            content: `${personalityBase} ${game}${streamNote}${raidNote}${nameNote}${emoteNote} ${COHOST_RULES} Sin saludos. Sin presentarte.${moodNote}${historyNote}${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
+          },
+          { role: 'user', content: `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nComenta algo natural sobre lo que se habla.` }
+        ]
+      });
+      const choice = response.choices[0];
+      const raw = (choice.message.content || '').trim();
+      if (/^SKIP\b/i.test(raw)) { logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
+      const complete = choice.finish_reason === 'length' ? quality.dropTrailingFragment(raw) : raw;
+      const text = quality.applyEmotePolicy(truncate(complete, maxChars), allowEmote, emotes);
+      const check = quality.validateCohost(text, { deathCount, recent: recentBot, named, now, nameWindowMs: COHOST_NAME_WINDOW });
+      if (check.ok) reply = text;
+      else { feedback = check.reason; logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`); }
+    }
+
+    if (!reply) { recordCohost(Date.now(), false); return false; }
+    client.say(channel, reply, { origin: 'cohost' });
+    addBotMessage(reply);
+    markNamed(quality.namesIn(reply, chatHistory.slice(-60).map(m => m.username)));
     recordCohost();
-    if (onPause) markCohostPause(pauseId);
     setLastCohostContextHash(contextFingerprint);
     return true;
   } catch (err) {
@@ -685,9 +704,6 @@ async function checkChatHook(client, channel) {
   if (!getEventSubLiveStatus()) return;
   const now = Date.now();
   const silenceTime = now - lastChatMessageTime;
-
-  // Turnos en una pausa: primero el hook (más abajo); si el silencio sigue, el cohost habla una vez a COHOST_PAUSE_MS del hook.
-  if (await handleCohost(client, channel, { onPause: true })) return;
 
   if (now - lastHookTime < HOOK_INTERVAL) return;
 
@@ -1171,6 +1187,13 @@ setInterval(() => {
   for (const [k, v] of directMentionUserCooldowns) if (now > v) directMentionUserCooldowns.delete(k);
 }, 15 * 60 * 1000);
 
+// Provocaciones: userId -> fin de su ventana (solo la primera de cada ventana recibe réplica)
+const provocationUntil = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of provocationUntil) if (now > v) provocationUntil.delete(k);
+}, 15 * 60 * 1000);
+
 // Preguntas naturales: 45s global + 30s por usuario, escalados por pattern_cooldown_multiplier del modo
 let lastPatternTime = 0;
 const patternUserCooldowns = new Map();
@@ -1188,15 +1211,20 @@ async function checkPatternMatch(client, channel, tags, message) {
 
   const now = Date.now();
   const userId = tags['user-id'] || tags['username'];
-  const isDirect = kind === 'direct';
+  const isProvocation = kind === 'provocation';
+  const isDirect = kind === 'direct' || isProvocation;
+  const cdKind = isDirect ? 'direct' : 'natural';
   const userCooldowns = isDirect ? directMentionUserCooldowns : patternUserCooldowns;
+
+  // Provocación repetida dentro de su ventana: se ignora (y el cohost tampoco entra a la provocación)
+  if (isProvocation && !provocationGate(now, provocationUntil.get(userId) || 0)) return 'blocked';
 
   refreshMode();
   const modeConfig = getModeConfig();
   const multiplier = modeConfig.pattern_cooldown_multiplier ?? 1;
   const prevGlobal = isDirect ? lastDirectMentionTime : lastPatternTime;
   const prevUser = userCooldowns.get(userId);
-  if (!cooldownGate(kind, { now, lastGlobalAt: prevGlobal, userUntil: prevUser || 0, multiplier })) return 'blocked';
+  if (!cooldownGate(cdKind, { now, lastGlobalAt: prevGlobal, userUntil: prevUser || 0, multiplier })) return 'blocked';
 
   const username = tags['display-name'];
   const question = sanitizeForAI(message);
@@ -1204,51 +1232,101 @@ async function checkPatternMatch(client, channel, tags, message) {
   if (!canMakeRequest()) return 'blocked';
 
   // Se reservan antes de esperar a la IA (evita dobles respuestas) y se devuelven si la IA falla
-  const cd = cooldownMs(kind, multiplier);
+  const cd = cooldownMs(cdKind, multiplier);
   if (isDirect) lastDirectMentionTime = now; else lastPatternTime = now;
   userCooldowns.set(userId, now + cd.userMs);
+  if (isProvocation) provocationUntil.set(userId, now + PROVOCATION_WINDOW);
 
   try {
-    const userType = getUserType(username, tags);
-    const personality = await getPersonality(recentMessages.length, userType, username);
-    const userConv = getUserConversation(userId);
+    const emotes = channelConfig.channel_emotes || [];
+    const allowEmote = quality.emoteAllowed(getBotHistory().map(e => e.msg), emotes) && !isProvocation;
+    const maxChars = isProvocation ? Math.min(160, modeConfig.max_chars ?? 160) : (modeConfig.max_chars ?? TWITCH_MAX_LENGTH);
+    let answer = '';
 
-    const tone = detectTone(question);
-    const narrative = getStreamNarrative();
-    const recentDeaths = narrative.filter(e => e.type === 'death').length;
-    const recentVictories = narrative.filter(e => e.type === 'victory').length;
-    const frustrationBlock = (tone === 'frustration' && recentDeaths >= 3 && recentVictories === 0)
-      ? ' El usuario está frustrado y hay muchas muertes seguidas. No hagas chistes — muestra empatía y ánimo real.'
-      : '';
-    const toneNote = tone === 'frustration' ? ' El usuario suena frustrado. Empatía y ánimo, no chistes.' + frustrationBlock
-      : tone === 'hype' ? ' El usuario está emocionado. Responde con energía.' : '';
-    const trapNote = isConfirmationTrap(question)
-      ? '\nEl usuario busca validación automática. NO confirmes por defecto. Responde con tu criterio real, aunque no sea lo que quiere oír. Puedes estar de acuerdo, pero que sea genuino, no automático.'
-      : '';
+    if (isProvocation) {
+      answer = await generateProvocationReply(username, question, maxChars);
+    } else {
+      const userType = getUserType(username, tags);
+      const personality = await getPersonality(recentMessages.length, userType, username);
+      const userConv = getUserConversation(userId);
 
-    const response = await groqWithRetry({
-      model: GROQ_MODEL_FAST,
-      max_tokens: modeConfig.max_tokens ?? 120,
-      messages: [
-        { role: 'system', content: `${personality}${toneNote}${trapNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol. NUNCA inventes datos de videojuegos (fechas, desarrolladoras, argumentos): si preguntan por un juego que no es el actual, no des datos y sugiere usar !dios_fua; sobre el juego actual solo di lo que sepas con certeza.` },
-        ...userConv,
-        { role: 'user', content: `${username}: ${question}` }
-      ]
-    });
+      const tone = detectTone(question);
+      const narrative = getStreamNarrative();
+      const recentDeaths = narrative.filter(e => e.type === 'death').length;
+      const recentVictories = narrative.filter(e => e.type === 'victory').length;
+      const frustrationBlock = (tone === 'frustration' && recentDeaths >= 3 && recentVictories === 0)
+        ? ' El usuario está frustrado y hay muchas muertes seguidas. No hagas chistes — muestra empatía y ánimo real.'
+        : '';
+      const toneNote = tone === 'frustration' ? ' El usuario suena frustrado. Empatía y ánimo, no chistes.' + frustrationBlock
+        : tone === 'hype' ? ' El usuario está emocionado. Responde con energía.' : '';
+      const trapNote = isConfirmationTrap(question)
+        ? '\nEl usuario busca validación automática. NO confirmes por defecto. Responde con tu criterio real, aunque no sea lo que quiere oír. Puedes estar de acuerdo, pero que sea genuino, no automático.'
+        : '';
+      const emoteNote = allowEmote ? ' Como mucho 1 emote, solo si encaja.' : ' NO uses emotes en este mensaje.';
 
-    const answer = response.choices[0].message.content;
-    const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
-    client.say(channel, truncate(`@${username} ${answer}`, maxChars));
-    addBotMessage(truncate(answer, maxChars));
-    addToUserConversation(userId, 'user', `${username}: ${question}`);
-    addToUserConversation(userId, 'assistant', answer);
+      let feedback = '';
+      for (let attempt = 0; attempt < 2 && !answer; attempt++) {
+        const response = await groqWithRetry({
+          model: GROQ_MODEL_FAST,
+          max_tokens: modeConfig.max_tokens ?? 120,
+          messages: [
+            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol. ${SPAIN_RULE} NUNCA inventes datos de videojuegos (fechas, desarrolladoras, argumentos): si preguntan por un juego que no es el actual, no des datos y sugiere usar !dios_fua; sobre el juego actual solo di lo que sepas con certeza.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            ...userConv,
+            { role: 'user', content: `${username}: ${question}` }
+          ]
+        });
+        const choice = response.choices[0];
+        const raw = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
+        const check = quality.validateMention(raw);
+        if (check.ok) answer = raw; else feedback = check.reason;
+      }
+      if (!answer) answer = pickProvocationReply(); // sin respuesta válida: réplica de reserva con personalidad, nunca un rechazo
+      addToUserConversation(userId, 'user', `${username}: ${question}`);
+      addToUserConversation(userId, 'assistant', answer);
+    }
+
+    const out = quality.applyEmotePolicy(truncate(`@${username} ${answer}`, maxChars), allowEmote, emotes);
+    client.say(channel, out);
+    addBotMessage(out.replace(/^@\S+\s*/, ''));
+    markNamed([username]);
     return true;
   } catch (err) {
     logger.warn(`Pattern matcher: ${err.message}`);
     if (isDirect) lastDirectMentionTime = prevGlobal; else lastPatternTime = prevGlobal;
     if (prevUser) userCooldowns.set(userId, prevUser); else userCooldowns.delete(userId);
+    if (isProvocation) provocationUntil.delete(userId);
     return false;
   }
+}
+
+// Réplicas de reserva (config/messages.json), sin repetir la última
+let lastProvocationReply = '';
+function pickProvocationReply() {
+  const pool = (messagesConfig.provocation_replies || []).filter(r => r !== lastProvocationReply);
+  const pick = pool[Math.floor(Math.random() * pool.length)] || '';
+  lastProvocationReply = pick;
+  return pick;
+}
+
+// Réplica corta con personalidad; si la IA falla, rechaza o suena latina, se usa la de reserva
+async function generateProvocationReply(username, question, maxChars) {
+  try {
+    const personality = await getPersonality(recentMessages.length, 'normal', username);
+    const response = await groqWithRetry({
+      model: GROQ_MODEL_FAST,
+      max_tokens: 60,
+      messages: [
+        { role: 'system', content: `${personality}\n${PROVOCATION_RULE} ${SPAIN_RULE}` },
+        { role: 'user', content: `${username}: ${question}` }
+      ]
+    });
+    const choice = response.choices[0];
+    const text = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
+    if (quality.validateMention(text).ok && text.length <= maxChars) return text;
+  } catch (err) {
+    logger.warn(`Réplica a provocación: ${err.message}`);
+  }
+  return pickProvocationReply();
 }
 
 function getStreamChatBuffer() {

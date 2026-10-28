@@ -93,5 +93,17 @@
     "deleted": "🗑️ Lore #{id} borrado: \"{term}\".",
     "not_found": "@{username} no encuentro el lore #{id}.",
     "error": "@{username} no pude actualizar el lore ahora."
-  }
+  },
+  "provocation_replies": [
+    "Qué arte tienes para el insulto, así da gusto.",
+    "Anda, desahógate, que el FUA tiene la espalda ancha.",
+    "Qué cariño me tienes, tío. Se nota que piensas mucho en mí.",
+    "Eso dímelo con el FUA puesto, a ver si te atreves.",
+    "Apuntado en la libreta de agravios, justo debajo de tu puntería.",
+    "Mucha energía para quedarte en eso, campeón.",
+    "Me lo apunto. Tengo memoria de elefante y rencor de bot.",
+    "Sigue, sigue, que yo no cobro por minuto.",
+    "Con esa labia, el FUA te queda corto.",
+    "Qué intensidad, tío. Respira, que es un directo."
+  ]
 }

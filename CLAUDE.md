@@ -31,7 +31,7 @@ npm run backup | chatlog | bot-token
 | Módulo | Ruta | Notas |
 |---|---|---|
 | Commands | `src/commands/handler.js`, `help.js` | Despacho, cooldowns, permisos; `config/help.json` alimenta `!ayuda`/`!comandos` |
-| AI | `src/ai/handler.js`, `patterns.js`, `prompts.js` | `!dios_fua`, chistes, cohost, hooks, emote/caps, `!quemeperdi`, resumen de fin de stream |
+| AI | `src/ai/handler.js`, `patterns.js`, `prompts.js`, `quality.js` (validación pura: tono, muertes, nombres, emotes, cortes) | `!dios_fua`, chistes, cohost, hooks, emote/caps, `!quemeperdi`, resumen de fin de stream |
 | Games | `src/games/` | Trivia dinámica por juego (Groq) con banco estático de respaldo, `!top` |
 | Alerts | `src/alerts/` | Subs/bits/raids, hitos de followers, lurkers, bienvenida |
 | Timers | `src/timers/handler.js` | Mensajes recurrentes (`config/commands.json` → `timers`), duración, comentario IA |
@@ -68,7 +68,7 @@ Comandos retirados (responden "ese comando ya no existe"): `!moneda`, `!titulo`,
 
 Obligatorias (validadas en `index.js`): `BOT_USERNAME`, `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `CHANNEL`, `GROQ_API_KEY`, `BROADCASTER_TOKEN`, `EVENTSUB_SECRET` (mín. 10 caracteres).
 
-Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOKEN`, `BOT_REFRESH_TOKEN` (se persisten en Supabase), `PUBLIC_URL` (prevalece sobre `RENDER_EXTERNAL_URL` para callback EventSub), `SUPABASE_URL`/`SUPABASE_KEY` (sin ellas, `NPOINT_BIN_ID` como fallback), `PREFIX`, `PORT`, `RAWG_API_KEY`, `GROQ_MODEL`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPOUND`, `GROQ_MODEL_FALLBACKS`, `AI_MAX_RPM` (+ `_USER`, `_MOD`, `_CREATOR`), `AI_TIMER_INTERVAL_MS`, `COHOST_*` (`PROBABILITY`, `COOLDOWN_MS`, `MAX_PER_HOUR`, `PAUSE_MS`), `QUESTION_COOLDOWN_MS`, `HOOK_INTERVAL_MS`, `HOOK_SILENCE_MS`, `TRIVIA_DURATION_MS`, `LURKER_THRESHOLD_MS`.
+Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOKEN`, `BOT_REFRESH_TOKEN` (se persisten en Supabase), `PUBLIC_URL` (prevalece sobre `RENDER_EXTERNAL_URL` para callback EventSub), `SUPABASE_URL`/`SUPABASE_KEY` (sin ellas, `NPOINT_BIN_ID` como fallback), `PREFIX`, `PORT`, `RAWG_API_KEY`, `GROQ_MODEL`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPOUND`, `GROQ_MODEL_FALLBACKS`, `AI_MAX_RPM` (+ `_USER`, `_MOD`, `_CREATOR`), `AI_TIMER_INTERVAL_MS`, `COHOST_*` (`PROBABILITY`, `COOLDOWN_MS`, `MAX_PER_HOUR`, `NAME_WINDOW_MS`), `PROVOCATION_WINDOW_MS`, `QUESTION_COOLDOWN_MS`, `HOOK_INTERVAL_MS`, `HOOK_SILENCE_MS`, `TRIVIA_DURATION_MS`, `LURKER_THRESHOLD_MS`.
 
 - `GROQ_MODEL_FALLBACKS`: modelos de reserva (coma) si el pedido da 404/decommissioned. Las peticiones servidas por uno de reserva se cuentan en `state.js` y salen en el resumen de fin de stream del log (`bot.log`, nunca el chat).
 

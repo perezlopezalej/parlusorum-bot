@@ -112,3 +112,59 @@ describe('cooldowns', () => {
     assert.equal(cooldownGate('natural', { now: 135000, lastGlobalAt: 0, multiplier: 3 }), true);
   });
 });
+
+// Casos reales del directo del 28-10-2026 (logs/chat-2026-10-28.txt)
+describe('hablar DE el bot en tercera persona no dispara', () => {
+  const third = [
+    'El dios fua va a lo suyo y dando guerra al gangar jajaja',
+    'Ojito con el dios fua',
+    'Que manía con el Dios fua jajajjajaja',
+    'me encanta, funciona correcto el dios fua',
+    '@gangar79 JAJAJAJAJAJAJ podras destruir a mi pc pero no el amor de dios fua por ti',
+    'todavia no ha caido nuestro soldado dios fua sigue de pie',
+  ];
+  for (const msg of third) {
+    test(JSON.stringify(msg), () => assert.equal(classifyMessage(msg, {}, { botNames: BOT }), null));
+  }
+});
+
+describe('dirigirse al bot sigue disparando', () => {
+  const direct = [
+    'Dios fua, empieza a ahorrar que en nada llega la navidad',
+    'dios fua deja en paz un rato a gangar79 que lo tienes aburrido',
+    'dios fua por que esa obsesion con @gangar79',
+    'Dios fua que te pasa con gangar?',
+    'Dios fua cuanto tiempo lleva  @markosssx en el stream?',
+    'Dios fua te estoy preguntando coño',
+    'dios fua cuentanos unos chistes mientras el streamer n oesta',
+    '@dios_fua qué opinas del jefe',
+  ];
+  for (const msg of direct) {
+    test(JSON.stringify(msg), () => assert.equal(classifyMessage(msg, {}, { botNames: BOT }), 'direct'));
+  }
+});
+
+describe('provocaciones', () => {
+  const prov = [
+    'Dios fua vete a cagar subnormal',
+    'Tús muertos dios fua',
+    'Chupame los huevos dios fua',
+    'Te faltan huevos dios fua',
+    'vaya mierda de chiste dios fua',
+    'dios fua como que pucha eres panchito',
+    'Jajjajajaj puto dios fua',
+    'Cierra esta Dios fua, tús muertos',
+  ];
+  for (const msg of prov) {
+    test(JSON.stringify(msg), () => assert.equal(classifyMessage(msg, {}, { botNames: BOT }), 'provocation'));
+  }
+  test('sin mención no es provocación', () => {
+    assert.equal(classifyMessage('Tú tas subnormal', {}, { botNames: BOT }), null);
+  });
+  test('solo la primera de la ventana recibe réplica', () => {
+    const { provocationGate } = require('../src/ai/patterns');
+    assert.equal(provocationGate(1000, 0), true);
+    assert.equal(provocationGate(2000, 1000 + 600000), false);
+    assert.equal(provocationGate(1000 + 600001, 1000 + 600000), true);
+  });
+});

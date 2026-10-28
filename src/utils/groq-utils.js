@@ -3,6 +3,7 @@ const channelConfig = require('../../config/channel.json');
 const logger = require('./logger');
 const { recordGroqFallback } = require('./state');
 const chatlog = require('./chatlog');
+const { cutAtSentence } = require('../ai/quality');
 
 // Modelos configurables via env var. Groq retira modelos con frecuencia:
 // toda la familia llama-3.x/llama-4 y los groq/compound devuelven 404 model_not_found
@@ -104,8 +105,7 @@ function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   if (_emoteBeforeRe) clean = clean.replace(_emoteBeforeRe, '$1 $2');
   if (_emoteAfterRe)  clean = clean.replace(_emoteAfterRe,  '$1 $2');
   clean = clean.replace(/  +/g, ' ').trim();
-  if (clean.length <= limit) return clean;
-  return clean.slice(0, limit - 3) + '...';
+  return cutAtSentence(clean, limit);
 }
 
 module.exports = { groqWithRetry, runWithFallback, isModelGone, buildModelChain, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND };

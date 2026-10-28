@@ -93,7 +93,7 @@ function setStreamNarrative(events) { streamNarrative = restoreNarrative(events)
 // --- Cohost: marcas de tiempo (tope por hora) y turnos hook/cohost dentro de una pausa del chat ---
 let cohostTimes = [];
 let lastCohostTime = 0;
-let pauseState = { id: null, hookAt: 0, cohostDone: false };
+let pauseState = { id: null, hookAt: 0 };
 
 // counts=false (fallo de la IA): solo reinicia el cooldown, sin gastar cupo de la hora
 function recordCohost(now = Date.now(), counts = true) {
@@ -105,18 +105,11 @@ function recordCohost(now = Date.now(), counts = true) {
 function getLastCohostTime() { return lastCohostTime; }
 function getCohostTimes() { return [...cohostTimes]; }
 
-// Una pausa del chat se identifica por la hora de su último mensaje. Habla por turnos: primero el hook
-// (como mucho uno) y, si el silencio sigue, el cohost (como mucho uno) pasado un tiempo desde el hook.
+// Una pausa del chat se identifica por la hora de su último mensaje; el hook habla como mucho una vez por pausa.
 function claimHookPause(pauseId, now = Date.now()) {
   if (pauseState.id === pauseId && pauseState.hookAt) return false;
-  pauseState = { id: pauseId, hookAt: now, cohostDone: false };
+  pauseState = { id: pauseId, hookAt: now };
   return true;
-}
-function canCohostOnPause(pauseId, afterMs, now = Date.now()) {
-  return pauseState.id === pauseId && !!pauseState.hookAt && !pauseState.cohostDone && now - pauseState.hookAt >= afterMs;
-}
-function markCohostPause(pauseId) {
-  if (pauseState.id === pauseId) pauseState.cohostDone = true;
 }
 
 // --- Modo de personalidad ---
@@ -136,7 +129,7 @@ function getModeVariant() { return currentVariant; }
 function getModeSetAt() { return modeSetAt; }
 
 // --- Historial de mensajes propios del bot ---
-const MAX_BOT_HISTORY = 3;
+const MAX_BOT_HISTORY = 8;
 let botMessageHistory = [];
 
 function addBotMessage(msg) {
@@ -146,6 +139,20 @@ function addBotMessage(msg) {
 
 function getBotHistory() { return [...botMessageHistory]; }
 function resetBotHistory() { botMessageHistory = []; }
+
+// --- Usuarios nombrados por el bot (login en minúsculas → ts): evita citar al mismo usuario una y otra vez ---
+const NAMED_TTL_MS = 60 * 60 * 1000;
+const namedUsers = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, ts] of namedUsers) if (now - ts > NAMED_TTL_MS) namedUsers.delete(k);
+}, 15 * 60 * 1000).unref();
+
+function markNamed(logins, now = Date.now()) {
+  for (const l of logins) namedUsers.set(String(l).toLowerCase(), now);
+}
+function getNamedUsers() { return new Map(namedUsers); }
+function resetNamedUsers() { namedUsers.clear(); }
 
 // --- Contexto del último cohost (anti-repetición de contexto) ---
 let lastCohostContextHash = '';
@@ -291,8 +298,8 @@ module.exports = {
   markGiftBatch, isGiftBatch,
   setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt,
   addNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
-  recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, canCohostOnPause, markCohostPause,
-  addBotMessage, getBotHistory, resetBotHistory,
+  recordCohost, getLastCohostTime, getCohostTimes, claimHookPause,
+  addBotMessage, getBotHistory, resetBotHistory, markNamed, getNamedUsers, resetNamedUsers,
   getLastCohostContextHash, setLastCohostContextHash,
   tickReinforce, resetReinforceCounter,
   setGameContextFailed, getGameContextFailed,

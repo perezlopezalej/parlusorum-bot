@@ -80,11 +80,59 @@ function isNaturalQuestion(message, tags = {}, botNames = []) {
   return NATURAL_PATTERNS.some(p => p.re.test(text) && (!p.needsQuestion || hasQuestionMark));
 }
 
-// 'direct' | 'natural' | null
+// Insultos y provocaciones típicas del chat (sobre texto normalizado)
+const PROVOCATION_RE = /\b(subnormal|mierda|cagar|caga|chup(?:a|ame|amela|ar)\b|mamon|mamona|puto|puta|cabron|gilipollas|imbecil|idiota|panchito|maric[ao]n?|repelente|pesao|pesado|tus muertos|tu madre|callate|callas|cierra la boca|te faltan huevos|te (?:mato|mate|reviento|destruyo|voy a (?:matar|dejar|reventar))|vete a|que te follen)\b/;
+
+function isProvocation(message) {
+  return PROVOCATION_RE.test(normalize(message));
+}
+
+// Palabras que delatan que se habla CON el bot
+const SECOND_PERSON = new Set(['te', 'tu', 'tus', 'eres', 'tienes', 'puedes', 'sabes', 'estas', 'quieres', 'haces', 'dices', 'contigo', 'dime', 'dinos', 'cuentanos', 'cuentame']);
+// Delante del nombre: se habla DE él ("el dios fua", "con ese dios fua")
+const THIRD_PREV = new Set(['el', 'ese', 'este', 'del', 'al', 'de', 'su', 'nuestro', 'mi', 'otro']);
+// Detrás del nombre: verbo en tercera persona ("dios fua va a lo suyo")
+const THIRD_NEXT = new Set(['va', 'es', 'esta', 'sigue', 'ha', 'funciona', 'tiene', 'hace', 'dice', 'sabe', 'quiere', 'parece', 'dijo', 'estaba', 'era', 'ya', 'siempre']);
+
+// Posición [start, end) de la mención en la lista de palabras, o null
+function mentionSpan(words, botNames) {
+  const targets = targetsFor(botNames);
+  const near = c => c.length >= 5 && targets.some(t => editDistance(c, t) <= 1);
+  for (let i = 0; i < words.length; i++) {
+    if (near(words[i])) return [i, i + 1];
+    if (i + 1 < words.length && near(words[i] + words[i + 1])) return [i, i + 2];
+  }
+  return null;
+}
+
+// true si el mensaje habla CON el bot; false si habla DE él en tercera persona
+function isAddressedToBot(message, tags = {}, botNames = []) {
+  const text = normalize(message);
+  if (text.split(/\s+/).some(w => w.startsWith('@') && isDirectMention(w, botNames))) return true;
+  const words = text.split(/[^a-z]+/).filter(Boolean).map(squash);
+  const span = mentionSpan(words, botNames);
+  if (!span) return true;
+  if (words.some(w => SECOND_PERSON.has(w))) return true;
+  const prev = words[span[0] - 1];
+  const next = words[span[1]];
+  if (prev && THIRD_PREV.has(prev)) return false;
+  if (next && THIRD_NEXT.has(next)) return false;
+  return true;
+}
+
+// 'provocation' | 'direct' | 'natural' | null. Hablar DE el bot sin dirigirse a él no dispara nada.
 function classifyMessage(message, tags = {}, { botNames = [] } = {}) {
-  if (isDirectMention(message, botNames)) return 'direct';
+  if (isDirectMention(message, botNames)) {
+    if (isProvocation(message)) return 'provocation';
+    return isAddressedToBot(message, tags, botNames) ? 'direct' : null;
+  }
   if (isNaturalQuestion(message, tags, botNames)) return 'natural';
   return null;
+}
+
+// Provocaciones: solo la primera de cada usuario por ventana recibe réplica. until = fin de su ventana (0 si no tiene)
+function provocationGate(now, until = 0) {
+  return now >= until;
 }
 
 // multiplier (config del modo) solo afecta a las naturales
@@ -100,4 +148,4 @@ function cooldownGate(kind, { now, lastGlobalAt = 0, userUntil = 0, multiplier =
   return now - lastGlobalAt >= globalMs && now >= userUntil;
 }
 
-module.exports = { COOLDOWNS, editDistance, isDirectMention, isNaturalQuestion, classifyMessage, cooldownMs, cooldownGate };
+module.exports = { COOLDOWNS, editDistance, isDirectMention, isNaturalQuestion, isProvocation, isAddressedToBot, classifyMessage, provocationGate, cooldownMs, cooldownGate };
