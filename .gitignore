@@ -1,11 +1,8 @@
 node_modules/
 .env
-data/users.json
-data/todo.json
-*.code-workspace
 logs/
-.claude/settings.local.json
 backups/
-INVENTARIO_FUNCIONES_v2.md
-INVENTARIO_FUNCIONES_v3.md
-INVENTARIO_FUNCIONES_v4.md
+*.code-workspace
+AUDITORIA.md
+.claude/settings.json
+.claude/settings.local.json

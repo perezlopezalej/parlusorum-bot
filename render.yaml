@@ -40,6 +40,8 @@ services:
       # --- Opcionales pero en uso en producción ---
       - key: BROADCASTER_REFRESH_TOKEN
         sync: false
+      - key: BOT_REFRESH_TOKEN
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
