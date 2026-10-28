@@ -75,8 +75,6 @@ Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicac
 
 ## Retos y aprendizajes
 
-## Retos y aprendizajes
-
 **Evitar que la IA se invente cosas.** Al principio, el bot respondía con datos falsos sobre
 videojuegos (fechas, estudios, títulos que no existían). Lo resolví dándole a la IA una
 herramienta, `buscar_juego`, que consulta la API de RAWG, y añadiendo una comprobación de
@@ -105,9 +103,10 @@ Ideas sugeridas a partir del código:
 
 ## Autor
 
-Alejandro Pérez López 
-· GitHub: https://github.com/perezlopezalej 
-· LinkedIn: https://www.linkedin.com/in/alejandro-alejandro-perez-dev/
+**Alejandro Pérez López**
+
+- GitHub: [perezlopezalej](https://github.com/perezlopezalej)
+- LinkedIn: [Alejandro Pérez López](https://www.linkedin.com/in/alejandro-alejandro-perez-dev/)
 
 ## Licencia
 
