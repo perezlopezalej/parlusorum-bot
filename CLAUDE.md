@@ -14,6 +14,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 - Salidas largas a un fichero en `logs/` y resumen corto en el chat.
 - Tras cualquier cambio de código, ejecutar `npm test`; no dar la tarea por terminada si algún test falla.
 - Si se añade una función pura nueva, añadirle su test en `test/`.
+- Al terminar cada tarea, actualizar `PROGRESS.md` (Hecho / Pendiente de probar en directo / Ideas futuras).
 
 ## Comandos
 
