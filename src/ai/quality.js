@@ -22,6 +22,26 @@ const SPORTS_RE = /\b(f[uú]tbol|gol(?:azo)?|goles|delantero|portero|champions|[
 
 const DEATH_WORDS_RE = /\b(muert[eoa]s?|muri[oó]|morir|mori|ca[ií]das?|ca[ey]ó|caer|cae|caen|caerá|cay[oó]|fallece|palm[oó])\b/i;
 
+// --- Datos del juego: los mensajes automáticos no hablan de mecánicas ni critican el juego ---
+// Mecánicas, armas, zonas y consejos del directo del 29-10 (cohost, hook y timer_ia se las inventaban)
+const MECHANICS_RE = /\b(armas?|espad[oó]n|espadas?|combos?|parr(?:y|ies)|esquiv\w*|fase \d+|zonas?|mec[aá]nicas?|habilidad(?:es)?|dificultad|barra|ventana|resistencia|cadencia|recarga|build|ataques? (?:rojo|amarillo|especial)|torre|cuartel\w*)\b/i;
+// La nota de RAWG no se cita en el chat
+const RAWG_NOTE_RE = /\brawg\b|\b\d(?:[.,]\d+)?\s*\/\s*5\b/i;
+// Bromas cariñosas sí, desprecio al juego de los streamers no
+const GAME_DISPARAGE_RE = /\b(cortito|nivel medio|mediocre|aburrid[oa]|basura|chusta|bodrio|sobrevalorad[oa]|p[eé]simo|injugable|decepcion\w*)\b|modo beta|beta etern\w*|tutorial de c[oó]mo|se cree el rey|juego (?:malo|flojo|regular)/i;
+
+function mentionsMechanics(text) { return MECHANICS_RE.test(text); }
+function citesRawgScore(text) { return RAWG_NOTE_RE.test(text); }
+function disparagesGame(text) { return GAME_DISPARAGE_RE.test(text); }
+
+// Preguntas concretas del juego (a !dios_fua) y por el contador de muertes (con el número real)
+const GAME_TOPIC_RE = /\b(dificultad|armas?|espad\w+|jefes?|boss(?:es)?|zonas?|niveles?|mapa|build|personajes?|finales?|secuela|dlc|logros?|trofeos?|mec[aá]nicas?|habilidad(?:es)?|combos?|desbloque\w*|versi[oó]n|f[ií]sica|plataformas?|lanzamiento|horas|capitulos?|cap[ií]tulos?|modo|historia|se puede|sale|salida)\b/i;
+const QUESTION_SHAPE_RE = /\?|^\s*(?:qu[eé]|c[oó]mo|cu[aá]nd[oa]|cu[aá]nt[oa]s?|d[oó]nde|cu[aá]l(?:es)?|por qu[eé]|hay|se puede|puedo|puedes?|sabes?)\b/i;
+function isGameQuestion(text) { return GAME_TOPIC_RE.test(text) && QUESTION_SHAPE_RE.test(text); }
+const DEATH_QUESTION_RE = /\b(cu[aá]ntas|cu[aá]ntos)\b.*\b(muertes?|veces|ca[ií]das?)\b|\bmuertes?\b.*\b(llev\w+|hay|van|total)\b|\b(llev\w+|van)\b.*\bmuertes?\b/i;
+function isDeathQuestion(text) { return DEATH_QUESTION_RE.test(text) && /\?|cu[aá]nt|llev|van\b/i.test(text); }
+
+
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
 
 function hasLatam(text) { return LATAM_RE.test(text); }
@@ -95,6 +115,14 @@ function repeatsFormula(text, recent) {
   return FORMULAS.some(re => re.test(text) && recent.some(r => re.test(r)));
 }
 
+// Motivo de rechazo si el mensaje automático habla de mecánicas del juego, cita la nota de RAWG o desprecia el juego
+function gameTalkProblem(text) {
+  if (mentionsMechanics(text)) return 'habla de mecánicas, armas o zonas del juego; habla solo del stream, el chat y el FUA';
+  if (citesRawgScore(text)) return 'cita la nota de RAWG; no la menciones';
+  if (disparagesGame(text)) return 'desprecia el juego de los streamers; bromas cariñosas sí, desprecio no';
+  return null;
+}
+
 // Validación del cohost. ctx: { deathCount, recent: string[], named: Map, now, nameWindowMs }
 function validateCohost(text, { deathCount = 0, recent = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
@@ -105,6 +133,8 @@ function validateCohost(text, { deathCount = 0, recent = [], named = new Map(), 
   if (names.length) return { ok: false, reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no nombres a nadie` };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un mensaje reciente' };
+  const game = gameTalkProblem(text);
+  if (game) return { ok: false, reason: game };
   return { ok: true };
 }
 
@@ -116,6 +146,23 @@ function validateHook(text, { deathCount = 0, recent = [] } = {}) {
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
+  const game = gameTalkProblem(text);
+  if (game) return { ok: false, reason: game };
+  return { ok: true };
+}
+
+// Comentario IA del timer: misma validación que el hook, sin nota de RAWG y sin repetir ideas del stream
+function validateTimerIA(text, { deathCount = 0, recent = [] } = {}) {
+  if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
+  if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
+  if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
+  if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
+  if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  if (citesRawgScore(text)) return { ok: false, reason: 'cita la nota de RAWG; no la menciones' };
+  if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
+  if (tooSimilar(text, recent, 0.5)) return { ok: false, reason: 'repite una idea de un comentario anterior de este stream' };
+  const game = gameTalkProblem(text);
+  if (game) return { ok: false, reason: game };
   return { ok: true };
 }
 
@@ -159,5 +206,6 @@ module.exports = {
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
-  validateCohost, validateHook, validateMention, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
+  validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem,
+  mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

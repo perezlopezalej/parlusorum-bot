@@ -1,11 +1,14 @@
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
-const { isSilenced } = require('../utils/state');
+const { isSilenced, getDeathCount } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 const { withOrigin } = require('../utils/chatlog');
 const { getBotPersonality } = require('../ai/handler');
+const quality = require('../ai/quality');
+const factcheck = require('../ai/factcheck');
+const { AUTO_GAME_RULE } = require('../ai/prompts');
 const { getLoreContext } = require('../lore/handler');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
@@ -29,6 +32,10 @@ function drainTimerQueue() {
   timerDrainRef = setTimeout(drainTimerQueue, MIN_TIMER_GAP_MS);
   timerDrainRef.unref?.();
 }
+
+// Últimos comentarios IA del timer en este stream (para no repetir ideas)
+const MAX_RECENT_TIMER_IA = 10;
+const recentTimerIA = [];
 
 const timerRefs = [];
 let lastMessages = [];
@@ -75,23 +82,47 @@ function start(client, config) {
     try {
       const rawg = await getGameInfo(game).catch(() => null);
       const gameContext = rawg
-        ? `${game}${rawg.genres ? ` (${rawg.genres})` : ''}${rawg.rating ? `, ${rawg.rating}/5 en RAWG` : ''}`
+        ? `${game}${rawg.genres ? ` (${rawg.genres}` : ''}${rawg.genres && rawg.released ? `, ${rawg.released.slice(0, 4)}` : ''}${rawg.genres ? ')' : ''}`
         : game;
 
       const learnedLore = await getLoreContext();
-      const tone =['burla cariñosa', 'épica', 'observación curiosa del juego'][Math.floor(Math.random() * 3)];
-      const response = await groqWithRetry({
-        max_tokens: 80,
-        messages: [
-          {
-            role: 'system',
-            content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve sobre el juego con tu personalidad y el lore del canal. Elige UN tono al azar: burla cariñosa, épica, o observación curiosa del juego. Sin metáforas forzadas de otros temas ni estilo de comentarista deportivo. Máx 2 frases cortas. Sin presentarte.`
-          },
-          { role: 'user', content: `Comenta algo sobre ${game} (tono: ${tone})` }
-        ]
-      });
-      const msg = truncate(response.choices[0].message.content);
-      if (msg) enqueueTimerMessage(withOrigin('timer_ia', () => client.say(`#${process.env.CHANNEL}`, msg)));
+      const deathCount = getDeathCount();
+      const deathNote = deathCount === 0
+        ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
+        : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
+      const tone = ['burla cariñosa', 'épica', 'observación curiosa'][Math.floor(Math.random() * 3)];
+      const prior = recentTimerIA.length ? `
+YA DIJISTE (no repitas ni parafrasees ninguna idea): ${recentTimerIA.map(m => `"${m}"`).join(' | ')}` : '';
+
+      let msg = '';
+      let feedback = '';
+      for (let attempt = 0; attempt < 2 && !msg; attempt++) {
+        if (attempt > 0 && !canMakeRequest()) break;
+        const response = await groqWithRetry({
+          max_tokens: 80,
+          messages: [
+            {
+              role: 'system',
+              content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve con tu personalidad y el lore del canal, sobre el FUA o el ambiente del directo; ${AUTO_GAME_RULE} ${deathNote} Tono: ${tone}. Sin metáforas forzadas de otros temas ni estilo de comentarista deportivo. Máx 2 frases cortas. Sin presentarte.${prior}${feedback ? `
+TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
+            },
+            { role: 'user', content: `Suelta un comentario sobre el directo de ${game} (tono: ${tone})` }
+          ]
+        });
+        const out = truncate((response.choices[0].message.content || '').trim());
+        const check = quality.validateTimerIA(out, { deathCount, recent: recentTimerIA });
+        if (!check.ok) { feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
+        if (await factcheck.shouldDiscard(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`)) {
+          logger.info(`Timer IA descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
+          break;
+        }
+        msg = out;
+      }
+      if (msg) {
+        recentTimerIA.push(msg);
+        if (recentTimerIA.length > MAX_RECENT_TIMER_IA) recentTimerIA.shift();
+        enqueueTimerMessage(withOrigin('timer_ia', () => client.say(`#${process.env.CHANNEL}`, msg)));
+      }
     } catch (err) {
       logger.warn(`Timer IA: ${err.message}`);
     }
@@ -102,6 +133,7 @@ function stop() {
   timerRefs.forEach(ref => clearInterval(ref));
   timerRefs.length = 0;
   timerQueue.length = 0;
+  recentTimerIA.length = 0;
   if (timerDrainRef) { clearTimeout(timerDrainRef); timerDrainRef = null; }
   if (streamDurationInterval) { clearInterval(streamDurationInterval); streamDurationInterval = null; }
   logger.info('⏹️ Timers detenidos');

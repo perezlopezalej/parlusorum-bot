@@ -80,10 +80,16 @@ function notifyNarrative() {
   try { narrativeListener(getStreamNarrative()); } catch {}
 }
 
+// Segundo listener, solo para eventos nuevos (el cohost por eventos); no salta al restaurar tras un reinicio
+let newEventListener = null;
+function onNarrativeEvent(fn) { newEventListener = fn; }
+
 function addNarrativeEvent(type, description) {
-  streamNarrative.push({ type, description, ts: Date.now() });
+  const event = { type, description, ts: Date.now() };
+  streamNarrative.push(event);
   streamNarrative = pruneNarrative(streamNarrative);
   notifyNarrative();
+  if (newEventListener) { try { newEventListener(event, getStreamNarrative()); } catch {} }
 }
 function getStreamNarrative() { return [...streamNarrative]; }
 function resetStreamNarrative() { streamNarrative = []; }
@@ -297,7 +303,7 @@ module.exports = {
   setRaidActive, isRaidActive, getRaidUsername,
   markGiftBatch, isGiftBatch,
   setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt,
-  addNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
+  addNarrativeEvent, onNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
   recordCohost, getLastCohostTime, getCohostTimes, claimHookPause,
   addBotMessage, getBotHistory, resetBotHistory, markNamed, getNamedUsers, resetNamedUsers,
   getLastCohostContextHash, setLastCohostContextHash,

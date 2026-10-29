@@ -228,6 +228,7 @@ client.on('connected', async (addr, port) => {
 
     await initStreamState();
     await ai.initStreamStatus();
+    ai.startEventCohost(client, CHANNEL);
 
     const broadcasterId = channelConfig.broadcaster_id;
     if (broadcasterId) {

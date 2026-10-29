@@ -118,5 +118,16 @@
     "Sigue, sigue, que yo no cobro por minuto.",
     "Con esa labia, el FUA te queda corto.",
     "Qué intensidad, tío. Respira, que es un directo."
-  ]
+  ],
+  "mention_game_redirect": [
+    "Eso del juego mejor pregúntamelo con !dios_fua y lo miro con datos, que de memoria me lío.",
+    "Para cosas concretas del juego usa !dios_fua, que ahí consulto y no me invento nada.",
+    "De mecánicas y datos del juego no hablo a la ligera: prueba con !dios_fua.",
+    "Pregunta de juego detectada. Llévala a !dios_fua y te la contesto bien."
+  ],
+  "mention_deaths": {
+    "some": "Llevamos {n} muertes en este stream 💀",
+    "none": "El contador está a 0 muertes, o nadie las ha apuntado todavía 💀"
+  },
+  "dios_fua_no_data": "no tengo datos fiables de eso en RAWG, así que no me lo invento. Prueba a preguntar por el nombre del juego 🤔"
 }

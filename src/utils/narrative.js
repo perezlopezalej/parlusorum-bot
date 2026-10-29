@@ -113,8 +113,56 @@ function resolveModeConfig(modes, mode, variant = null) {
   return variant && base.variants && base.variants[variant] ? { ...base, ...base.variants[variant] } : base;
 }
 
+// --- Cohost por eventos: solo momentos destacados, con freno ---
+const EVENT_COHOST_MIN_GAP_MS = 5 * 60 * 1000;
+const EVENT_COHOST_MAX_PER_HOUR = 6;
+const RANDOM_COHOST_GAP_MS = HOUR_MS;      // como mucho un comentario al azar por hora
+const DEATH_STREAK_WINDOW_MS = 10 * 60 * 1000;
+const DEATH_STREAK_SIZE = 3;
+const STREAK_BREAKERS = ['boss', 'victory', 'milestone'];
+
+// Muertes seguidas (eventos 'death' sin boss/victoria por medio) dentro de la ventana, contando hasta `now`
+function deathStreakLength(events, now = Date.now(), windowMs = DEATH_STREAK_WINDOW_MS) {
+  let n = 0;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (now - e.ts >= windowMs) break;
+    if (STREAK_BREAKERS.includes(e.type)) break;
+    if (e.type === 'death') n++;
+  }
+  return n;
+}
+
+// ¿Merece comentario el evento recién añadido? Devuelve { kind, description } o null.
+// Muertes: solo la primera, cada racha de 3 seguidas y el récord (supera la sesión con más muertes anotadas); no cada muerte.
+function classifyCohostMoment(event, { events = [], deathCount = 0, recordToBeat = 0, now = Date.now() } = {}) {
+  if (!event) return null;
+  const { type, description } = event;
+  if (['boss', 'sub', 'raid', 'milestone', 'victory'].includes(type)) return { kind: type, description };
+  if (type !== 'death') return null;
+  if (recordToBeat > 0 && deathCount === recordToBeat + 1) return { kind: 'record', description: `${description}. Es un récord de muertes: supera a cualquier otro stream anotado` };
+  if (deathCount === 1) return { kind: 'first_death', description };
+  const streak = deathStreakLength(events, now);
+  if (streak >= DEATH_STREAK_SIZE && streak % DEATH_STREAK_SIZE === 0) return { kind: 'streak', description: `Racha de muertes seguidas sin superar un jefe (${deathCount} en total hoy)` };
+  return null;
+}
+
+// Freno del cohost por eventos: 5 min desde cualquier cohost y tope por hora
+function eventCohostAllowed({ now = Date.now(), lastAt = 0, stamps = [], minGapMs = EVENT_COHOST_MIN_GAP_MS, max = EVENT_COHOST_MAX_PER_HOUR } = {}) {
+  if (lastAt && now - lastAt < minGapMs) return false;
+  return !hourlyCapReached(stamps, max, now);
+}
+
+// Comentario al azar: máx. 1 por hora, solo con el chat tranquilo y sin haber hablado el cohost hace poco
+function randomCohostAllowed({ now = Date.now(), lastRandomAt = 0, lastAnyAt = 0, mode = 'normal', minGapMs = EVENT_COHOST_MIN_GAP_MS } = {}) {
+  if (mode !== 'chill') return false;
+  if (lastRandomAt && now - lastRandomAt < RANDOM_COHOST_GAP_MS) return false;
+  return !(lastAnyAt && now - lastAnyAt < minGapMs);
+}
+
 module.exports = {
   MAX_NARRATIVE_EVENTS, pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
   cohostProbability, pruneHourly, hourlyCapReached,
+  EVENT_COHOST_MIN_GAP_MS, EVENT_COHOST_MAX_PER_HOUR, RANDOM_COHOST_GAP_MS, deathStreakLength, classifyCohostMoment, eventCohostAllowed, randomCohostAllowed,
   MODE_WINDOWS, MIN_MODE_DWELL_MS, DEATHS_FOR_FOCUS, CALM_CHAT_MAX_MSGS, decideMode, resolveModeConfig,
 };

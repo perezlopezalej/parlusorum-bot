@@ -3,11 +3,7 @@
   "timers": [
     {
       "message": "¡Si te gusta el stream dale follow a ParLusorum! 🔔 ¡FUA!",
-      "interval": 20
-    },
-    {
-      "message": "¿Tienes alguna pregunta? ¡Usa !dios_fua y te respondo! 🤖",
-      "interval": 30
+      "interval": 60
     }
   ]
 }

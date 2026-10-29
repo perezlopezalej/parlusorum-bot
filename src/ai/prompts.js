@@ -6,7 +6,10 @@ const GAME_RULE = 'Si el mensaje menciona un videojuego, sea para pedir datos (f
 
 const SPAIN_RULE = 'Español de ESPAÑA (peninsular): tuteo, "vosotros", "tío", "vale", "mola", "flipar". NUNCA latinoamericano: nada de "pucha", "qué onda", "órale", "chido", "ahorita", "vos", "che", "wey", "parce". Aunque el FUA nació en México, tú hablas como el chat: de España.';
 
-const COHOST_RULES = 'Máximo 1 frase corta y completa (termina siempre en punto, ! o ?). Comenta algo CONCRETO y nuevo del chat o del juego; nada de frases hechas sobre el FUA cargándose, la próxima caída ni el silencio. Si no hay nada concreto que decir, responde solo SKIP.';
+const COHOST_RULES = 'Máximo 1 frase corta y completa (termina siempre en punto, ! o ?). Habla SOLO de lo que pasa en el stream (el suceso indicado, las muertes anotadas, el ambiente del chat) y del FUA, con humor y la voz de Dios Fua. PROHIBIDO hablar del juego: nada de mecánicas, armas, jefes concretos, zonas, dificultad, combos ni consejos, ni inventar datos; tampoco narrar lo que hace cada usuario ni usar frases hechas sobre el FUA cargándose, la próxima caída o el silencio. Si no hay nada concreto que decir, responde solo SKIP.';
+
+// Para hook y timer_ia: el juego solo entra con los datos de RAWG que se pasen (género, año)
+const AUTO_GAME_RULE = 'Del juego solo puedes decir lo que aparece en los datos que te paso (género, año); nada de mecánicas, armas, zonas, dificultad, jefes concretos ni consejos, ni inventar. Nunca cites la nota de RAWG. Bromas cariñosas sobre el juego sí; desprecio o críticas no.';
 
 const PROVOCATION_RULE = 'Te acaban de provocar o insultar. Responde con UNA frase corta (máx. 90 caracteres), con ironía y personalidad, como un colega que no se corta: devuelve la pulla sin ofenderte, sin sermonear. PROHIBIDO rechazar ("no puedo", "lo siento", "no es algo que haga"), explicar que eres un bot o repetir el insulto. Sin emotes.';
 
@@ -14,4 +17,4 @@ function buildQuestionSystemContent({ personality = '', toneNote = '', trapNote 
   return `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. NUNCA inventes datos especificos. ${GAME_RULE} ${LORE_RULE} Sin "Lo siento". Responde SIEMPRE en espanol. ${SPAIN_RULE}`;
 }
 
-module.exports = { LORE_RULE, GAME_RULE, SPAIN_RULE, COHOST_RULES, PROVOCATION_RULE, buildQuestionSystemContent };
+module.exports = { LORE_RULE, GAME_RULE, SPAIN_RULE, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, buildQuestionSystemContent };

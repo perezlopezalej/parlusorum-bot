@@ -98,7 +98,7 @@ describe('fórmulas repetidas', () => {
     assert.equal(r.ok, false);
   });
   test('frase nueva y concreta pasa', () => {
-    const r = q.validateCohost('Ese combo de espada con el dragón ha quedado precioso.', { recent: [REAL.caida1], deathCount: 0 });
+    const r = q.validateCohost('Qué risas se están echando por aquí, el directo va de maravilla.', { recent: [REAL.caida1], deathCount: 0 });
     assert.equal(r.ok, true);
   });
   test('muy parecida a una reciente se rechaza', () => {
