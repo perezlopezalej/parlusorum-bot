@@ -166,9 +166,27 @@ function validateTimerIA(text, { deathCount = 0, recent = [] } = {}) {
   return { ok: true };
 }
 
+// ParLusorum es una cuenta compartida por Manu y Pao: nunca se le pone género
+const GENDERED_ADDRESS_RE = /\b(t[ií]a|t[ií]o|amig[oa]s?|hermano|hermana|compa[ñn]er[oa]|colega|chic[oa]|crack|reina|rey|bro|se[ñn]or[a]?)\b/i;
+function genderedParlusorum(text) {
+  return /parlusorum/i.test(text) && GENDERED_ADDRESS_RE.test(text);
+}
+
+// Resumen de fin de stream: siempre en positivo y con lo que pasó
+const NEGATIVE_SUMMARY_RE = /\b(poca acci[oó]n|sin acci[oó]n|falta de acci[oó]n|aburrid[oa]s?|flojo|floja|mon[oó]tono|mon[oó]tona|decepcion\w*|desastre|pobre|vac[ií][oa]|muerto|lento|lenta|sin nada|nada (?:que|de) (?:contar|destacar))\b/i;
+function negativeSummary(text) { return NEGATIVE_SUMMARY_RE.test(text); }
+
+// Resumen de reserva sin IA: datos reales (muertes, juego) y en positivo
+function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
+  const juego = game ? ` de ${game}` : '';
+  const datos = deathCount > 0 ? `${durationMinutes} minutos con ${deathCount} ${deathCount === 1 ? 'muerte' : 'muertes'}` : `${durationMinutes} minutos`;
+  return `Gran stream${juego}: ${datos}, mucho FUA y muy buen ambiente en el chat.`;
+}
+
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 function validateMention(text) {
   if (!text || text.length < 3) return { ok: false, reason: 'vacío' };
+  if (genderedParlusorum(text)) return { ok: false, reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   return { ok: true };
@@ -206,6 +224,6 @@ module.exports = {
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
-  validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem,
+  validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
   mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

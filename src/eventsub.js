@@ -30,7 +30,18 @@ const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
 
 // Deduplicación de notificaciones — Twitch puede reenviar el mismo evento
 const MESSAGE_MAX_AGE_MS = 10 * 60 * 1000;
-const processedEventIds = new Map(); // message-id → expiresAt
+const processedEventIds = new Map(); // message-id | tipo:event.id → expiresAt
+
+const DEDUPE_BY_EVENT_ID = /^channel\.(poll|prediction)\./;
+
+// true si ya se vio este evento (tipo + id); lo registra si es nuevo. Solo encuestas y predicciones.
+function isRepeatedEvent(seen, type, eventId, now = Date.now(), ttl = 60 * 60 * 1000) {
+  if (!type || !eventId || !DEDUPE_BY_EVENT_ID.test(type)) return false;
+  const key = `${type}:${eventId}`;
+  if (seen.has(key)) return true;
+  seen.set(key, now + ttl);
+  return false;
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -341,6 +352,12 @@ function createEventSubHandler(client, channel, deps) {
 
       const type = body.subscription?.type;
       const event = body.event;
+
+      // Encuestas y predicciones: además del Message-Id, un mismo evento (tipo + id) se narra una sola vez
+      if (isRepeatedEvent(processedEventIds, type, event?.id)) {
+        logger.info(`ℹ️ EventSub: evento repetido ignorado → 204 (${type} ${event.id})`);
+        return;
+      }
       logger.info(`📨 EventSub: notificación aceptada → 204 (${type})`);
 
       if (type === 'channel.follow' && event?.user_name) {
@@ -616,5 +633,6 @@ module.exports = {
   getStreamUptime,
   getViewersWithAppToken,
   getAppAccessToken,
-  getPublicBaseUrl
+  getPublicBaseUrl,
+  isRepeatedEvent
 };

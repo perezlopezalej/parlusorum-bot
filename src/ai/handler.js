@@ -6,6 +6,7 @@ const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached, deci
 const factcheck = require('./factcheck');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate } = require('./patterns');
 const quality = require('./quality');
+const { predictFromRows, refersToNextStream } = require('./prophecy');
 const { sanitizeForAI } = require('../utils/filter');
 const { classifyGameMatch } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
@@ -607,14 +608,9 @@ function postStreamEnd(client, channel, aiSummary) {
 // --- Profecía de muertes ---
 const prophecyMsgs = messagesConfig.prophecy;
 
-// Media de muertes de sesiones previas (prioriza el mismo juego); null si no hay histórico
+// Media de muertes de sesiones previas con muertes apuntadas (prioriza el mismo juego); null si no hay histórico
 async function predictDeaths(game) {
-  const rows = (await getRecentSessionDeaths(10)).filter(r => Number.isFinite(r.death_count));
-  if (rows.length === 0) return null;
-  const sameGame = game ? rows.filter(r => r.game === game) : [];
-  const pool = sameGame.length >= 2 ? sameGame : rows;
-  const avg = pool.reduce((s, r) => s + r.death_count, 0) / pool.length;
-  return { deaths: Math.max(1, Math.round(avg)), basis: sameGame.length >= 2 ? `${sameGame.length} streams anteriores de ${game}` : `${pool.length} streams anteriores`, history: pool.map(r => r.death_count) };
+  return predictFromRows(await getRecentSessionDeaths(10), game);
 }
 
 // Llamado desde eventsub.js poco después del warmup
@@ -631,11 +627,11 @@ async function onProphecy(client, channel, game) {
         max_tokens: 120,
         messages: [
           { role: 'system', content: NARRATOR_BASE(game ? `Juego de hoy: "${game}".` : '') },
-          { role: 'user', content: `Profetiza, como oráculo del FUA, que hoy el streamer morirá EXACTAMENTE ${deaths} veces. ${basis} El número ${deaths} debe aparecer en el mensaje. Máx 2 frases.` }
+          { role: 'user', content: `Profetiza, como oráculo del FUA, que HOY, en el stream de ahora, el streamer morirá EXACTAMENTE ${deaths} veces. ${basis} El número ${deaths} debe aparecer en el mensaje. Di "hoy"; nunca "el próximo stream" ni "la próxima vez". Máx 2 frases.` }
         ]
       });
       const out = (response.choices[0].message.content || '').trim();
-      if (out && out.includes(String(deaths))) text = truncate(out);
+      if (out && out.includes(String(deaths)) && !refersToNextStream(out)) text = truncate(out);
     } catch (err) {
       logger.warn(`Profecía IA: ${err.message}`);
     }

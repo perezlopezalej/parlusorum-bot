@@ -11,6 +11,7 @@ const {
   endStreamSession
 } = require('../utils/supabase');
 const logger = require('../utils/logger');
+const quality = require('../ai/quality');
 const { containsBlockedContent } = require('../utils/filter');
 const { groqWithRetry } = require('../utils/groq-utils');
 const { onStreamEndLore } = require('../lore/handler');
@@ -32,9 +33,10 @@ Acaba de terminar un stream con estos datos:
 - Muestra del chat durante el stream: ${chatSample || 'sin datos'}
 
 Genera un resumen BREVE y CONCRETO del stream en español. Incluye:
-1. Una frase que describa cómo fue el stream (épico, tranquilo, caótico...)
+1. Una frase en POSITIVO con lo que pasó (muertes, jefes, momentos del juego, ambiente del chat). Nunca digas que hubo poca acción, que fue aburrido, flojo o tranquilo: si pasó poco, destaca el buen rollo y el chat.
 2. El momento más destacado si lo detectas en el chat
 3. Una frase recurrente del chat si la hay
+No pongas género a ParLusorum (la cuenta la usan Manu y Pao): nada de tía/tío/amigo/amiga.
 
 Responde SOLO en JSON con este formato exacto:
 {
@@ -53,9 +55,14 @@ Responde SOLO en JSON con este formato exacto:
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
+    const rawSummary = String(parsed.summary || '').trim();
+    const summary = !rawSummary || quality.negativeSummary(rawSummary) || quality.genderedParlusorum(rawSummary)
+      ? quality.positiveSummaryFallback(streamStats)
+      : rawSummary;
+
     return {
       game,
-      summary: parsed.summary || '',
+      summary,
       highlights: parsed.highlights || [],
       recurringPhrases: parsed.recurringPhrases || [],
       activeUsers: streamStats.activeUsers || []
@@ -65,7 +72,7 @@ Responde SOLO en JSON con este formato exacto:
     // Fallback sin IA
     return {
       game: streamStats.game,
-      summary: `Stream de ${streamStats.durationMinutes} minutos con ${streamStats.deathCount} muertes.`,
+      summary: quality.positiveSummaryFallback(streamStats),
       highlights: [],
       recurringPhrases: [],
       activeUsers: streamStats.activeUsers || []

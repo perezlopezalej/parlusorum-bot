@@ -26,21 +26,21 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - **Timers fijos**: follow cada 60 min; fuera "¿tienes alguna pregunta?" (lo cubre el hook).
 - **CI**: `.github/workflows/test.yml` ejecuta `npm ci` y `npm test` (Node 22) en cada push y PR a `main`, con variables falsas.
 
+- **Lore y tono**: vlxj97 es el creador del bot, no del canal (Manu y Pao); sin género para ParLusorum (`validateMention` rechaza tía/tío/amigo/amiga junto a ParLusorum); resumen de fin de stream siempre en positivo con muertes/jefes (`negativeSummary` y `positiveSummaryFallback`).
+- **Profecía**: ignora sesiones con 0 muertes, sin historial del juego usa la media de todas las que tienen muertes, y dice siempre "hoy" (`src/ai/prophecy.js`).
+- **Encuestas y predicciones**: se narran una sola vez por tipo + id del evento, además del Message-Id (`isRepeatedEvent`). `npm run check:eventsub`: 12 suscripciones, una por tipo, sin duplicados ni callbacks obsoletos.
+
 ## Pendiente de probar en directo
 
 - Cohost por eventos (frecuencia, tono, que no invente nada del juego) y la comprobación SÍ/NO (que no descarte demasiado).
 - Redirección de menciones del juego a `!dios_fua` y respuesta con el contador de muertes.
 - Menciones y provocaciones (que no dé cuerda al troleo).
-- Profecía persistente.
+- Profecía persistente (con la nueva media y diciendo "hoy").
+- Resumen de fin de stream en positivo y que no trate a ParLusorum con género.
+- Encuesta/predicción: un solo mensaje por evento.
 - Lore aprendido.
 - `!tiempo`.
 - Muertes por juego.
-
-## Siguiente sesión (plan aprobado, sin hacer)
-
-- Lore y tono: vlxj97 es creador del bot, no del canal; sin género para ParLusorum; resumen de fin de stream en positivo.
-- Profecía: media de todas las sesiones con muertes si el juego no tiene historial; decir "hoy".
-- Encuestas y predicciones: narrar cada evento una sola vez (deduplicar por `event.id`; `npm run check:eventsub`).
 
 ## Ideas futuras
 
