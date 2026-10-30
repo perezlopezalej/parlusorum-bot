@@ -84,8 +84,9 @@ function notifyNarrative() {
 let newEventListener = null;
 function onNarrativeEvent(fn) { newEventListener = fn; }
 
-function addNarrativeEvent(type, description) {
-  const event = { type, description, ts: Date.now() };
+// n (opcional): unidades que aporta el evento de golpe (p. ej. "!muertes +3")
+function addNarrativeEvent(type, description, n = 1) {
+  const event = { type, description, ts: Date.now(), ...(n > 1 ? { n } : {}) };
   streamNarrative.push(event);
   streamNarrative = pruneNarrative(streamNarrative);
   notifyNarrative();
@@ -277,6 +278,12 @@ function recordGroqFallback(requested, used) {
 function getGroqFallbackUse() { return Object.fromEntries(groqFallbackUse); }
 function resetGroqFallbackUse() { groqFallbackUse.clear(); }
 
+// --- Descartes del cohost en el stream (motivo → nº), para el resumen de fin de stream ---
+const cohostDiscards = new Map();
+function recordCohostDiscard(reason) { cohostDiscards.set(reason, (cohostDiscards.get(reason) || 0) + 1); }
+function getCohostDiscards() { return Object.fromEntries(cohostDiscards); }
+function resetCohostDiscards() { cohostDiscards.clear(); }
+
 // --- Cola del registro de chat (se vuelca a Supabase por lotes; ver utils/chatlog.js) ---
 const CHATLOG_MAX_BUFFER = 1000;
 let chatLogBuffer = [];
@@ -296,6 +303,7 @@ function getChatLogSize() { return chatLogBuffer.length; }
 module.exports = {
   pushChatLog, takeChatLog, requeueChatLog, getChatLogSize,
   recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
+  recordCohostDiscard, getCohostDiscards, resetCohostDiscards,
   addLoreSample, getLoreSample, resetLoreSample,
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,

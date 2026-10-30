@@ -154,3 +154,15 @@ describe('validateHook', () => {
     assert.equal(q.validateHook(t, { recent: [t] }).ok, false);
   });
 });
+
+describe('cohost: ambiente del chat', () => {
+  const q = require('../src/ai/quality');
+  test('judgesChatMood detecta juicios del ambiente', () => {
+    for (const t of ['El chat está quieto hoy, qué sueño.', 'Chat dormilón, despertad ya.', 'Qué silencio en el chat, FUA.']) assert.equal(q.judgesChatMood(t), true, t);
+    assert.equal(q.judgesChatMood('Pedir pizza con piña es delito y lo sabéis.'), false);
+  });
+  test('validateCohost lo rechaza', () => {
+    assert.equal(q.validateCohost('El chat está tranquilo y dormilón, FUA.').ok, false);
+    assert.equal(q.validateCohost('Pizza con piña es un crimen contra la humanidad.').ok, true);
+  });
+});

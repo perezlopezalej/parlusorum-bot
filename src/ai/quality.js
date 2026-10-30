@@ -123,6 +123,10 @@ function gameTalkProblem(text) {
   return null;
 }
 
+// Juzgar el ambiente del chat ("el chat está quieto/dormilón") no es un comentario, es relleno
+const MOOD_JUDGING_RE = /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
+function judgesChatMood(text) { return MOOD_JUDGING_RE.test(String(text || '')); }
+
 // Validación del cohost. ctx: { deathCount, recent: string[], named: Map, now, nameWindowMs }
 function validateCohost(text, { deathCount = 0, recent = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
@@ -130,9 +134,10 @@ function validateCohost(text, { deathCount = 0, recent = [], named = new Map(), 
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
   const names = recentlyNamedIn(text, named, now, nameWindowMs);
-  if (names.length) return { ok: false, reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no nombres a nadie` };
+  if (names.length) return { ok: false, reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas` };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un mensaje reciente' };
+  if (judgesChatMood(text)) return { ok: false, reason: 'juzga el ambiente del chat; reacciona a un tema concreto con humor' };
   const game = gameTalkProblem(text);
   if (game) return { ok: false, reason: game };
   return { ok: true };
@@ -222,7 +227,7 @@ function dropTrailingFragment(text) {
 
 module.exports = {
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
-  hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
+  judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
   mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,

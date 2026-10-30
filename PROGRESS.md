@@ -21,7 +21,9 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - **Infraestructura**: Supabase, despliegue automático en Render, cola anti-límite de IRC, watchdog y tests.
 - **Sin datos inventados del juego**: cohost, hook, `timer_ia` y menciones no hablan de mecánicas, armas, zonas ni dificultad; antes de enviar, una comprobación SÍ/NO con el modelo rápido (`src/ai/factcheck.js`) descarta lo que afirme algo sin respaldo (si falla, calla). `!dios_fua` solo da datos de `buscar_juego` (RAWG).
 - **Menciones**: preguntas concretas del juego se redirigen a `!dios_fua`; por las muertes se da el contador real.
-- **Cohost por eventos**: comenta primera muerte, rachas de 3, récord, boss, sub, raid y explosión del chat (mín. 5 min entre comentarios, 6/hora); al azar, 1 por hora como máximo y con el chat tranquilo.
+- **Cohost por eventos**: comenta primera muerte, racha (3 o más muertes en 10 min, sumando las unidades de `!muertes +N`), récord (también si el contador lo salta), boss, sub, raid y explosión del chat (mín. 5 min entre comentarios).
+- **Cohost libre**: hasta 4 comentarios/hora sin evento, 10 min mínimo entre ellos y 8/hora en total (2 huecos reservados a eventos); reaccionan con humor u opinión a un tema del chat, sin juzgar el ambiente (`judgesChatMood` en `quality.js`). Se puede nombrar a usuarios salvo repetir al mismo en 15 min. Variables: `COHOST_FREE_MAX_PER_HOUR`, `COHOST_FREE_MIN_GAP_MS`, `COHOST_MAX_PER_HOUR`, `COHOST_PROBABILITY`.
+- **Descartes del cohost**: el fin de stream registra en `bot.log` cuántos mensajes se descartaron por calidad, factcheck, rate limit y SKIP.
 - **`timer_ia`**: validación de `quality.js` (`validateTimerIA`), sin citar la nota de RAWG, sin repetir ideas ni despreciar el juego.
 - **Timers fijos**: follow cada 60 min; fuera "¿tienes alguna pregunta?" (lo cubre el hook).
 - **CI**: `.github/workflows/test.yml` ejecuta `npm ci` y `npm test` (Node 22) en cada push y PR a `main`, con variables falsas.
@@ -32,7 +34,7 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 
 ## Pendiente de probar en directo
 
-- Cohost por eventos (frecuencia, tono, que no invente nada del juego) y la comprobación SÍ/NO (que no descarte demasiado).
+- Cohost libre y por eventos (≈4 libres/h, que reaccionen a un tema sin juzgar el ambiente; `!muertes +2` dispara primera muerte/racha/récord) y la comprobación SÍ/NO: mirar en `bot.log` la línea "cohost descartado" para ver si descarta demasiado.
 - Redirección de menciones del juego a `!dios_fua` y respuesta con el contador de muertes.
 - Menciones y provocaciones (que no dé cuerda al troleo).
 - Profecía persistente (con la nueva media y diciendo "hoy").

@@ -1,8 +1,8 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent } = require('../utils/state');
-const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, randomCohostAllowed, EVENT_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent } = require('../utils/state');
+const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, freeCohostAllowed, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, FREE_COHOST_MIN_GAP_MS, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate } = require('./patterns');
 const quality = require('./quality');
@@ -23,7 +23,10 @@ const { throttleSay } = require('../alerts/handler');
 // Cohost: COOLDOWN = mínimo entre cohosts; PROBABILITY = prob. por mensaje al salir del cooldown (crece con el silencio del cohost);
 // MAX_PER_HOUR = tope; NAME_WINDOW = tiempo sin volver a nombrar al mismo usuario. Los silencios los cubre el hook, no el cohost.
 const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '600000', 10);
-// (el comentario al azar es como mucho 1 por hora y solo con el chat tranquilo; PROBABILITY es por mensaje cuando se cumple eso)
+// Comentarios libres (sin evento): FREE_MAX_PER_HOUR y FREE_MIN_GAP_MS; PROBABILITY es por mensaje cuando se cumple el freno.
+// MAX_PER_HOUR es el tope total (eventos + libres).
+const COHOST_FREE_MAX_PER_HOUR = parseInt(process.env.COHOST_FREE_MAX_PER_HOUR || String(FREE_COHOST_MAX_PER_HOUR), 10);
+const COHOST_FREE_MIN_GAP = parseInt(process.env.COHOST_FREE_MIN_GAP_MS || String(FREE_COHOST_MIN_GAP_MS), 10);
 const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.25');
 const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || String(EVENT_COHOST_MAX_PER_HOUR), 10);
 const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
@@ -390,10 +393,10 @@ function detectChatMood(messages) {
   return 'NEUTRO';
 }
 
-// Cohost por eventos: habla cuando pasa algo destacado (`moment`) y, como mucho una vez por hora, al azar con el chat tranquilo.
+// Cohost: habla cuando pasa algo destacado (`moment`) y, con el freno de comentarios libres, reaccionando a lo que se habla en el chat.
 // Devuelve true si habló. La respuesta se valida en código (tono, muertes, nombres, mecánicas del juego) y con una
 // comprobación SÍ/NO del modelo rápido, con un reintento; si no pasa, se calla.
-let lastRandomCohostAt = 0;
+let freeCohostTimes = [];
 let deathRecordCache = { at: 0, max: 0 };
 
 // Máximo de muertes de los streams anteriores (para detectar el récord); caché de 30 min
@@ -412,12 +415,12 @@ async function handleCohost(client, channel, moment = null) {
   refreshMode();
   const modeConfig = getModeConfig();
   if (!moment) {
-    if (!randomCohostAllowed({ now, lastRandomAt: lastRandomCohostAt, lastAnyAt: getLastCohostTime(), mode: getPersonalityMode() })) return false;
+    if (!freeCohostAllowed({ now, freeStamps: freeCohostTimes, stamps: getCohostTimes(), lastAnyAt: getLastCohostTime(), maxFree: COHOST_FREE_MAX_PER_HOUR, minGapMs: COHOST_FREE_MIN_GAP, maxTotal: COHOST_MAX_PER_HOUR })) return false;
     if (Math.random() > COHOST_PROBABILITY) return false;
   }
   const recentContext = getRecentHistory(5);
   if (!moment && !recentContext) return false;
-  if (!canMakeRequest()) return false;
+  if (!canMakeRequest()) { recordCohostDiscard('ratelimit'); return false; }
 
   const contextFingerprint = recentContext.slice(0, 200);
   if (!moment) {
@@ -455,7 +458,7 @@ async function handleCohost(client, channel, moment = null) {
     const streamNote = ` Llevan ${startedAt ? Math.floor((now - startedAt) / 60000) : '?'} min de stream.${deathNote}`;
     const nameNote = namesAllowed
       ? ' Puedes nombrar a quien aparece en el suceso, a nadie más.'
-      : ` No nombres a ningún usuario${blockedNames.length ? ` (sobre todo no a: ${blockedNames.join(', ')})` : ''}; nunca narres lo que hace cada usuario; habla del chat en general.`;
+      : ` Puedes nombrar a un usuario si aporta gracia${blockedNames.length ? `, pero NO a: ${blockedNames.join(', ')} (ya nombrados hace poco)` : ''}; nunca narres lo que hace cada usuario.`;
     const emoteNote = allowEmote ? ' Como mucho 1 emote, solo si encaja de verdad.' : ' NO uses ningún emote en este mensaje.';
     const windowLines = chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).slice(-25);
     const chatSummary = condenseChat(windowLines);
@@ -480,28 +483,28 @@ async function handleCohost(client, channel, moment = null) {
           },
           { role: 'user', content: moment
             ? `Acaba de pasar esto en el stream: ${moment.description}.${recentContext ? `\nChat reciente:\n${recentContext}` : ''}\nComenta ESE hecho con humor y la voz de Dios Fua, en una frase. No hables de mecánicas del juego.`
-            : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nHaz un comentario gracioso sobre el ambiente del chat con la voz de Dios Fua, sin hablar del juego. Si no hay nada que decir, responde SKIP.` }
+            : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nElige UN tema concreto de lo que se está hablando en el chat y suelta una reacción con humor u opinión propia, con la voz de Dios Fua (no lo describas ni lo resumas). Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. Si no hay nada que decir, responde SKIP.` }
         ]
       });
       const choice = response.choices[0];
       const raw = (choice.message.content || '').trim();
-      if (/^SKIP\b/i.test(raw)) { logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
+      if (/^SKIP\b/i.test(raw)) { recordCohostDiscard('skip'); logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
       const complete = choice.finish_reason === 'length' ? quality.dropTrailingFragment(raw) : raw;
       const text = quality.applyEmotePolicy(truncate(complete, maxChars), allowEmote, emotes);
       const check = quality.validateCohost(text, { deathCount, recent: recentBot, named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW });
       if (check.ok) {
         const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
-        if (await factcheck.shouldDiscard(text, facts)) { logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`); break; }
+        if (await factcheck.shouldDiscard(text, facts)) { recordCohostDiscard('factcheck'); logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`); break; }
         reply = text;
-      } else { feedback = check.reason; logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`); }
+      } else { feedback = check.reason; recordCohostDiscard('quality'); logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`); }
     }
 
-    if (!reply) { recordCohost(Date.now(), false); return false; }
+    if (!reply) { recordCohost(Date.now(), false); if (!moment) freeCohostTimes = pruneHourly([...freeCohostTimes, Date.now()]); return false; }
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     markNamed(quality.namesIn(reply, chatHistory.slice(-60).map(m => m.username)));
     recordCohost();
-    if (!moment) { lastRandomCohostAt = Date.now(); setLastCohostContextHash(contextFingerprint); }
+    if (!moment) { freeCohostTimes = pruneHourly([...freeCohostTimes, Date.now()]); setLastCohostContextHash(contextFingerprint); }
     return true;
   } catch (err) {
     logger.error(`Co-host: ${err.message}`);

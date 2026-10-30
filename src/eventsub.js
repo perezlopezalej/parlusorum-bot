@@ -11,7 +11,7 @@ const {
   getDeathCount, setDeathCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter, clearProphecy, setProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
-  getGroqFallbackUse, resetGroqFallbackUse,
+  getGroqFallbackUse, resetGroqFallbackUse, getCohostDiscards, resetCohostDiscards,
 } = require('./utils/state');
 
 // La narrativa de la sesión se persiste en Supabase en cada cambio (escritura diferida)
@@ -434,6 +434,9 @@ function createEventSubHandler(client, channel, deps) {
           resetGroqFallbackUse();
           const fallbackLines = Object.entries(fallbackUse).map(([k, n]) => `${k}: ${n}`).join(', ');
           logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
+          const discards = getCohostDiscards();
+          resetCohostDiscards();
+          logger.info(`📊 Fin de stream — cohost descartado: ${Object.entries(discards).map(([k, n]) => `${k}: ${n}`).join(', ') || 'nada'}`);
           try {
             const gameInfo = await getCurrentGame().catch(() => null);
             const metrics = getSummary();

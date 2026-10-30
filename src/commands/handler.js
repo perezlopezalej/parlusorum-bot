@@ -216,7 +216,7 @@ async function handleMuertes(client, channel, args, isMod, username) {
     let total = getDeathCount();
     for (let i = 0; i < cmd.n; i++) total = incrementDeathCount();
     saveSessionDeaths(total);
-    addNarrativeEvent('death', cmd.n === 1 ? `Muerte #${total} del streamer en este stream` : `${cmd.n} muertes más del streamer (${total} en este stream)`);
+    addNarrativeEvent('death', cmd.n === 1 ? `Muerte #${total} del streamer en este stream` : `${cmd.n} muertes más del streamer (${total} en este stream)`, cmd.n);
     client.say(channel, cmd.n === 1 ? `💀 Muerte #${total} en este stream 😅` : truncate(muertesMsgs.added.replace('{n}', cmd.n).replace('{total}', total)));
   } else if (cmd.type === 'reset') {
     resetDeathCount(); saveSessionDeaths(0); client.say(channel, `💀 Contador reseteado.`);

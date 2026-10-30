@@ -122,18 +122,46 @@ describe('cohost por eventos', () => {
     }
     assert.equal(n.classifyCohostMoment({ type: 'rage', description: 'x', ts: now }, { now }), null);
   });
-  test('freno: 5 min entre comentarios y 6 por hora', () => {
+  test('freno: 5 min entre comentarios y 8 por hora', () => {
     assert.equal(n.eventCohostAllowed({ now, lastAt: now - 4 * 60000, stamps: [] }), false);
     assert.equal(n.eventCohostAllowed({ now, lastAt: now - 6 * 60000, stamps: [] }), true);
-    const six = Array.from({ length: 6 }, (_, i) => now - (10 + i * 8) * 60000);
-    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 6 * 60000, stamps: six }), false);
+    const eight = Array.from({ length: 8 }, (_, i) => now - (10 + i * 6) * 60000);
+    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 6 * 60000, stamps: eight }), false);
   });
-  test('al azar: solo con chat tranquilo y máx. 1 por hora', () => {
-    assert.equal(n.randomCohostAllowed({ now, mode: 'normal' }), false);
-    assert.equal(n.randomCohostAllowed({ now, mode: 'chill' }), true);
-    assert.equal(n.randomCohostAllowed({ now, mode: 'chill', lastRandomAt: now - 30 * 60000 }), false);
-    assert.equal(n.randomCohostAllowed({ now, mode: 'chill', lastRandomAt: now - 61 * 60000 }), true);
-    assert.equal(n.randomCohostAllowed({ now, mode: 'chill', lastAnyAt: now - 2 * 60000 }), false);
+  test('"+N" cuenta como N: primera muerte, racha y récord con saltos', () => {
+    const jump = (n, total, ago = 0) => ({ type: 'death', description: `${n} muertes más`, ts: now - ago, n });
+    const e0 = jump(2, 2);
+    assert.equal(n.classifyCohostMoment(e0, { events: [e0], deathCount: 2, now }).kind, 'first_death');
+    const e1 = death(1, 300000), e2 = jump(2, 3);
+    assert.equal(n.classifyCohostMoment(e2, { events: [e1, e2], deathCount: 3, now }).kind, 'streak');
+    const e3 = jump(3, 18);
+    assert.equal(n.classifyCohostMoment(e3, { events: [death(1, 60000), e3], deathCount: 18, recordToBeat: 16, now }).kind, 'record');
+    const e4 = jump(2, 10);
+    assert.equal(n.classifyCohostMoment(e4, { events: [death(1, 60000), death(2, 50000), death(3, 40000), e4], deathCount: 10, now }), null);
+  });
+  test('la racha no se repite mientras sigue por encima de 3 en la ventana', () => {
+    const ev = [death(1, 400000), death(2, 300000), death(3, 200000), death(4, 0)];
+    assert.equal(n.classifyCohostMoment(ev[3], { events: ev, deathCount: 4, now }), null);
+  });
+  test('deathStreakLength suma las unidades de n', () => {
+    assert.equal(n.deathStreakLength([{ type: 'death', ts: now, n: 3 }, death(1, 0)], now), 4);
+  });
+  test('restoreNarrative conserva n', () => {
+    assert.equal(n.restoreNarrative([{ type: 'death', description: 'x', ts: 5, n: 3 }])[0].n, 3);
+  });
+  test('libres: 4/h, 10 min entre libres y 2 huecos reservados a eventos', () => {
+    assert.equal(n.freeCohostAllowed({ now }), true);
+    assert.equal(n.freeCohostAllowed({ now, freeStamps: [now - 9 * 60000] }), false);
+    assert.equal(n.freeCohostAllowed({ now, freeStamps: [now - 11 * 60000] }), true);
+    const four = [50, 40, 30, 20].map(m => now - m * 60000);
+    assert.equal(n.freeCohostAllowed({ now, freeStamps: four, stamps: four }), false);
+    const six = Array.from({ length: 6 }, (_, i) => now - (10 + i * 8) * 60000);
+    assert.equal(n.freeCohostAllowed({ now, stamps: six }), false);
+    assert.equal(n.freeCohostAllowed({ now, lastAnyAt: now - 2 * 60000 }), false);
+  });
+  test('tope total por hora: 8', () => {
+    const eight = Array.from({ length: 8 }, (_, i) => now - (10 + i * 6) * 60000);
+    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 6 * 60000, stamps: eight }), false);
   });
 });
 
