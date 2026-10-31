@@ -48,6 +48,21 @@ const GAME_FACT_RE = /\b(niveles?|mapa|personajes?|finales?|secuela|dlc|logros?|
 function mentionsGame(text, game = '') {
   const t = String(text || '');
   if (MECHANICS_RE.test(t) || GAME_FACT_RE.test(t)) return true;
+  return mentionsGameName(t, game);
+}
+
+// ¿Habla de videojuegos? Palabras de gaming o el nombre del juego actual. "resistencia" o "zona" sueltas no bastan (cultura general)
+const GAMING_RE = /\b(videojuegos?|juegos?|jugar|jugando|jugado|gamer|gaming|consolas?|steam|ps[345]|playstation|xbox|nintendo|switch|dlc|speedrun\w*|soulslike|rpg|fps|mmo\w*|roguelike|indie|mando|boss(?:es)?|jefe final|npc|gameplay|mods?)\b/i;
+function talksAboutGames(text, game = '') {
+  const t = String(text || '');
+  return GAMING_RE.test(t) || mentionsGameName(t, game);
+}
+
+// Nada técnico en el chat: ni RAWG, ni "datos", ni herramientas
+const TECH_LEAK_RE = /\brawg\b|buscar_juego|herramientas?\b|bases? de datos|\bapi\b|\bmis datos\b|no tengo (?:los |esos )?datos/i;
+function leaksTech(text) { return TECH_LEAK_RE.test(String(text || '')); }
+
+function mentionsGameName(t, game = '') {
   const g = norm(game).replace(/\(.*?\)/g, '').trim();
   if (g.length >= 3 && g !== 'desconocido' && norm(t).includes(g)) return true;
   // Juegos de varias palabras ("Phantom Blade Zero"): vale con citar dos palabras distintivas o un subtítulo largo
@@ -250,6 +265,7 @@ function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 function validateMention(text) {
   if (!text || text.length < 3) return { ok: false, reason: 'vacío' };
+  if (leaksTech(text)) return { ok: false, reason: 'menciona datos, herramientas o RAWG; habla con personalidad, sin nada técnico' };
   if (genderedParlusorum(text)) return { ok: false, reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
@@ -290,5 +306,5 @@ module.exports = {
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
-  mentionsGame, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
+  mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

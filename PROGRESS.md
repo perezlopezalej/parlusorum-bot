@@ -41,7 +41,11 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 
 - **F0 vida y aprendizaje (medir y autorrevisión)**: `src/ai/reactions.js` puntúa la reacción del chat (60 s) a los mensajes de la IA (cohost, mención, timer_ia, hook, quemeperdi, dios_fua; no timers ni comandos) restando la risa de base; `chat_log.reply_parent_login` guarda a quién responde cada usuario. `src/ai/self-review.js`, al acabar el stream (15 s después del cierre), marca repeticiones, posibles inventos, negativos e ignorados, y la IA redacta un informe corto solo sobre ellos: va a `bot.log` y a `bot_self_reviews`, nunca al chat ni al prompt. Migración `supabase/migrations/006_vida_aprendizaje_f0.sql`. Plan completo en `logs/plan-vida-aprendizaje.md`.
 
+- **Cultura general sin control de videojuegos**: `!dios_fua` y menciones solo aplican la comprobación contra RAWG / "no inventar" si la pregunta o la respuesta hablan de juegos (`quality.talksAboutGames`: palabras de gaming o nombre del juego actual). Para el resto (ej. las abejas) responde con el conocimiento del modelo, corto y con humor si duda (`GENERAL_RULE` en `prompts.js`; la herramienta `buscar_juego` queda marcada solo para videojuegos). Nada técnico en el chat: `quality.leaksTech` (solo RAWG, "base(s) de datos", "no tengo datos", "mis datos", "herramienta(s)", "API" y `buscar_juego`; la palabra "datos" suelta se permite) rechaza la mención o cambia `!dios_fua` por una de las frases de `dios_fua_no_data` (ahora lista con personalidad); `!juego` y `!ayuda` ya no citan RAWG.
+
 ## Pendiente de probar en directo
+
+- Pregunta de cultura general con `!dios_fua` y por mención ("es cierto que las abejas en verano viven menos que en invierno?"): debe responder corto y sin hablar de RAWG/datos; una pregunta de juego sigue consultando `buscar_juego`.
 
 - F0: tras ejecutar la migración 006 y hacer un directo, comprobar en `bot.log` las líneas "📊 Reacciones" y "📝 Autorrevisión del bot" y la fila en `bot_self_reviews`; revisar si la detección de risas/negativas acierta (es la línea base para F1-F5).
 

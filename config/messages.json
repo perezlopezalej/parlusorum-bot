@@ -120,14 +120,18 @@
     "Qué intensidad, tío. Respira, que es un directo."
   ],
   "mention_game_redirect": [
-    "Eso del juego mejor pregúntamelo con !dios_fua y lo miro con datos, que de memoria me lío.",
-    "Para cosas concretas del juego usa !dios_fua, que ahí consulto y no me invento nada.",
-    "De mecánicas y datos del juego no hablo a la ligera: prueba con !dios_fua.",
+    "Eso del juego mejor pregúntamelo con !dios_fua, que ahí me concentro y no me lío.",
+    "Para cosas concretas del juego usa !dios_fua, que ahí me pongo serio y no me invento nada.",
+    "De los entresijos del juego no hablo a la ligera: prueba con !dios_fua.",
     "Pregunta de juego detectada. Llévala a !dios_fua y te la contesto bien."
   ],
   "mention_deaths": {
     "some": "Llevamos {n} muertes en este stream 💀",
     "none": "El contador está a 0 muertes, o nadie las ha apuntado todavía 💀"
   },
-  "dios_fua_no_data": "no tengo datos fiables de eso en RAWG, así que no me lo invento. Prueba a preguntar por el nombre del juego 🤔"
+  "dios_fua_no_data": [
+    "de eso no pondría la mano en el fuego y prefiero no soltar un bulo. Prueba a preguntarme con el nombre exacto del juego 🤔",
+    "ahí me pillas, ni el FUA lo sabe a ciencia cierta. Mejor no inventarme nada 😅",
+    "me suena, pero no me fío ni de mí mismo, así que callo antes que mentir 🤔"
+  ]
 }

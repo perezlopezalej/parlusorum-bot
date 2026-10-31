@@ -6,7 +6,7 @@
     { "name": "top", "help": "Ranking total de victorias en la trivia (top 5)." },
     { "name": "quemeperdi", "help": "Resumen en 2 frases de lo que ha pasado en el stream hasta ahora." },
     { "name": "dios_fua", "help": "Preguntame cualquier cosa. Uso: !dios_fua [pregunta]" },
-    { "name": "juego", "help": "Juego actual del canal con info de RAWG." },
+    { "name": "juego", "help": "Juego actual del canal con género, año y nota." },
     { "name": "estadisticas", "help": "Stats del stream en tiempo real." },
     { "name": "uptime", "help": "Tiempo que lleva activo el stream (o el bot si está offline)." },
     { "name": "score", "help": "Marcador de bosses y muertes. Session actual + total histórico." },

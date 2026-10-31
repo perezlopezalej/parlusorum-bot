@@ -156,7 +156,7 @@ async function handleJuego(client, channel) {
     if (rawg?.genres && rawg?.rating) {
       const year = rawg.released ? rawg.released.slice(0, 4) : '';
       const title = g.title ? ` | "${g.title}"` : '';
-      client.say(channel, `🎮 ${g.game}${year ? ` (${year})` : ''} — ${rawg.genres} — ⭐ ${rawg.rating}/5 en RAWG${title}`);
+      client.say(channel, `🎮 ${g.game}${year ? ` (${year})` : ''} — ${rawg.genres} — ⭐ ${rawg.rating}/5${title}`);
       return;
     }
   } catch {}

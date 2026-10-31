@@ -985,7 +985,7 @@ const BUSCAR_JUEGO_TOOL = {
   type: 'function',
   function: {
     name: 'buscar_juego',
-    description: 'Busca datos reales de un videojuego en RAWG: fecha de salida, desarrolladora, géneros y descripción corta',
+    description: 'SOLO para videojuegos (nunca para cultura general): busca datos reales de un videojuego en RAWG: fecha de salida, desarrolladora, géneros y descripción corta',
     parameters: {
       type: 'object',
       properties: { nombre: { type: 'string', description: 'Nombre del videojuego' } },
@@ -1000,8 +1000,8 @@ async function buscarJuegoTool(nombre) {
   const info = await getGameInfo(clean.slice(0, 80), { detail: true }).catch(() => null);
   const match = info ? classifyGameMatch(clean, info.name) : 'none';
   logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? `${info.name} (${match})` : 'sin datos'}`);
-  if (match === 'none') return `SIN DATOS: RAWG no encontró "${clean}". No inventes nada; di con humor que no tienes datos.`;
-  if (match === 'maybe') return `SIN DATOS, quizá se refiera a ${info.name}. No presentes ese juego como el pedido ni uses sus datos; pregunta si se refiere a ese.`;
+  if (match === 'none') return `SIN DATOS: no hay información de "${clean}". Si es un videojuego no inventes nada y dilo con humor sin hablar de datos ni de fuentes; si no es un videojuego, responde con lo que sepas.`;
+  if (match === 'maybe') return `SIN DATOS, quizá se refiera a ${info.name}. Sin hablar de datos ni de fuentes: no presentes ese juego como el pedido ni uses sus datos; pregunta si se refiere a ese.`;
   return [
     `Nombre: ${info.name}`,
     `Salida: ${info.released || 'desconocida'}`,
@@ -1088,10 +1088,14 @@ async function handleQuestion(client, channel, tags, args) {
     }
     const answer = response.choices[0].message.content;
     const qMaxChars = qModeConfig.max_chars ?? TWITCH_MAX_LENGTH;
-    // Datos del juego: solo los que devolvió buscar_juego (RAWG); si afirma algo más, no se envía
-    if ((toolCalls?.length || quality.isGameQuestion(question)) && await factcheck.shouldDiscard(answer, rawgData, { source: 'rawg' })) {
-      logger.info(`!dios_fua descartado (datos del juego sin respaldo en RAWG): ${String(answer).slice(0, 80)}`);
-      client.say(channel, truncate(`@${username} ${messagesConfig.dios_fua_no_data}`));
+    // Datos del juego: solo los que devolvió buscar_juego (RAWG); si afirma algo más, no se envía.
+    // Solo si hablan de videojuegos: la cultura general se responde con el conocimiento del modelo.
+    const gameTopic = quality.isGameQuestion(question) || quality.talksAboutGames(`${question} ${answer}`)
+      || (!!toolCalls?.length && rawgData.length > 0 && !rawgData.startsWith('SIN DATOS'));
+    const techLeak = quality.leaksTech(answer);
+    if (techLeak || (gameTopic && await factcheck.shouldDiscard(answer, rawgData, { source: 'rawg' }))) {
+      logger.info(`!dios_fua descartado (${techLeak ? 'respuesta técnica' : 'datos del juego sin respaldo'}): ${String(answer).slice(0, 80)}`);
+      client.say(channel, truncate(`@${username} ${pickRandom(messagesConfig.dios_fua_no_data)}`));
       questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
       return;
     }
@@ -1470,7 +1474,7 @@ async function checkPatternMatch(client, channel, tags, message) {
           model: GROQ_MODEL_FAST,
           max_tokens: modeConfig.max_tokens ?? 120,
           messages: [
-            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol. ${SPAIN_RULE} NUNCA digas datos de videojuegos (fechas, desarrolladoras, argumentos, mecánicas, armas, zonas, dificultad, consejos), ni del juego actual ni de otros: si insisten, sugiere usar !dios_fua.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol. ${SPAIN_RULE} NUNCA digas datos de videojuegos (fechas, desarrolladoras, argumentos, mecánicas, armas, zonas, dificultad, consejos), ni del juego actual ni de otros: si insisten, sugiere usar !dios_fua. Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
             ...userConv,
             { role: 'user', content: `${username}: ${question}` }
           ]
@@ -1480,7 +1484,9 @@ async function checkPatternMatch(client, channel, tags, message) {
         const check = quality.validateMention(raw);
         if (!check.ok) { feedback = check.reason; continue; }
         const mentionGame = await getCurrentGame().catch(() => null);
-        if (quality.mentionsMechanics(raw) || await factcheck.shouldDiscard(raw, `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`)) {
+        // Solo se vigila lo que habla de videojuegos; "resistencia" o "zona" en una pregunta de cultura general no cuentan
+        const gameTalk = quality.talksAboutGames(`${question} ${raw}`, mentionGame?.game);
+        if (gameTalk && (quality.mentionsMechanics(raw) || await factcheck.shouldDiscard(raw, `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`))) {
           feedback = 'afirma datos del juego sin respaldo; no hables del juego';
           continue;
         }
