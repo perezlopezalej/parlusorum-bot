@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
-const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative, restoreSessionProphecy } = require('./utils/supabase');
+const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative, restoreSessionProphecy, getCurrentSessionId } = require('./utils/supabase');
+const chatlog = require('./utils/chatlog');
 const { throttleSay } = require('./alerts/handler');
 const {
   setStreamStartedAt, getStreamStartedAt,
@@ -450,6 +451,7 @@ function createEventSubHandler(client, channel, deps) {
             const chatSample = typeof getStreamChatBuffer === 'function' ? getStreamChatBuffer() : '';
             const activeUsers = getActiveUsers();
             resetActiveUsers();
+            const reviewSessionId = getCurrentSessionId();
             const memory = await onStreamEnd({
               game: gameInfo?.game || null,
               durationMinutes,
@@ -469,6 +471,12 @@ function createEventSubHandler(client, channel, deps) {
               activeUsers: activeUsers
             }, chatSample);
             postStreamEnd(client, channel, memory?.summary || null);
+            // Autorrevisión: solo log y Supabase, nunca el chat. Espera a que el chat registrado esté volcado.
+            setTimeout(() => {
+              chatlog.flush()
+                .then(() => require('./ai/self-review').reviewStream({ sessionId: reviewSessionId }))
+                .catch(err => logger.warn(`Autorrevisión: ${err.message}`));
+            }, 15000).unref?.();
           } catch (e) {
             logger.warn(`Supabase session end: ${e.message}`);
             try {

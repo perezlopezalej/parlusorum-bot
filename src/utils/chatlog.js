@@ -60,8 +60,9 @@ function currentMeta(explicit = {}) {
 
 // ─── Funciones puras ─────────────────────────────────────────────────────────
 
-function buildRow({ username, message, isBot = false, origin = null, model = null, usedTool = false, latencyMs = null, sessionId = null, at = new Date() }) {
+function buildRow({ username, message, isBot = false, origin = null, model = null, usedTool = false, latencyMs = null, sessionId = null, replyTo = null, at = new Date() }) {
   return {
+    reply_parent_login: !isBot && replyTo ? String(replyTo).toLowerCase().slice(0, 50) : null,
     created_at: at.toISOString(),
     session_id: sessionId ?? null,
     username: String(username || '?').slice(0, 50),
@@ -132,8 +133,8 @@ function enqueue(row) {
 }
 
 // Nunca lanzan: el registro no puede afectar al flujo del chat
-function logUserMessage(username, message) {
-  try { enqueue(buildRow({ username, message, sessionId: currentSessionId() })); } catch { /* ignorado */ }
+function logUserMessage(username, message, replyTo = null) {
+  try { enqueue(buildRow({ username, message, replyTo, sessionId: currentSessionId() })); } catch { /* ignorado */ }
 }
 
 function logBotMessage(username, message, explicit) {

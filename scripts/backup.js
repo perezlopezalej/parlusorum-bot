@@ -23,6 +23,7 @@ const TABLES = [
   'user_facts',
   'channel_lore',
   'chat_log',
+  'bot_self_reviews',
 ];
 const PAGE = 1000;
 

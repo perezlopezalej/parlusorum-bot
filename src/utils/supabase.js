@@ -706,8 +706,35 @@ async function updateLoreStatus(id, status, fromStatuses) {
 async function insertChatLog(rows) {
   const db = getClient();
   if (!db) throw new Error('Supabase no configurado');
-  const { error } = await db.from('chat_log').insert(rows);
+  let { error } = await db.from('chat_log').insert(rows);
+  // Migración 006 sin aplicar: guardar el chat sin la columna nueva antes que perderlo
+  if (error && /reply_parent_login/.test(error.message || '')) {
+    ({ error } = await db.from('chat_log').insert(rows.map(({ reply_parent_login, ...rest }) => rest)));
+  }
   if (error) throw error;
+}
+
+// Todas las filas de una sesión por orden de hora (páginas de 1000)
+async function getSessionChatLog(sessionId) {
+  const db = getClient();
+  if (!db || !sessionId) return [];
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from('chat_log').select('*')
+      .eq('session_id', sessionId).order('created_at', { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+async function saveSelfReview({ sessionId, stats, report }) {
+  const db = getClient();
+  if (!db) return false;
+  const { error } = await db.from('bot_self_reviews').insert({ channel: CHANNEL_NAME, session_id: sessionId, stats, report });
+  if (error) { logger.warn(`saveSelfReview: ${error.message}`); return false; }
+  return true;
 }
 
 // Devuelve cuántas filas borró
@@ -721,6 +748,8 @@ async function deleteChatLogBefore(isoDate) {
 
 module.exports = {
   insertChatLog,
+  getSessionChatLog,
+  saveSelfReview,
   deleteChatLogBefore,
   getLoreRows,
   upsertLoreRows,

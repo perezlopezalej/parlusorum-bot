@@ -282,7 +282,7 @@ client.on('message', async (channel, tags, message, self) => {
 
   const msg = message.trim();
   const username = tags['display-name'];
-  chatlog.logUserMessage(username, msg);
+  chatlog.logUserMessage(username, msg, tags['reply-parent-user-login']);
 
   try {
     ai.addToHistory(username, msg);

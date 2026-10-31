@@ -39,7 +39,11 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - **`timer_ia`**: tema obligatorio sorteado distinto al anterior (lore, FUA, usuario activo, tiempo, pregunta al chat); sin nombrar otros juegos ni repetir el año; el tema "usuario" respeta los 15 min sin nombrar al mismo usuario.
 - **Profecía**: `falseSurpass` rechaza "superando/récord" si la cifra no supera las anteriores.
 
+- **F0 vida y aprendizaje (medir y autorrevisión)**: `src/ai/reactions.js` puntúa la reacción del chat (60 s) a los mensajes de la IA (cohost, mención, timer_ia, hook, quemeperdi, dios_fua; no timers ni comandos) restando la risa de base; `chat_log.reply_parent_login` guarda a quién responde cada usuario. `src/ai/self-review.js`, al acabar el stream (15 s después del cierre), marca repeticiones, posibles inventos, negativos e ignorados, y la IA redacta un informe corto solo sobre ellos: va a `bot.log` y a `bot_self_reviews`, nunca al chat ni al prompt. Migración `supabase/migrations/006_vida_aprendizaje_f0.sql`. Plan completo en `logs/plan-vida-aprendizaje.md`.
+
 ## Pendiente de probar en directo
+
+- F0: tras ejecutar la migración 006 y hacer un directo, comprobar en `bot.log` las líneas "📊 Reacciones" y "📝 Autorrevisión del bot" y la fila en `bot_self_reviews`; revisar si la detección de risas/negativas acierta (es la línea base para F1-F5).
 
 - Cohost libre y por eventos (≈4 libres/h, que reaccionen a un tema sin juzgar el ambiente; `!muertes +2` dispara primera muerte/racha/récord) y la comprobación SÍ/NO: mirar en `bot.log` la línea "cohost descartado" para ver si descarta demasiado.
 - Redirección de menciones del juego a `!dios_fua` y respuesta con el contador de muertes.
@@ -56,6 +60,6 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 ## Ideas futuras
 
 - Que el bot oiga y vea el directo.
-- Aprender de las reacciones del chat.
+- Aprender de las reacciones del chat: fases F1-F5 de `logs/plan-vida-aprendizaje.md` (carácter, seguir el juego, chistes internos y `regulars`, ejemplos aprendidos con `!estilo`, intervalo adaptable). Chistes aprobados para el borrador: profecía que siempre falla, Pao con "¡Joooosuaaa!", Monster y caramelos de gangar79, su "back-trakin" y rivalidad cariñosa (pendiente de que gangar79 acepte). Descartados: "el retraso de Manu" y expresiones con etnias.
 - Detector de bots usando la lista de conectados.
 - Tiempo en el canal por usuario.
