@@ -42,6 +42,20 @@ const DEATH_QUESTION_RE = /\b(cu[aá]ntas|cu[aá]ntos)\b.*\b(muertes?|veces|ca[i
 function isDeathQuestion(text) { return DEATH_QUESTION_RE.test(text) && /\?|cu[aá]nt|llev|van\b/i.test(text); }
 
 
+// ¿El mensaje habla del juego (su nombre o algo de él)? Solo entonces merece la comprobación anti-invención.
+// "jefe/boss" no cuenta: son hechos del stream (!boss), no datos del juego.
+const GAME_FACT_RE = /\b(niveles?|mapa|personajes?|finales?|secuela|dlc|logros?|trofeos?|lanzamiento|desarrolladora|g[eé]nero|campa[ñn]a|argumento|historia del juego|multijugador|cooperativo|a[ñn]o de salida)\b/i;
+function mentionsGame(text, game = '') {
+  const t = String(text || '');
+  if (MECHANICS_RE.test(t) || GAME_FACT_RE.test(t)) return true;
+  const g = norm(game).replace(/\(.*?\)/g, '').trim();
+  if (g.length >= 3 && g !== 'desconocido' && norm(t).includes(g)) return true;
+  // Juegos de varias palabras ("Phantom Blade Zero"): vale con citar dos palabras distintivas o un subtítulo largo
+  const words = g.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+  if (words.length >= 2 && words.filter(w => norm(t).includes(w)).length >= 2) return true;
+  return false;
+}
+
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
 
 function hasLatam(text) { return LATAM_RE.test(text); }
@@ -128,18 +142,20 @@ const MOOD_JUDGING_RE = /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s
 function judgesChatMood(text) { return MOOD_JUDGING_RE.test(String(text || '')); }
 
 // Validación del cohost. ctx: { deathCount, recent: string[], named: Map, now, nameWindowMs }
+// Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
+// se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
 function validateCohost(text, { deathCount = 0, recent = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
-  if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
-  if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
-  if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
-  if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
-  const names = recentlyNamedIn(text, named, now, nameWindowMs);
-  if (names.length) return { ok: false, reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas` };
-  if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
-  if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un mensaje reciente' };
-  if (judgesChatMood(text)) return { ok: false, reason: 'juzga el ambiente del chat; reacciona a un tema concreto con humor' };
+  if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
+  if (hasLatam(text)) return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
+  if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
+  if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, rule: 'muertes', reason: 'menciona muertes que no están en el contador' };
   const game = gameTalkProblem(text);
-  if (game) return { ok: false, reason: game };
+  if (game) return { ok: false, rule: 'juego', reason: game };
+  const names = recentlyNamedIn(text, named, now, nameWindowMs);
+  if (names.length) return { ok: false, soft: true, rule: 'nombre', reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas` };
+  if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, soft: true, rule: 'formula', reason: 'repite una fórmula que ya usaste' };
+  if (tooSimilar(text, recent)) return { ok: false, soft: true, rule: 'parecido', reason: 'se parece demasiado a un mensaje reciente' };
+  if (judgesChatMood(text)) return { ok: false, soft: true, rule: 'ambiente', reason: 'juzga el ambiente del chat; reacciona a un tema concreto con humor' };
   return { ok: true };
 }
 
@@ -230,5 +246,5 @@ module.exports = {
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
-  mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
+  mentionsGame, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

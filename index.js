@@ -296,12 +296,7 @@ client.on('message', async (channel, tags, message, self) => {
       runWithOrigin('highlight', () => ai.checkForHighlight(client, channel, msg, tags['user-id'] || username)).catch(err =>
         logger.warn(`checkForHighlight error: ${err.message}`)
       );
-      const patternHandled = await runWithOrigin('mencion', () => ai.checkPatternMatch(client, channel, tags, msg));
-      if (!patternHandled) {
-        runWithOrigin('cohost', () => ai.handleCohost(client, channel)).catch(err =>
-          logger.warn(`handleCohost error: ${err.message}`)
-        );
-      }
+      await runWithOrigin('mencion', () => ai.checkPatternMatch(client, channel, tags, msg)); // el cohost libre va por reloj (ai.startEventCohost)
       runWithOrigin('emote_spam', () => ai.checkEmoteSpam(client, channel, tags, msg)).catch(err =>
         logger.warn(`checkEmoteSpam error: ${err.message}`)
       );

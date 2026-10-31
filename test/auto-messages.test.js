@@ -122,11 +122,16 @@ describe('cohost por eventos', () => {
     }
     assert.equal(n.classifyCohostMoment({ type: 'rage', description: 'x', ts: now }, { now }), null);
   });
-  test('freno: 5 min entre comentarios y 8 por hora', () => {
-    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 4 * 60000, stamps: [] }), false);
-    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 6 * 60000, stamps: [] }), true);
-    const eight = Array.from({ length: 8 }, (_, i) => now - (10 + i * 6) * 60000);
-    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 6 * 60000, stamps: eight }), false);
+  test('freno de eventos: 15 s entre comentarios y 20 por hora de seguridad', () => {
+    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 5000, stamps: [] }), false);
+    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 20000, stamps: [] }), true);
+    const many = Array.from({ length: 20 }, (_, i) => now - (10 + i * 2) * 60000);
+    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 20000, stamps: many }), false);
+  });
+  test('un evento en cola caduca a los 2 min', () => {
+    assert.equal(n.eventExpired(now - 119000, now), false);
+    assert.equal(n.eventExpired(now - 121000, now), true);
+    assert.equal(n.eventExpired(now - 5000, now, 1000), true);
   });
   test('"+N" cuenta como N: primera muerte, racha y récord con saltos', () => {
     const jump = (n, total, ago = 0) => ({ type: 'death', description: `${n} muertes más`, ts: now - ago, n });
@@ -149,19 +154,15 @@ describe('cohost por eventos', () => {
   test('restoreNarrative conserva n', () => {
     assert.equal(n.restoreNarrative([{ type: 'death', description: 'x', ts: 5, n: 3 }])[0].n, 3);
   });
-  test('libres: 4/h, 10 min entre libres y 2 huecos reservados a eventos', () => {
-    assert.equal(n.freeCohostAllowed({ now }), true);
-    assert.equal(n.freeCohostAllowed({ now, freeStamps: [now - 9 * 60000] }), false);
-    assert.equal(n.freeCohostAllowed({ now, freeStamps: [now - 11 * 60000] }), true);
-    const four = [50, 40, 30, 20].map(m => now - m * 60000);
-    assert.equal(n.freeCohostAllowed({ now, freeStamps: four, stamps: four }), false);
-    const six = Array.from({ length: 6 }, (_, i) => now - (10 + i * 8) * 60000);
-    assert.equal(n.freeCohostAllowed({ now, stamps: six }), false);
-    assert.equal(n.freeCohostAllowed({ now, lastAnyAt: now - 2 * 60000 }), false);
-  });
-  test('tope total por hora: 8', () => {
-    const eight = Array.from({ length: 8 }, (_, i) => now - (10 + i * 6) * 60000);
-    assert.equal(n.eventCohostAllowed({ now, lastAt: now - 6 * 60000, stamps: eight }), false);
+  test('libres por reloj: cada 15 min, con chat activo y sin pisar a otro cohost', () => {
+    const base = { now, lastFreeAt: now - 16 * 60000, recentMessages: 5 };
+    assert.equal(n.freeCohostDue(base), true);
+    assert.equal(n.freeCohostDue({ ...base, lastFreeAt: now - 10 * 60000 }), false, 'aún no toca');
+    assert.equal(n.freeCohostDue({ ...base, recentMessages: 2 }), false, 'chat inactivo');
+    assert.equal(n.freeCohostDue({ ...base, lastAnyAt: now - 60000 }), false, 'acaba de hablar');
+    assert.equal(n.freeCohostDue({ ...base, lastAnyAt: now - 3 * 60000 }), true);
+    const six = Array.from({ length: 6 }, (_, i) => now - (5 + i * 8) * 60000);
+    assert.equal(n.freeCohostDue({ ...base, freeStamps: six }), false, 'tope de seguridad');
   });
 });
 

@@ -1,7 +1,7 @@
 const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
 const logger = require('./logger');
-const { recordGroqFallback } = require('./state');
+const { recordGroqFallback, recordGroq429 } = require('./state');
 const chatlog = require('./chatlog');
 const { cutAtSentence } = require('../ai/quality');
 
@@ -53,6 +53,7 @@ async function requestWithRetry(create, params, maxRetries) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try { return await create(params); }
     catch (err) {
+      if (err.status === 429) recordGroq429();
       if ((err.status === 429 || err.message?.includes('rate')) && attempt < maxRetries) {
         const retryAfterSec = parseInt(err.headers?.['retry-after'] || '0');
         const delay = retryAfterSec > 0

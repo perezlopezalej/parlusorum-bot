@@ -113,12 +113,15 @@ function resolveModeConfig(modes, mode, variant = null) {
   return variant && base.variants && base.variants[variant] ? { ...base, ...base.variants[variant] } : base;
 }
 
-// --- Cohost por eventos: momentos destacados + comentarios libres, con freno ---
-const EVENT_COHOST_MIN_GAP_MS = 5 * 60 * 1000;
-const EVENT_COHOST_MAX_PER_HOUR = 8;               // tope total por hora (eventos + libres)
-const FREE_COHOST_MIN_GAP_MS = 10 * 60 * 1000;     // entre comentarios libres
-const FREE_COHOST_MAX_PER_HOUR = 4;
-const EVENT_RESERVE = 2;                           // huecos de la hora que los libres no tocan, para los eventos
+// --- Cohost: eventos (siempre comentados, en cola) + comentarios libres por reloj ---
+const EVENT_COHOST_MIN_GAP_MS = 15 * 1000;         // separación mínima entre dos comentarios de eventos seguidos
+const EVENT_COHOST_MAX_PER_HOUR = 20;              // solo freno de seguridad (los eventos no se limitan en la práctica)
+const EVENT_QUEUE_TTL_MS = 2 * 60 * 1000;          // un evento que espera más de esto ya no se comenta
+const FREE_COHOST_INTERVAL_MS = 15 * 60 * 1000;    // cada cuánto toca un comentario libre (~4/h)
+const FREE_COHOST_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
+const FREE_COHOST_MIN_MESSAGES = 3;                // mensajes de usuarios en la ventana para considerar el chat activo
+const FREE_COHOST_AFTER_ANY_MS = 2 * 60 * 1000;    // no pisar un comentario de hace nada
+const FREE_COHOST_MAX_PER_HOUR = 6;                // freno de seguridad (los reintentos tras un fallo no deben acumularse)
 const DEATH_STREAK_WINDOW_MS = 10 * 60 * 1000;
 const DEATH_STREAK_SIZE = 3;
 const STREAK_BREAKERS = ['boss', 'victory', 'milestone'];
@@ -155,25 +158,30 @@ function classifyCohostMoment(event, { events = [], deathCount = 0, recordToBeat
   return null;
 }
 
-// Freno del cohost por eventos: 5 min desde cualquier cohost y tope total por hora
+// Freno del cohost por eventos: separación mínima desde el último cohost y tope de seguridad por hora
 function eventCohostAllowed({ now = Date.now(), lastAt = 0, stamps = [], minGapMs = EVENT_COHOST_MIN_GAP_MS, max = EVENT_COHOST_MAX_PER_HOUR } = {}) {
   if (lastAt && now - lastAt < minGapMs) return false;
   return !hourlyCapReached(stamps, max, now);
 }
 
-// Comentario libre (sin evento): tope propio por hora, separación entre libres y huecos reservados a los eventos.
-// freeStamps = marcas de los libres; stamps = marcas de todos los cohosts.
-function freeCohostAllowed({ now = Date.now(), freeStamps = [], stamps = [], lastAnyAt = 0, maxFree = FREE_COHOST_MAX_PER_HOUR, minGapMs = FREE_COHOST_MIN_GAP_MS, maxTotal = EVENT_COHOST_MAX_PER_HOUR } = {}) {
-  const free = pruneHourly(freeStamps, now);
-  if (free.length >= maxFree) return false;
-  if (free.length && now - Math.max(...free) < minGapMs) return false;
-  if (lastAnyAt && now - lastAnyAt < Math.min(minGapMs, EVENT_COHOST_MIN_GAP_MS)) return false;
-  return pruneHourly(stamps, now).length < maxTotal - EVENT_RESERVE;
+// Un evento en cola caduca si lleva más de ttlMs esperando (no se comenta un jefe 10 minutos tarde)
+function eventExpired(queuedAt, now = Date.now(), ttlMs = EVENT_QUEUE_TTL_MS) {
+  return now - queuedAt > ttlMs;
+}
+
+// ¿Toca un comentario libre? Por reloj: ha pasado el intervalo, hay actividad reciente en el chat (recentMessages,
+// mensajes de usuarios en la ventana) y no acaba de hablar el cohost. freeStamps = marcas de los libres de la última hora.
+function freeCohostDue({ now = Date.now(), lastFreeAt = 0, intervalMs = FREE_COHOST_INTERVAL_MS, recentMessages = 0, minMessages = FREE_COHOST_MIN_MESSAGES, lastAnyAt = 0, afterAnyMs = FREE_COHOST_AFTER_ANY_MS, freeStamps = [], maxFree = FREE_COHOST_MAX_PER_HOUR } = {}) {
+  if (now - lastFreeAt < intervalMs) return false;
+  if (recentMessages < minMessages) return false;
+  if (lastAnyAt && now - lastAnyAt < afterAnyMs) return false;
+  return !hourlyCapReached(freeStamps, maxFree, now);
 }
 
 module.exports = {
   MAX_NARRATIVE_EVENTS, pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
   cohostProbability, pruneHourly, hourlyCapReached,
-  EVENT_COHOST_MIN_GAP_MS, EVENT_COHOST_MAX_PER_HOUR, FREE_COHOST_MIN_GAP_MS, FREE_COHOST_MAX_PER_HOUR, deathStreakLength, classifyCohostMoment, eventCohostAllowed, freeCohostAllowed,
+  EVENT_COHOST_MIN_GAP_MS, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR,
+  deathStreakLength, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue,
   MODE_WINDOWS, MIN_MODE_DWELL_MS, DEATHS_FOR_FOCUS, CALM_CHAT_MAX_MSGS, decideMode, resolveModeConfig,
 };

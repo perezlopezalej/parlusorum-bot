@@ -284,6 +284,22 @@ function recordCohostDiscard(reason) { cohostDiscards.set(reason, (cohostDiscard
 function getCohostDiscards() { return Object.fromEntries(cohostDiscards); }
 function resetCohostDiscards() { cohostDiscards.clear(); }
 
+// Intentos y envíos del cohost por tipo ('event' | 'free'), y 429 de Groq (límite del proveedor, no el interno)
+const cohostAttempts = { event: 0, free: 0 };
+const cohostSent = { event: 0, free: 0 };
+let groq429Count = 0;
+function recordCohostAttempt(kind) { cohostAttempts[kind === 'free' ? 'free' : 'event']++; }
+function recordCohostSent(kind) { cohostSent[kind === 'free' ? 'free' : 'event']++; }
+function recordGroq429() { groq429Count++; }
+function getCohostStats() {
+  return { attempts: { ...cohostAttempts }, sent: { ...cohostSent }, discards: getCohostDiscards(), groq429: groq429Count };
+}
+function resetCohostStats() {
+  cohostAttempts.event = cohostAttempts.free = cohostSent.event = cohostSent.free = 0;
+  groq429Count = 0;
+  cohostDiscards.clear();
+}
+
 // --- Cola del registro de chat (se vuelca a Supabase por lotes; ver utils/chatlog.js) ---
 const CHATLOG_MAX_BUFFER = 1000;
 let chatLogBuffer = [];
@@ -304,6 +320,7 @@ module.exports = {
   pushChatLog, takeChatLog, requeueChatLog, getChatLogSize,
   recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
   recordCohostDiscard, getCohostDiscards, resetCohostDiscards,
+  recordCohostAttempt, recordCohostSent, recordGroq429, getCohostStats, resetCohostStats,
   addLoreSample, getLoreSample, resetLoreSample,
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,

@@ -1,8 +1,8 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent } = require('../utils/state');
-const { buildStoryBlock, condenseChat, cohostProbability, hourlyCapReached, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, freeCohostAllowed, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, FREE_COHOST_MIN_GAP_MS, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent } = require('../utils/state');
+const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate } = require('./patterns');
 const quality = require('./quality');
@@ -20,14 +20,12 @@ const { saveHighlight } = require('../utils/storage');
 const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
-// Cohost: COOLDOWN = mínimo entre cohosts; PROBABILITY = prob. por mensaje al salir del cooldown (crece con el silencio del cohost);
-// MAX_PER_HOUR = tope; NAME_WINDOW = tiempo sin volver a nombrar al mismo usuario. Los silencios los cubre el hook, no el cohost.
-const COHOST_COOLDOWN = parseInt(process.env.COHOST_COOLDOWN_MS || '600000', 10);
-// Comentarios libres (sin evento): FREE_MAX_PER_HOUR y FREE_MIN_GAP_MS; PROBABILITY es por mensaje cuando se cumple el freno.
-// MAX_PER_HOUR es el tope total (eventos + libres).
+// Cohost: los eventos (jefe, muerte, sub...) se comentan siempre y esperan en cola hasta EVENT_TTL_MS; los comentarios libres
+// van por reloj (FREE_INTERVAL_MS, con chat activo). MAX_PER_HOUR / FREE_MAX_PER_HOUR son solo frenos de seguridad.
+// NAME_WINDOW = tiempo sin volver a nombrar al mismo usuario. Los silencios los cubre el hook, no el cohost.
+const COHOST_EVENT_TTL = parseInt(process.env.COHOST_EVENT_TTL_MS || String(EVENT_QUEUE_TTL_MS), 10);
+const COHOST_FREE_INTERVAL = parseInt(process.env.COHOST_FREE_INTERVAL_MS || String(FREE_COHOST_INTERVAL_MS), 10);
 const COHOST_FREE_MAX_PER_HOUR = parseInt(process.env.COHOST_FREE_MAX_PER_HOUR || String(FREE_COHOST_MAX_PER_HOUR), 10);
-const COHOST_FREE_MIN_GAP = parseInt(process.env.COHOST_FREE_MIN_GAP_MS || String(FREE_COHOST_MIN_GAP_MS), 10);
-const COHOST_PROBABILITY = parseFloat(process.env.COHOST_PROBABILITY || '0.25');
 const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || String(EVENT_COHOST_MAX_PER_HOUR), 10);
 const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
 // Provocaciones: solo la primera de cada usuario en esta ventana recibe réplica
@@ -393,9 +391,11 @@ function detectChatMood(messages) {
   return 'NEUTRO';
 }
 
-// Cohost: habla cuando pasa algo destacado (`moment`) y, con el freno de comentarios libres, reaccionando a lo que se habla en el chat.
-// Devuelve true si habló. La respuesta se valida en código (tono, muertes, nombres, mecánicas del juego) y con una
-// comprobación SÍ/NO del modelo rápido, con un reintento; si no pasa, se calla.
+// Cohost: habla cuando pasa algo destacado (`moment`, siempre, en cola) y, por reloj, reaccionando a lo que se habla en el chat.
+// runCohost devuelve 'sent' | 'dropped' | 'retry' (retry = ahora no puede; se reintenta mientras el evento no caduque).
+// La respuesta se valida en código: lo grave (inventos del juego, muertes, latam, robot) se descarta tras un reintento; lo leve
+// (nombre repetido, fórmula, parecido, ambiente) se reintenta una vez y si persiste se envía igual. Después, la comprobación
+// SÍ/NO del modelo rápido, solo si el mensaje habla del juego.
 let freeCohostTimes = [];
 let deathRecordCache = { at: 0, max: 0 };
 
@@ -408,28 +408,29 @@ async function getDeathRecord() {
   return deathRecordCache.max;
 }
 
-async function handleCohost(client, channel, moment = null) {
-  if (isSilenced() || isTriviaActive() || cohostRunning || !getEventSubLiveStatus()) return false;
+async function runCohost(client, channel, moment = null) {
+  const kind = moment ? 'event' : 'free';
+  if (!getEventSubLiveStatus()) return 'dropped';
+  const blocked = isSilenced() ? 'silencio' : isBrb() ? 'brb' : isTriviaActive() ? 'trivia' : null;
+  if (blocked) {
+    if (moment) { recordCohostAttempt(kind); recordCohostDiscard(blocked); }
+    return 'dropped';
+  }
+  if (cohostRunning) return moment ? 'retry' : 'dropped';
   const now = Date.now();
-  if (!eventCohostAllowed({ now, lastAt: getLastCohostTime(), stamps: getCohostTimes(), max: COHOST_MAX_PER_HOUR })) return false;
-  refreshMode();
-  const modeConfig = getModeConfig();
-  if (!moment) {
-    if (!freeCohostAllowed({ now, freeStamps: freeCohostTimes, stamps: getCohostTimes(), lastAnyAt: getLastCohostTime(), maxFree: COHOST_FREE_MAX_PER_HOUR, minGapMs: COHOST_FREE_MIN_GAP, maxTotal: COHOST_MAX_PER_HOUR })) return false;
-    if (Math.random() > COHOST_PROBABILITY) return false;
+  if (moment && !eventCohostAllowed({ now, lastAt: getLastCohostTime(), stamps: getCohostTimes(), max: COHOST_MAX_PER_HOUR })) return 'retry';
+  if (!canMakeRequest()) {
+    if (moment) return 'retry';
+    recordCohostAttempt(kind); recordCohostDiscard('ratelimit');
+    return 'dropped';
   }
   const recentContext = getRecentHistory(5);
-  if (!moment && !recentContext) return false;
-  if (!canMakeRequest()) { recordCohostDiscard('ratelimit'); return false; }
+  if (!moment && !recentContext) return 'dropped';
 
-  const contextFingerprint = recentContext.slice(0, 200);
-  if (!moment) {
-    const currWords = new Set(contextFingerprint.toLowerCase().split(/\s+/));
-    const prevWords = new Set(getLastCohostContextHash().toLowerCase().split(/\s+/));
-    const shared = [...currWords].filter(w => prevWords.has(w)).length;
-    if (prevWords.size > 0 && shared / prevWords.size > 0.8) return false;
-  }
-
+  recordCohostAttempt(kind);
+  if (!moment) freeCohostTimes = pruneHourly([...freeCohostTimes, now]);
+  refreshMode();
+  const modeConfig = getModeConfig();
   const botHistory = getBotHistory();
   const recentBot = botHistory.map(e => e.msg);
   const emotes = channelConfig.channel_emotes || [];
@@ -440,6 +441,7 @@ async function handleCohost(client, channel, moment = null) {
   const blockedNames = [...named].filter(([, ts]) => now - ts < COHOST_NAME_WINDOW).map(([l]) => l);
 
   cohostRunning = true;
+  let reason = 'error';
 
   try {
     const gameInfo = await getCurrentGame();
@@ -466,11 +468,13 @@ async function handleCohost(client, channel, moment = null) {
     const historyNote = botHistory.length > 0
       ? `\nTUS RESPUESTAS ANTERIORES — NO repetir ni parafrasear ninguna, ni sus fórmulas:\n${botHistory.map(e => `- "${e.msg}"`).join('\n')}`
       : '';
+    const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
 
     let reply = '';
+    let softCandidate = '';
     let feedback = '';
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
-      if (attempt > 0 && !canMakeRequest()) break;
+      if (attempt > 0 && !canMakeRequest()) { reason = 'ratelimit'; break; }
       const response = await groqWithRetry({
         model: GROQ_MODEL_FAST,
         max_tokens: Math.min(90, modeConfig.max_tokens ?? 90),
@@ -482,52 +486,126 @@ async function handleCohost(client, channel, moment = null) {
             content: `${personalityBase} ${game}${streamNote}${raidNote}${nameNote}${emoteNote} ${COHOST_RULES} Sin saludos. Sin presentarte.${moodNote}${historyNote}${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
           },
           { role: 'user', content: moment
-            ? `Acaba de pasar esto en el stream: ${moment.description}.${recentContext ? `\nChat reciente:\n${recentContext}` : ''}\nComenta ESE hecho con humor y la voz de Dios Fua, en una frase. No hables de mecánicas del juego.`
+            ? `Acaba de pasar esto en el stream: ${moment.description}.${recentContext ? `\nChat reciente:\n${recentContext}` : ''}\nComenta ESE hecho con humor y la voz de Dios Fua, en una frase. No hables de mecánicas del juego. Es un suceso importante: comenta siempre, no respondas SKIP.`
             : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nElige UN tema concreto de lo que se está hablando en el chat y suelta una reacción con humor u opinión propia, con la voz de Dios Fua (no lo describas ni lo resumas). Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. Si no hay nada que decir, responde SKIP.` }
         ]
       });
       const choice = response.choices[0];
       const raw = (choice.message.content || '').trim();
-      if (/^SKIP\b/i.test(raw)) { recordCohostDiscard('skip'); logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
+      if (!moment && /^SKIP\b/i.test(raw)) { reason = 'skip'; logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
       const complete = choice.finish_reason === 'length' ? quality.dropTrailingFragment(raw) : raw;
       const text = quality.applyEmotePolicy(truncate(complete, maxChars), allowEmote, emotes);
       const check = quality.validateCohost(text, { deathCount, recent: recentBot, named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW });
-      if (check.ok) {
-        const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
-        if (await factcheck.shouldDiscard(text, facts)) { recordCohostDiscard('factcheck'); logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`); break; }
-        reply = text;
-      } else { feedback = check.reason; recordCohostDiscard('quality'); logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`); }
+      if (!check.ok && !check.soft) {
+        feedback = check.reason; reason = `quality:${check.rule}`;
+        logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`);
+        continue;
+      }
+      if (!check.ok && attempt === 0) { // leve: un reintento; si no mejora se enviará este mismo
+        softCandidate = text; feedback = check.reason; reason = `quality:${check.rule}`;
+        continue;
+      }
+      if (await factcheck.shouldDiscard(text, facts, { game: gameInfo?.game })) {
+        feedback = 'afirma datos del juego sin respaldo; no hables del juego'; reason = 'factcheck';
+        logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`);
+        continue;
+      }
+      reply = text;
     }
+    // El reintento falló en algo grave pero el primer texto solo tenía un fallo leve: se envía ese (si pasa el factcheck)
+    if (!reply && softCandidate && reason !== 'ratelimit' && reason !== 'skip' && !await factcheck.shouldDiscard(softCandidate, facts, { game: gameInfo?.game })) reply = softCandidate;
 
-    if (!reply) { recordCohost(Date.now(), false); if (!moment) freeCohostTimes = pruneHourly([...freeCohostTimes, Date.now()]); return false; }
+    if (!reply) { recordCohostDiscard(reason); return 'dropped'; }
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     markNamed(quality.namesIn(reply, chatHistory.slice(-60).map(m => m.username)));
     recordCohost();
-    if (!moment) { freeCohostTimes = pruneHourly([...freeCohostTimes, Date.now()]); setLastCohostContextHash(contextFingerprint); }
-    return true;
+    recordCohostSent(kind);
+    return 'sent';
   } catch (err) {
     logger.error(`Co-host: ${err.message}`);
-    recordCohost(Date.now(), false); // fallo de la IA: cooldown completo, sin gastar cupo horario
-    return false;
+    recordCohostDiscard(err.status === 429 ? 'groq429' : 'error');
+    return 'dropped';
   } finally { cohostRunning = false; }
 }
 
-// Engancha el cohost a los eventos nuevos de la narrativa (muerte, boss, sub, raid, explosión del chat...).
-// Una pausa de 3 s deja que salga antes el mensaje propio del evento (alerta, contador...).
+// Compatibilidad: un único comentario inmediato (evento o libre); devuelve true si habló
+async function handleCohost(client, channel, moment = null) {
+  return (await runCohost(client, channel, moment)) === 'sent';
+}
+
+// Cola de eventos: se comentan todos, de uno en uno; los que esperan más de COHOST_EVENT_TTL caducan
+const EVENT_QUEUE_MAX = 6;
+const EVENT_SETTLE_MS = 3000; // deja que salga antes el mensaje propio del evento (alerta, contador...)
+let eventQueue = [];
+let drainTimer = null;
+let draining = false;
+
+function scheduleDrain(ms) {
+  if (drainTimer) return;
+  drainTimer = setTimeout(() => { drainTimer = null; drainEventQueue().catch(err => logger.warn(`Cola de cohost: ${err.message}`)); }, ms);
+  drainTimer.unref?.();
+}
+
+function enqueueCohostMoment(client, channel, moment, now = Date.now()) {
+  eventQueue.push({ client, channel, moment, queuedAt: now, notBefore: now + EVENT_SETTLE_MS });
+  if (eventQueue.length > EVENT_QUEUE_MAX) {
+    eventQueue.shift();
+    recordCohostAttempt('event'); recordCohostDiscard('cola_llena');
+  }
+  scheduleDrain(EVENT_SETTLE_MS);
+}
+
+async function drainEventQueue() {
+  if (draining) return;
+  draining = true;
+  try {
+    while (eventQueue.length) {
+      const item = eventQueue[0];
+      const now = Date.now();
+      if (eventExpired(item.queuedAt, now, COHOST_EVENT_TTL)) {
+        eventQueue.shift();
+        recordCohostAttempt('event'); recordCohostDiscard('caducado');
+        logger.info(`Co-host: evento caducado en cola (${item.moment.kind})`);
+        continue;
+      }
+      if (now < item.notBefore) { scheduleDrain(item.notBefore - now); return; }
+      const outcome = await chatlog.runWithOrigin('cohost', () => runCohost(item.client, item.channel, item.moment))
+        .catch(err => { logger.warn(`Cohost por evento: ${err.message}`); return 'dropped'; });
+      if (outcome === 'retry') { scheduleDrain(5000); return; }
+      eventQueue.shift();
+    }
+  } finally { draining = false; }
+}
+
+// Comentario libre por reloj: cada COHOST_FREE_INTERVAL, si el chat tiene actividad reciente. Tras un fallo reintenta en 3 min.
+const FREE_RETRY_MS = 3 * 60 * 1000;
+let lastFreeAt = 0;
+
+async function freeCohostTick(client, channel) {
+  if (!getEventSubLiveStatus()) { lastFreeAt = 0; return; }
+  const now = Date.now();
+  if (!lastFreeAt) { lastFreeAt = now; return; }
+  if (cohostRunning || eventQueue.length) return;
+  const recentMessages = chatHistory.filter(m => m.ts > now - FREE_COHOST_ACTIVITY_WINDOW_MS).length;
+  if (!freeCohostDue({ now, lastFreeAt, intervalMs: COHOST_FREE_INTERVAL, recentMessages, minMessages: FREE_COHOST_MIN_MESSAGES, lastAnyAt: getLastCohostTime(), freeStamps: freeCohostTimes, maxFree: COHOST_FREE_MAX_PER_HOUR })) return;
+  const outcome = await chatlog.runWithOrigin('cohost', () => runCohost(client, channel, null));
+  lastFreeAt = outcome === 'sent' ? Date.now() : Date.now() - COHOST_FREE_INTERVAL + FREE_RETRY_MS;
+}
+
+// Engancha el cohost a los eventos nuevos de la narrativa (muerte, boss, sub, raid, explosión del chat...) y arranca el reloj de los libres.
 function startEventCohost(client, channel) {
   onNarrativeEvent(async (event, events) => {
     if (!getEventSubLiveStatus()) return;
     const deathCount = getDeathCount();
     const recordToBeat = event.type === 'death' ? await getDeathRecord() : 0;
     const moment = classifyCohostMoment(event, { events, deathCount, recordToBeat });
-    if (!moment) return;
-    const timer = setTimeout(() => {
-      chatlog.runWithOrigin('cohost', () => handleCohost(client, channel, moment))
-        .catch(err => logger.warn(`Cohost por evento: ${err.message}`));
-    }, 3000);
-    timer.unref?.();
+    if (moment) enqueueCohostMoment(client, channel, moment);
   });
+  const clock = setInterval(() => {
+    freeCohostTick(client, channel).catch(err => logger.warn(`Cohost libre: ${err.message}`));
+  }, 30 * 1000);
+  clock.unref?.();
 }
 
 // --- Stream status ---
@@ -1431,7 +1509,7 @@ function restoreCooldowns(data) {
 }
 
 module.exports = {
-  handleCohost, startEventCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi, onProphecy,
+  handleCohost, runCohost, enqueueCohostMoment, startEventCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi, onProphecy,
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
   initStreamStatus, invalidateContextCache, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,

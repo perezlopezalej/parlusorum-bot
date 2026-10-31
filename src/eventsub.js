@@ -11,7 +11,7 @@ const {
   getDeathCount, setDeathCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter, clearProphecy, setProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
-  getGroqFallbackUse, resetGroqFallbackUse, getCohostDiscards, resetCohostDiscards,
+  getGroqFallbackUse, resetGroqFallbackUse, getCohostStats, resetCohostStats,
 } = require('./utils/state');
 
 // La narrativa de la sesión se persiste en Supabase en cada cambio (escritura diferida)
@@ -68,6 +68,13 @@ function getPublicBaseUrl() {
 // --- App Access Token con cache ---
 let appTokenCache = null;
 let appTokenExpiry = 0;
+
+// Resumen del cohost para el log: intentados/enviados por tipo, motivos de descarte y 429 del proveedor
+function formatCohostStats({ attempts, sent, discards, groq429 }) {
+  const reasons = Object.entries(discards).map(([k, n]) => `${k}: ${n}`).join(', ') || 'ninguno';
+  const total = attempts.event + attempts.free;
+  return `cohost: ${total} comentarios intentados (${attempts.event} eventos, ${attempts.free} libres), ${sent.event + sent.free} enviados (${sent.event} eventos, ${sent.free} libres); descartes: ${reasons}; 429 de Groq: ${groq429}`;
+}
 
 async function getAppAccessToken() {
   const now = Date.now();
@@ -434,9 +441,9 @@ function createEventSubHandler(client, channel, deps) {
           resetGroqFallbackUse();
           const fallbackLines = Object.entries(fallbackUse).map(([k, n]) => `${k}: ${n}`).join(', ');
           logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
-          const discards = getCohostDiscards();
-          resetCohostDiscards();
-          logger.info(`📊 Fin de stream — cohost descartado: ${Object.entries(discards).map(([k, n]) => `${k}: ${n}`).join(', ') || 'nada'}`);
+          const cohost = getCohostStats();
+          resetCohostStats();
+          logger.info(`📊 Fin de stream — ${formatCohostStats(cohost)}`);
           try {
             const gameInfo = await getCurrentGame().catch(() => null);
             const metrics = getSummary();
@@ -630,6 +637,7 @@ function createEventSubHandler(client, channel, deps) {
 
 module.exports = {
   createEventSubHandler,
+  formatCohostStats,
   registerSubscriptions,
   initStreamState,
   isLiveViaEventSub,
