@@ -19,6 +19,10 @@ services:
       - key: NODE_ENV
         value: production
 
+      # Cadena de modelos de Groq: cada uno tiene su propio cupo; un 429 o un 404 pasa al siguiente
+      - key: GROQ_MODEL_FALLBACKS
+        value: "openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b"
+
       # --- Obligatorias (el bot hace process.exit si falta alguna) ---
       - key: BOT_USERNAME
         sync: false

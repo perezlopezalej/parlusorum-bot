@@ -12,7 +12,7 @@ const {
   getDeathCount, setDeathCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter, clearProphecy, setProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
-  getGroqFallbackUse, resetGroqFallbackUse, getCohostStats, resetCohostStats,
+  getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getCohostStats, resetCohostStats,
 } = require('./utils/state');
 
 // La narrativa de la sesión se persiste en Supabase en cada cambio (escritura diferida)
@@ -71,6 +71,19 @@ let appTokenCache = null;
 let appTokenExpiry = 0;
 
 // Resumen del cohost para el log: intentados/enviados por tipo, motivos de descarte y 429 del proveedor
+// Tokens de Groq por modelo: este stream y acumulado del día UTC frente al cupo diario de cada modelo
+const GROQ_DAILY_TOKEN_LIMIT = parseInt(process.env.GROQ_DAILY_TOKEN_LIMIT || '200000', 10);
+function formatTokenUse({ stream, day }, limit = GROQ_DAILY_TOKEN_LIMIT) {
+  const models = [...new Set([...Object.keys(stream), ...Object.keys(day)])];
+  if (!models.length) return 'tokens de Groq: sin llamadas';
+  return 'tokens de Groq — ' + models.map(m => {
+    const s = stream[m]?.total || 0;
+    const d = day[m]?.total || 0;
+    const pct = limit > 0 ? Math.round(d / limit * 100) : 0;
+    return `${m}: ${s} este stream (${stream[m]?.calls || 0} llamadas), ${d} hoy (${pct}% de ${limit}, quedan ~${Math.max(0, limit - d)})`;
+  }).join('; ');
+}
+
 function formatCohostStats({ attempts, sent, discards, groq429 }) {
   const reasons = Object.entries(discards).map(([k, n]) => `${k}: ${n}`).join(', ') || 'ninguno';
   const total = attempts.event + attempts.free;
@@ -442,6 +455,8 @@ function createEventSubHandler(client, channel, deps) {
           resetGroqFallbackUse();
           const fallbackLines = Object.entries(fallbackUse).map(([k, n]) => `${k}: ${n}`).join(', ');
           logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
+          logger.info(`📊 Fin de stream — ${formatTokenUse(getGroqTokenUse())}`);
+          resetGroqTokenUse();
           const cohost = getCohostStats();
           resetCohostStats();
           logger.info(`📊 Fin de stream — ${formatCohostStats(cohost)}`);
@@ -645,7 +660,7 @@ function createEventSubHandler(client, channel, deps) {
 
 module.exports = {
   createEventSubHandler,
-  formatCohostStats,
+  formatCohostStats, formatTokenUse,
   registerSubscriptions,
   initStreamState,
   isLiveViaEventSub,

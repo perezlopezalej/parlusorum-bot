@@ -73,7 +73,7 @@ Obligatorias (validadas en `index.js`): `BOT_USERNAME`, `BOT_TOKEN`, `CLIENT_ID`
 
 Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOKEN`, `BOT_REFRESH_TOKEN` (se persisten en Supabase), `PUBLIC_URL` (prevalece sobre `RENDER_EXTERNAL_URL` para callback EventSub), `SUPABASE_URL`/`SUPABASE_KEY` (sin ellas, `NPOINT_BIN_ID` como fallback), `PREFIX`, `PORT`, `RAWG_API_KEY`, `GROQ_MODEL`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPOUND`, `GROQ_MODEL_FALLBACKS`, `AI_MAX_RPM` (+ `_USER`, `_MOD`, `_CREATOR`, `_AUX` para el factcheck), `AI_TIMER_INTERVAL_MS`, `COHOST_*` (`FREE_INTERVAL_MS`, `EVENT_TTL_MS`, `FREE_MAX_PER_HOUR`, `MAX_PER_HOUR`, `NAME_WINDOW_MS`), `PROVOCATION_WINDOW_MS`, `MENTION_MAX_PER_USER` (3) y `MENTION_WINDOW_MS` (300000; tope de respuestas a menciones por usuario), `QUESTION_COOLDOWN_MS`, `HOOK_INTERVAL_MS`, `HOOK_SILENCE_MS`, `TRIVIA_DURATION_MS`, `LURKER_THRESHOLD_MS`.
 
-- `GROQ_MODEL_FALLBACKS`: modelos de reserva (coma) si el pedido da 404/decommissioned. Las peticiones servidas por uno de reserva se cuentan en `state.js` y salen en el resumen de fin de stream del log (`bot.log`, nunca el chat).
+- `GROQ_MODEL_FALLBACKS`: modelos de reserva (coma, por orden de prioridad) si el pedido da 404/decommissioned **o 429 por cupo agotado** (por minuto o diario). Cada modelo tiene su propio cupo en Groq; en Render: `openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b`. Un 429 no espera: salta al siguiente y bloquea el modelo agotado unos minutos (`groq-utils.js`); solo el último de la cadena reintenta con espera. `GROQ_DAILY_TOKEN_LIMIT` (200000) solo sirve para el % del resumen. Las peticiones servidas por uno de reserva se cuentan en `state.js` y salen en el resumen de fin de stream del log (`bot.log`, nunca el chat).
 
 ## Patrones clave
 
@@ -85,6 +85,10 @@ Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOK
 - **Storage**: Supabase primero; sin sus variables usa npoint.io y migra cuando se configure.
 - **Memoria**: en `stream.offline` Groq resume el stream a Supabase; los últimos 5 resúmenes entran en el prompt (caché 10 min). Memoria conversacional por usuario: 5 turnos, TTL 1 h, máx. 200 usuarios.
 - **Groq**: Groq retira modelos a menudo (`llama-3.x`/`llama-4` y `groq/compound` dan 404). Consultar `GET https://api.groq.com/openai/v1/models` antes de cambiar `GROQ_MODEL*`. Los gpt-oss son de razonamiento: sin `reasoning_effort: 'low'` agotan `max_tokens` y devuelven `content` vacío; `groqWithRetry()` lo fija y añade margen de tokens.
+
+## Prompts por perfil (cupo de Groq)
+
+`getPersonality(n, userType, username, profile)` (`src/ai/persona.js`): `full` solo para `!dios_fua`; `lean` (FUA resumido, `lore.json → lean`, 2 últimos streams de memoria, 3 ejemplos) para menciones y cohost; `micro` para provocaciones. `getBotPersonality()` (timers, alertas, EventSub) usa la base micro + lore lean. El lore manual completo y los temas a evitar no se tocan: los `lean` de `lore.json` son su versión condensada y hay que mantenerlos al día. El resumen de fin de stream del log incluye tokens por modelo (este stream y acumulado del día UTC, en memoria: un reinicio lo pone a cero).
 
 ## Convenciones
 

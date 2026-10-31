@@ -141,41 +141,37 @@ function sanitizeMemoryField(text, maxLen = 500) {
 
 // ─── OBTENER CONTEXTO DE MEMORIA PARA LA IA ──────────────────────────────────
 
-let memoryCache = null;
+let memoryCache = null; // filas de stream_memory (null = sin caché)
 let memoryCacheTime = 0;
 const MEMORY_CACHE_TTL = 10 * 60 * 1000;
 
-async function getMemoryContext() {
+// Texto de memoria para el prompt. maxStreams/summaryMax recortan el perfil "lean" (los más recientes primero)
+function renderMemory(memories, { maxStreams = 5, summaryMax = 500, maxHighlights = 2 } = {}) {
+  if (!memories.length) return '';
+  const lines = memories.slice(0, maxStreams).map(m => {
+    const date = m.stream_date;
+    const game = m.game || 'sin juego';
+    const summary = sanitizeMemoryField(m.summary, summaryMax);
+    const highlights = m.highlights?.length && maxHighlights > 0
+      ? `Momentos: ${m.highlights.slice(0, maxHighlights).map(h => sanitizeMemoryField(h, 150)).filter(Boolean).join(', ')}.`
+      : '';
+    const phrases = m.recurring_phrases?.length
+      ? `Frases del chat: "${sanitizeMemoryField(m.recurring_phrases[0], 150)}".`
+      : '';
+    return `[${date}] ${game}: ${summary} ${highlights} ${phrases}`.trim();
+  });
+  return `\nMEMORIA DEL CANAL — referencía estos momentos y frases de forma espontanea cuando encaje en la conversacion:\n${lines.join('\n')}`;
+}
+
+async function getMemoryContext(opts = {}) {
   // Cache para no consultar Supabase en cada mensaje
-  if (memoryCache && Date.now() - memoryCacheTime < MEMORY_CACHE_TTL) {
-    return memoryCache;
-  }
+  if (memoryCache && Date.now() - memoryCacheTime < MEMORY_CACHE_TTL) return renderMemory(memoryCache, opts);
 
   try {
     const memories = await getRecentStreamMemory(5);
-    if (!memories || memories.length === 0) {
-      memoryCache = '';
-      memoryCacheTime = Date.now();
-      return '';
-    }
-
-    // Formatear los últimos streams en texto para inyectar en el prompt
-    const lines = memories.map(m => {
-      const date = m.stream_date;
-      const game = m.game || 'sin juego';
-      const summary = sanitizeMemoryField(m.summary);
-      const highlights = m.highlights?.length
-        ? `Momentos: ${m.highlights.slice(0, 2).map(h => sanitizeMemoryField(h, 150)).filter(Boolean).join(', ')}.`
-        : '';
-      const phrases = m.recurring_phrases?.length
-        ? `Frases del chat: "${sanitizeMemoryField(m.recurring_phrases[0], 150)}".`
-        : '';
-      return `[${date}] ${game}: ${summary} ${highlights} ${phrases}`.trim();
-    });
-
-    memoryCache = `\nMEMORIA DEL CANAL — referencía estos momentos y frases de forma espontanea cuando encaje en la conversacion:\n${lines.join('\n')}`;
+    memoryCache = memories || [];
     memoryCacheTime = Date.now();
-    return memoryCache;
+    return renderMemory(memoryCache, opts);
   } catch (e) {
     logger.error(`Error obteniendo contexto de memoria: ${e.message}`);
     return '';

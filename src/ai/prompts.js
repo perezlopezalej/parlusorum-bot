@@ -16,7 +16,10 @@ const AUTO_GAME_RULE = 'Del juego solo puedes decir lo que aparece en los datos 
 const PROVOCATION_RULE = 'Te acaban de provocar o insultar. Responde con UNA frase corta (máx. 90 caracteres), con ironía y personalidad, como un colega que no se corta: devuelve la pulla sin ofenderte, sin sermonear. PROHIBIDO rechazar ("no puedo", "lo siento", "no es algo que haga"), explicar que eres un bot o repetir el insulto. Sin emotes.';
 
 function buildQuestionSystemContent({ personality = '', toneNote = '', trapNote = '' } = {}) {
-  return `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. En videojuegos NUNCA inventes datos específicos. ${GAME_RULE} ${GENERAL_RULE} ${LORE_RULE} Sin "Lo siento". Responde SIEMPRE en espanol. ${SPAIN_RULE}`;
+  // La personalidad completa ya trae la regla de lore y la de español de España: no se repiten
+  const lore = personality.includes(LORE_RULE) ? '' : ` ${LORE_RULE}`;
+  const spain = personality.includes(SPAIN_RULE) ? '' : ` ${SPAIN_RULE}`;
+  return `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. En videojuegos NUNCA inventes datos específicos. ${GAME_RULE} ${GENERAL_RULE}${lore} Sin "Lo siento". Responde SIEMPRE en espanol.${spain}`;
 }
 
 module.exports = { LORE_RULE, GAME_RULE, GENERAL_RULE, SPAIN_RULE, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, buildQuestionSystemContent };

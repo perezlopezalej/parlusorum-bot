@@ -51,6 +51,10 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 
 - **Diagnóstico de latencia/inestabilidad del eval**: las llamadas sueltas tardan ~1 s; los 22 s eran esperas de `retry-after` tras 429 (`requestWithRetry` dormía lo que pidiera Groq) y los casos `signo-zodiaco`/`cielo-azul` sin respuesta eran el cupo diario TPD de `gpt-oss-20b` (200k) agotado por las propias tandas de eval (cada mención gasta ~3k tokens). La provocación es una sola llamada, sin factcheck ni reintentos. Arreglos: `groqWithRetry(params, retries, { maxDelayMs })` falla al momento si la espera supera el tope (provocación 3 s → réplica de reserva; menciones 5 s → callan, como ya hacían si llegaban tarde); temperatura 0,3 en cultura general (`!dios_fua` sin juego y menciones) y regla de prudencia en `GENERAL_RULE`; eval con tiempos por llamada y nº de 429 por caso, motivo "Groq 429 (cupo agotado)", campo `informativo` (avisa pero no cuenta; `abejas` marcado). Test del tope en `groq-fallback.test.js`.
 
+- **Dieta de prompts (cupo Groq)**: perfiles `full`/`lean`/`micro` (`src/ai/persona.js`). Menciones y cohost usan `lean`, provocaciones `micro`, `!dios_fua` sigue en `full` (sin repetir LORE_RULE/SPAIN_RULE). `lore.json → lean`, memoria reducida a 2 streams y `getBotPersonality` sin duplicar lore. Estimado por llamada (tokens de entrada): mención ~3,5k → ~1,1k; provocación ~3,3k → ~0,8k; cohost ~3,8k → ~1,5k; `!dios_fua` ~3,6k → ~3,5k; timers/alertas/EventSub ~1,7k → ~0,9k.
+- **429 por cupo → siguiente modelo**: `runWithFallback` salta de modelo sin esperar, bloquea el agotado (1 min por minuto, 10 min por diario, tope 30 min) y lo deja como último recurso; limpia `<think>` de modelos como qwen. Cadena en Render: gpt-oss-120b, gpt-oss-20b, qwen/qwen3.8-27b (comprobados con `GET /openai/v1/models`).
+- **Tokens por modelo en el fin de stream**: `recordGroqTokens` suma `usage`; el log muestra tokens del stream y del día UTC con % de `GROQ_DAILY_TOKEN_LIMIT`. Tests en `test/groq-cupo.test.js`. Eval (3 casos: hell-is-us, cielo-azul, provocacion) 3/3, informe en `logs/eval-persona-lean.txt`.
+
 ## Pendiente de probar en directo
 
 - Eval `--repeat 3` tras la plantilla RAWG: hell-is-us 3/3; siguen inestables `abejas` (la IA a veces responde "No, al revés", mal) y casos con latencia de Groq >20 s (respuesta tardía descartada, sobre todo `provocacion`). Eval 2026-10-31 anterior: 9/9 (la IA real es variable: `quien-lleva-el-canal` falló 2 de 4 tandas por omitir a vlxj97; repetir el eval si un caso suelto falla).
@@ -70,6 +74,10 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - Lore aprendido.
 - `!tiempo`.
 - Muertes por juego.
+
+- Vigilar en el primer stream el tono con `lean` (humor y FUA) y los tokens por modelo del log; si el humor baja, subir `LEAN_EXAMPLES` a 4–5 en `persona.js`.
+- Probar qwen/qwen3.8-27b como reserva real (formato de respuesta, <think>, tool calls de `buscar_juego`); no se ha llamado todavía.
+- Poner `GROQ_MODEL_FALLBACKS` también en el panel de Render si el valor del `render.yaml` no se sincroniza (las variables ya existentes no se pisan).
 
 ## Ideas futuras
 

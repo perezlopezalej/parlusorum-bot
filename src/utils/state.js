@@ -278,6 +278,29 @@ function recordGroqFallback(requested, used) {
 function getGroqFallbackUse() { return Object.fromEntries(groqFallbackUse); }
 function resetGroqFallbackUse() { groqFallbackUse.clear(); }
 
+// --- Tokens gastados en Groq por modelo (cada modelo tiene su propio cupo diario) ---
+// stream: desde el último resumen de fin de stream. day: acumulado del día UTC (Groq repone el cupo a las 00:00 UTC);
+// en memoria, así que un reinicio de Render lo pone a cero y el % del cupo es un mínimo.
+const groqTokensStream = new Map();
+let groqTokensDay = new Map();
+let groqTokensDayKey = '';
+function addTokens(map, model, prompt, completion) {
+  const cur = map.get(model) || { prompt: 0, completion: 0, calls: 0 };
+  cur.prompt += prompt; cur.completion += completion; cur.calls++;
+  map.set(model, cur);
+}
+function recordGroqTokens(model, usage, now = Date.now()) {
+  const prompt = Number(usage?.prompt_tokens) || 0;
+  const completion = Number(usage?.completion_tokens) || 0;
+  const key = new Date(now).toISOString().slice(0, 10);
+  if (key !== groqTokensDayKey) { groqTokensDayKey = key; groqTokensDay = new Map(); }
+  addTokens(groqTokensStream, model, prompt, completion);
+  addTokens(groqTokensDay, model, prompt, completion);
+}
+const tokensOf = map => Object.fromEntries([...map].map(([m, v]) => [m, { ...v, total: v.prompt + v.completion }]));
+function getGroqTokenUse() { return { stream: tokensOf(groqTokensStream), day: tokensOf(groqTokensDay), dayKey: groqTokensDayKey }; }
+function resetGroqTokenUse() { groqTokensStream.clear(); }
+
 // --- Descartes del cohost en el stream (motivo → nº), para el resumen de fin de stream ---
 const cohostDiscards = new Map();
 function recordCohostDiscard(reason) { cohostDiscards.set(reason, (cohostDiscards.get(reason) || 0) + 1); }
@@ -319,6 +342,7 @@ function getChatLogSize() { return chatLogBuffer.length; }
 module.exports = {
   pushChatLog, takeChatLog, requeueChatLog, getChatLogSize,
   recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
+  recordGroqTokens, getGroqTokenUse, resetGroqTokenUse,
   recordCohostDiscard, getCohostDiscards, resetCohostDiscards,
   recordCohostAttempt, recordCohostSent, recordGroq429, getCohostStats, resetCohostStats,
   addLoreSample, getLoreSample, resetLoreSample,

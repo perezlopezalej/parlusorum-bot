@@ -14,6 +14,7 @@ const { classifyGameMatch } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
+const { MEMORY_LEAN, normalizeProfile, pickExamples, buildLeanBase, buildMicroBase } = require('./persona');
 const { LORE_RULE, SPAIN_RULE, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, buildQuestionSystemContent } = require('./prompts');
 const { persistCooldown, getRecentSessionDeaths, saveSessionProphecy } = require('../utils/supabase');
 const logger = require('../utils/logger');
@@ -59,14 +60,15 @@ function getFallback(type, mention = '') {
 function getEventSubLiveStatus() { return getStreamIsLive(); }
 
 // FIX #1: contexto con roles clarificados
-function getChannelContext() {
+function getChannelContext(profile = 'full') {
   const games = (channelConfig.games_played || []).slice(0, 4).join(', ');
-  return `Canal: ${channelConfig.streamer} (streamer/host). Bot creado por: @${CREATOR_USERNAME} (amo creador, NO es el streamer). ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${getManualLore()}`;
+  return `Canal: ${channelConfig.streamer} (streamer/host). Bot creado por: @${CREATOR_USERNAME} (amo creador, NO es el streamer). ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${getManualLore(profile === 'full' ? 'full' : 'lean')}`;
 }
 
-let fullContextCache = null;
-let lastContextCheck = 0;
+// Un contexto cacheado por perfil de personalidad: { context, at }
+const contextCaches = new Map();
 const CONTEXT_CACHE_TTL = 2 * 60 * 1000;
+const LEAN_EMOTES_LINE = 'SOLO emotes de esta lista, NUNCA inventes otros. Canal: parlus1Esteeselrollo (buen rollo), parlus1Kelokekelowa (incredulidad/meme), parlus1Streambrothers5 (momentos de stream/hype), parlus1Alataqueel (accion), parlus1PORELPODERDELFUAAAAA (FUA/epico). Globales opcionales: KEKW, Pog, LUL, monkaS, Kappa, OMEGALUL. Maximo 1-2, solo si encajan, SIEMPRE separados por espacios y NUNCA pegados a puntuacion (pegado a un punto o coma no se renderiza).';
 
 const userFactsCache = new Map();
 const USER_FACTS_TTL = 5 * 60 * 1000;
@@ -88,11 +90,13 @@ async function getCachedUserFacts(username) {
 
 function clearUserFactsCache() { userFactsCache.clear(); }
 
-async function getFullContext() {
+async function getFullContext(profile = 'full') {
   const now = Date.now();
-  if (fullContextCache && now - lastContextCheck < CONTEXT_CACHE_TTL) return fullContextCache;
+  const cached = contextCaches.get(profile);
+  if (cached && now - cached.at < CONTEXT_CACHE_TTL) return cached.context;
+  const lean = profile !== 'full';
 
-  const base = getChannelContext();
+  const base = getChannelContext(profile);
   let context = base;
   let gameOk = false;
 
@@ -123,12 +127,12 @@ async function getFullContext() {
 
   // Inyectar memoria de streams anteriores
   try {
-    const memory = await getMemoryContext();
+    const memory = await getMemoryContext(lean ? MEMORY_LEAN : undefined);
     if (memory) context += memory;
   } catch {}
 
-  // Campeón del ranking de trivia
-  try {
+  // Campeón del ranking de trivia (solo en el contexto completo)
+  if (!lean) try {
     const champion = await require('../games/handler').getChampion();
     if (champion) context += ` Campeón actual de la trivia del chat: @${sanitizeForAI(champion.username)} con ${champion.count} victorias; puedes aludirle si encaja, sin forzarlo.`;
   } catch {}
@@ -140,14 +144,12 @@ async function getFullContext() {
   } catch {}
   context += ` ${LORE_RULE}`;
 
-  fullContextCache = context;
-  lastContextCheck = now;
-  return fullContextCache;
+  contextCaches.set(profile, { context, at: now });
+  return context;
 }
 
 function invalidateContextCache() {
-  fullContextCache = null;
-  lastContextCheck = 0;
+  contextCaches.clear();
 }
 
 function getMinimalContext() {
@@ -292,14 +294,16 @@ function getModeConfig() {
 }
 
 // --- Personalidad ---
-async function getPersonality(messageCount, userType = 'normal', username = null) {
+// profile: 'full' (!dios_fua) | 'lean' (menciones, cohost) | 'micro' (provocaciones); ver persona.js
+async function getPersonality(messageCount, userType = 'normal', username = null, profile = 'full') {
+  profile = normalizeProfile(profile);
   refreshMode();
   const needsReinforce = tickReinforce();
   const reinforceBlock = needsReinforce
     ? `\nRECUERDA QUIÉN ERES: Eres dios_fua. Gracioso, directo, con criterio propio. Nunca genérico. Nunca pelota. El FUA no se diluye con el tiempo.`
     : '';
   const botName = process.env.BOT_USERNAME || 'dios_fua';
-  const context = await getFullContext();
+  const context = profile === 'micro' ? getMicroContext() : await getFullContext(profile);
 
   // FIX #1: nota especial con roles 100% claros
   let specialNote = '';
@@ -312,7 +316,7 @@ async function getPersonality(messageCount, userType = 'normal', username = null
   }
 
   // FIX #4: prompt reforzado con experto en gaming + español forzado
-  const base = `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" FUA significa "Fuerza Universal Aplicada" y además es un grito. No es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}.
+  const fullBase = () => `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" FUA significa "Fuerza Universal Aplicada" y además es un grito. No es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}.
 ${context}${specialNote}
 
 REGLAS ABSOLUTAS (no negociables):
@@ -326,9 +330,12 @@ REGLAS ABSOLUTAS (no negociables):
 - CRITICO — espaciado de emotes: los emotes del canal SIEMPRE van separados por espacios. NUNCA pegados a puntuacion. MAL: "¡texto! parlus1Alataqueel." o "parlus1KelokeKelowa," BIEN: "parlus1Alataqueel" o "texto parlus1KelokeKelowa texto". Un emote pegado a un punto o coma NO se renderiza en Twitch.
 - Sin "Lo siento". Sin "como IA". Sin formalismos.
 - Si tu contexto incluye MEMORIA DEL CANAL con frases recurrentes o momentos epicos de streams anteriores, mencionalos de forma espontanea y natural cuando encaje — el canal tiene historia propia y el chat lo aprecia.`;
+  const base = profile === 'full' ? fullBase()
+    : profile === 'lean' ? buildLeanBase({ botName, streamer: channelConfig.streamer, creator: CREATOR_USERNAME, emotesLine: LEAN_EMOTES_LINE })
+    : buildMicroBase({ botName, streamer: channelConfig.streamer });
 
   const modeConfig = getModeConfig();
-  const modeExt = modeConfig.prompt_extension ? `\n${modeConfig.prompt_extension}` : '';
+  const modeExt = profile !== 'micro' && modeConfig.prompt_extension ? `\n${modeConfig.prompt_extension}` : '';
   const gameNote = getGameContextFailed() ? ' NOTA INTERNA: no tenemos datos del juego actual — evita mencionarlo.' : '';
   const suffix = messageCount >= 20 ? ' Chat muy activo, se energico y rapido.' : messageCount >= 5 ? ' Chat tranquilo, se amigable.' : ' Chat tranquilo, se acogedor.';
 
@@ -346,21 +353,27 @@ REGLAS ABSOLUTAS (no negociables):
     } catch {}
   }
 
-  const examples = channelConfig.personality_examples || [];
+  const examples = pickExamples(channelConfig.personality_examples || [], profile);
   const examplesBlock = examples.length > 0
     ? `\n<examples>\n${examples.map(e =>
         `Situación: ${e.situation}\nNO: ${e.bad}\nSÍ: ${e.good}`
       ).join('\n\n')}\n</examples>`
     : '';
 
+  if (profile === 'micro') return `${base}${specialNote}\n${context}${userContext}`;
   return base + modeExt + gameNote + suffix + userContext + examplesBlock + reinforceBlock;
+}
+
+// Contexto del perfil micro: solo lo necesario para no meter la pata (lore condensado con los temas a evitar)
+function getMicroContext() {
+  return `Creador del bot: @${CREATOR_USERNAME} (NO es el streamer). ${getManualLore('lean')} ${LORE_RULE}`;
 }
 
 function getBotPersonality() {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
   const emotes = (channelConfig.channel_emotes || []).join(', ');
-  return `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. ${channelConfig.bot_personality || ''}
-Canal: ${channelConfig.vibe || ''}. ${getManualLore()}
+  return `${buildMicroBase({ botName, streamer: channelConfig.streamer })}
+Canal: ${channelConfig.vibe || ''}. ${getManualLore('lean')}
 Emotes del canal (usa solo si encajan, máx 1-2, separados por espacios, NUNCA pegados a puntuación): ${emotes}.
 REGLAS ABSOLUTAS: SIEMPRE en español. Máx 2 frases cortas. Sin presentarte ni saludar. Sin "Lo siento". Sin "como IA". Sin inventar datos.
 NO hagas: pelota automática al chat, tono de asistente genérico, repetir lo que ya se dijo.
@@ -463,7 +476,7 @@ async function runCohost(client, channel, moment = null) {
     const recentMsgs = chatHistory.slice(-10).map(m => m.message || '');
     const mood = detectChatMood(recentMsgs);
     const moodNote = `\nEl chat está en modo ${mood} ahora mismo. Ajusta el tono de tu comentario a ese ambiente.`;
-    const personalityBase = await getPersonality(recentMessages.length);
+    const personalityBase = await getPersonality(recentMessages.length, 'normal', null, 'lean');
     const startedAt = getStreamStartedAt();
     const deathNote = deathCount === 0
       ? ' El contador de muertes está a 0: NO menciones muertes, caídas ni que el streamer "cae".'
@@ -1484,7 +1497,7 @@ async function checkPatternMatch(client, channel, tags, message) {
       answer = pickRandom(messagesConfig.mention_game_redirect);
     } else {
       const userType = getUserType(username, tags);
-      const personality = await getPersonality(recentMessages.length, userType, username);
+      const personality = await getPersonality(recentMessages.length, userType, username, 'lean');
       const userConv = getUserConversation(userId);
 
       const tone = detectTone(question);
@@ -1508,7 +1521,7 @@ async function checkPatternMatch(client, channel, tags, message) {
           max_tokens: modeConfig.max_tokens ?? 120,
           temperature: GENERAL_TEMPERATURE,
           messages: [
-            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. SIEMPRE en espanol. ${SPAIN_RULE} NUNCA digas datos de videojuegos (fechas, desarrolladoras, argumentos, mecánicas, armas, zonas, dificultad, consejos), ni del juego actual ni de otros: si insisten, sugiere usar !dios_fua. Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. NUNCA digas datos de videojuegos (fechas, desarrolladoras, argumentos, mecánicas, armas, zonas, dificultad, consejos), ni del juego actual ni de otros: si insisten, sugiere usar !dios_fua. Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
             ...userConv,
             { role: 'user', content: `${username}: ${question}` }
           ]
@@ -1565,7 +1578,7 @@ function pickProvocationReply() {
 // Réplica corta con personalidad; si la IA falla, rechaza o suena latina, se usa la de reserva
 async function generateProvocationReply(username, question, maxChars) {
   try {
-    const personality = await getPersonality(recentMessages.length, 'normal', username);
+    const personality = await getPersonality(recentMessages.length, 'normal', username, 'micro');
     const response = await groqWithRetry({
       model: GROQ_MODEL_FAST,
       max_tokens: 60,
@@ -1624,5 +1637,5 @@ module.exports = {
   getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
   getStreamChatBuffer, resetStreamChatBuffer, getRecentChatters,
   restoreCooldowns, clearUserFactsCache, getCachedUserFacts,
-  getBotPersonality, NARRATOR_BASE,
+  getBotPersonality, getPersonality, NARRATOR_BASE,
 };

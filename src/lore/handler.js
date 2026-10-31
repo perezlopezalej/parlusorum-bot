@@ -111,11 +111,13 @@ function touchesAvoidedTopic(text) {
 }
 
 // Siempre primero en el prompt, sin tope ni decaimiento
-function getManualLore() {
+// profile 'lean': identidad y chistes internos condensados (loreConfig.lean); los temas a evitar van siempre
+function getManualLore(profile = 'full') {
   const avoid = AVOID.map(a => a.topic).filter(Boolean).join('; ');
+  const src = profile === 'lean' && loreConfig.lean ? loreConfig.lean : loreConfig;
   return [
-    loreConfig.identity,
-    loreConfig.inside_jokes,
+    src.identity,
+    src.inside_jokes,
     avoid ? `Temas a evitar (no los menciones ni bromees con ellos): ${avoid}.` : ''
   ].filter(Boolean).join(' ');
 }
