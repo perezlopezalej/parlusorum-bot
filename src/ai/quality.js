@@ -115,9 +115,12 @@ function emoteAllowed(recentBotMessages, emotes) {
   return !recentBotMessages.slice(-2).some(m => hasEmote(m, emotes));
 }
 
+// Espacio sobrante antes de signos de puntuación; no toca "usa !comando" (el signo va pegado a una palabra)
+const SPACE_BEFORE_PUNCT_RE = /\s+([,.;:!?…])(?![\p{L}\p{N}_])/gu;
+
 function stripEmotes(text, emotes) {
   if (!emotes.length) return text;
-  return text.replace(emoteRe(emotes), '').replace(/\s+([,.;:!?…])/g, '$1').replace(/ {2,}/g, ' ').trim();
+  return text.replace(emoteRe(emotes), '').replace(SPACE_BEFORE_PUNCT_RE, '$1').replace(/ {2,}/g, ' ').trim();
 }
 
 // Aplica la política: sin permiso se quitan todos; con permiso se deja como mucho el primero
@@ -125,7 +128,7 @@ function applyEmotePolicy(text, allowed, emotes) {
   if (!emotes.length) return text;
   if (!allowed) return stripEmotes(text, emotes);
   let seen = false;
-  return text.replace(emoteRe(emotes), m => (seen ? '' : (seen = true, m))).replace(/ {2,}/g, ' ').replace(/\s+([,.;:!?…])/g, '$1').trim();
+  return text.replace(emoteRe(emotes), m => (seen ? '' : (seen = true, m))).replace(/ {2,}/g, ' ').replace(SPACE_BEFORE_PUNCT_RE, '$1').trim();
 }
 
 // --- Repetición: palabras de contenido compartidas con mensajes recientes ---

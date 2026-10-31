@@ -7,6 +7,7 @@
   },
   {
     "id": "abejas",
+    "informativo": true,
     "input": "!dios_fua es cierto que las abejas en verano viven menos que en invierno?",
     "note": "Cultura general: responde (sí) sin tocar buscar_juego ni mencionar RAWG.",
     "expect": {
@@ -19,7 +20,7 @@
     "id": "cielo-azul",
     "input": "dios fua por qué el cielo es azul?",
     "note": "Cultura general sin prefijo: respuesta corta.",
-    "expect": { "route": "natural_or_direct", "reply": true, "maxChars": 220, "matchNone": ["rawg", "base de datos", "herramienta"] }
+    "expect": { "route": "natural_or_direct", "reply": true, "maxChars": 200, "matchNone": ["rawg", "base de datos", "herramienta"] }
   },
   {
     "id": "signo-zodiaco",
@@ -58,7 +59,7 @@
   {
     "id": "quien-lleva-el-canal",
     "input": "!dios_fua quién lleva este canal?",
-    "note": "Manu y Pao llevan el canal; vlxj97 creó el bot.",
-    "expect": { "route": "question", "discarded": false, "matchAll": ["manu", "pao", "vlxj97"] }
+    "note": "Manu y Pao llevan el canal; vlxj97 solo creó el bot (mencionarlo es opcional, pero no puede llevar el canal).",
+    "expect": { "route": "question", "discarded": false, "matchAll": ["manu", "pao"], "matchNone": ["vlxj97[^.]{0,20}\\b(lleva|dirige|gestiona|maneja)\\b", "\\b(lleva|llevan|dirigen|gestionan)\\b[^.,]{0,30}\\bvlxj97"] }
   }
 ]

@@ -89,6 +89,11 @@ describe('emotes: como mucho 1 de cada 3 mensajes', () => {
     assert.equal(q.applyEmotePolicy('Vamos parlus1Alataqueel que sí parlus1PORELPODERDELFUAAAAA', false, emotes), 'Vamos que sí');
     assert.equal(q.applyEmotePolicy('Vamos parlus1Alataqueel que sí parlus1PORELPODERDELFUAAAAA', true, emotes), 'Vamos parlus1Alataqueel que sí');
   });
+  test('conserva el espacio en "usa !comando" y quita el de antes de un signo', () => {
+    assert.equal(q.applyEmotePolicy('Para eso usa !dios_fua, que ahí me pongo serio.', true, emotes), 'Para eso usa !dios_fua, que ahí me pongo serio.');
+    assert.equal(q.applyEmotePolicy('Para eso usa !dios_fua, que sí parlus1Alataqueel', false, emotes), 'Para eso usa !dios_fua, que sí');
+    assert.equal(q.applyEmotePolicy('Vamos parlus1Alataqueel , que sí', false, emotes), 'Vamos, que sí');
+  });
 });
 
 describe('fórmulas repetidas', () => {

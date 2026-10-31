@@ -49,7 +49,8 @@ function buildModelChain(model, fallbacks = GROQ_MODEL_FALLBACKS) {
   return [...new Set([model, ...fallbacks])];
 }
 
-async function requestWithRetry(create, params, maxRetries) {
+// maxDelayMs: si la espera pedida por un 429 la supera, se falla al momento (llamadas con tiempo límite, p. ej. menciones)
+async function requestWithRetry(create, params, maxRetries, maxDelayMs = Infinity) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try { return await create(params); }
     catch (err) {
@@ -59,6 +60,7 @@ async function requestWithRetry(create, params, maxRetries) {
         const delay = retryAfterSec > 0
           ? retryAfterSec * 1000
           : 2 ** attempt * 1000 + Math.random() * 500;
+        if (delay > maxDelayMs) throw err;
         await new Promise(r => setTimeout(r, delay));
         continue;
       }
@@ -67,7 +69,7 @@ async function requestWithRetry(create, params, maxRetries) {
   }
 }
 
-async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_MODEL_FALLBACKS) {
+async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_MODEL_FALLBACKS, maxDelayMs = Infinity) {
   const requested = params.model || GROQ_MODEL;
   const chain = buildModelChain(requested, fallbacks);
   let lastErr;
@@ -83,7 +85,7 @@ async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_
     }
     try {
       const t0 = Date.now();
-      const result = await requestWithRetry(create, p, maxRetries);
+      const result = await requestWithRetry(create, p, maxRetries, maxDelayMs);
       chatlog.noteAiCall(result?.model || model, Date.now() - t0);
       if (model !== requested) recordGroqFallback(requested, model);
       return result;
@@ -96,8 +98,8 @@ async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_
   throw lastErr;
 }
 
-function groqWithRetry(params, maxRetries = 2) {
-  return runWithFallback(p => groq.chat.completions.create(p), params, maxRetries);
+function groqWithRetry(params, maxRetries = 2, { maxDelayMs = Infinity } = {}) {
+  return runWithFallback(p => groq.chat.completions.create(p), params, maxRetries, GROQ_MODEL_FALLBACKS, maxDelayMs);
 }
 
 function truncate(msg, limit = TWITCH_MAX_LENGTH) {

@@ -5,7 +5,7 @@
  * prompts, buscar_juego, filtros de quality y factcheck. Solo cambia el cliente de chat (captura el say())
  * y las ESCRITURAS a Supabase (bloqueadas). No envía nada a Twitch.
  *
- * Uso: npm run eval [-- --only id1,id2] [-- --verbose]
+ * Uso: npm run eval [-- --only id1,id2] [-- --verbose] [-- --repeat N]
  * Sale con código 1 si algún caso no cumple lo esperado.
  */
 
@@ -16,6 +16,8 @@ const path = require('path');
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
+const repeatIdx = args.indexOf('--repeat');
+const repeat = repeatIdx >= 0 ? Math.max(1, parseInt(args[repeatIdx + 1], 10) || 1) : 1;
 const onlyIdx = args.indexOf('--only');
 const only = onlyIdx >= 0 ? String(args[onlyIdx + 1] || '').split(',').filter(Boolean) : null;
 
@@ -62,6 +64,13 @@ wrap(quality, 'leaksTech', (a, r) => ({ filter: 'leaksTech', hit: !!r, text: a[0
 wrap(quality, 'mentionsMechanics', (a, r) => ({ filter: 'mentionsMechanics', hit: !!r, text: a[0] }));
 wrap(quality, 'validateMention', (a, r) => ({ filter: 'validateMention', hit: !r.ok, reason: r.reason, text: a[0] }));
 wrap(factcheck, 'shouldDiscard', (a, r) => ({ filter: `factcheck(${a[2]?.source || 'stream'})`, hit: !!r, text: a[0] }));
+wrap(factcheck, 'evaluate', (a, r) => ({ filter: `factcheck(${a[2]?.source || 'stream'})`, hit: !!r.discard, reason: r.claim, text: a[0] }));
+
+// Tiempos de cada llamada a Groq y 429 por caso (diagnóstico de latencia)
+let aiCalls = [];
+const chatlogMod = require('../src/utils/chatlog');
+const origNoteAi = chatlogMod.noteAiCall;
+chatlogMod.noteAiCall = (model, ms, ...rest) => { aiCalls.push({ model, ms }); return origNoteAi.call(chatlogMod, model, ms, ...rest); };
 
 const state = require('../src/utils/state');
 const messagesConfig = require('../config/messages.json');
@@ -69,9 +78,9 @@ const { classifyMessage } = require('../src/ai/patterns');
 const ai = require('../src/ai/handler');
 
 // ─── Ejecución de un caso ───
-function fakeTags(i) {
-  const name = `EvalUser${i + 1}`;
-  return { 'display-name': name, username: name.toLowerCase(), 'user-id': `eval-${i + 1}`, mod: false, badges: {} };
+function fakeTags(i, rep = 0) {
+  const name = `EvalUser${i + 1 + rep * 100}`;
+  return { 'display-name': name, username: name.toLowerCase(), 'user-id': `eval-${i + 1 + rep * 100}`, mod: false, badges: {} };
 }
 
 function flattenPool(key) {
@@ -83,11 +92,12 @@ function flattenPool(key) {
 
 const stripMention = s => String(s || '').replace(/^@\S+\s*/, '');
 
-async function runCase(c, i) {
-  events = []; currentLogs = [];
+async function runCase(c, i, rep = 0) {
+  events = []; currentLogs = []; aiCalls = [];
+  const n429 = state.getCohostStats().groq429;
   const said = [];
   const client = { say: (_ch, text) => { said.push(String(text)); } };
-  const tags = fakeTags(i);
+  const tags = fakeTags(i, rep);
   state.setDeathCount(c.deaths || 0);
 
   const isCommand = /^!dios_fua\b/i.test(c.input);
@@ -97,6 +107,8 @@ async function runCase(c, i) {
   if (isCommand) ret = await ai.handleQuestion(client, '#eval', tags, c.input.split(/\s+/));
   else ret = await ai.checkPatternMatch(client, '#eval', tags, c.input);
   const ms = realNow() - started;
+  const calls = aiCalls.map(c => c.model.split('/').pop() + ' ' + (c.ms / 1000).toFixed(1) + 's');
+  const rate429 = state.getCohostStats().groq429 - n429;
 
   const toolLog = currentLogs.map(l => /buscar_juego: "(.*)" → (.*)$/.exec(l)).find(Boolean);
   const tool = toolLog ? { query: toolLog[1], result: toolLog[2], data: !/sin datos|\((none|maybe)\)$/.test(toolLog[2]) } : null;
@@ -112,7 +124,7 @@ async function runCase(c, i) {
     const f = hits.find(e => e.filter !== 'mentionsMechanics') || hits[0];
     const candidate = events.find(e => e.filter === 'leaksTech')?.text;
     discarded = {
-      by: f ? `${f.filter}${f.reason ? ` — ${f.reason}` : ''}` : (ret === 'blocked' ? 'cooldown/límite/tardía' : 'desconocido'),
+      by: f ? `${f.filter}${f.reason ? ` — ${f.reason}` : ''}` : (rate429 > 0 ? `Groq 429 (${rate429}×, cupo agotado)` : ret === 'blocked' ? 'cooldown/límite/tardía' : 'desconocido'),
       original: candidate || f?.text || '',
     };
   }
@@ -120,7 +132,7 @@ async function runCase(c, i) {
   const retried = !discarded ? hits.map(e => `${e.filter}${e.reason ? ` — ${e.reason}` : ''}`) : [];
 
   const failures = check(c.expect || {}, { kind, tool, reply, answer, discarded, ret });
-  return { c, kind, reply, answer, tool, discarded, retried, failures, ms, logs: currentLogs.slice() };
+  return { c, kind, reply, answer, tool, discarded, retried, failures, ms, calls, rate429, logs: currentLogs.slice() };
 }
 
 // ─── Comprobación de lo esperado ───
@@ -156,32 +168,41 @@ function check(exp, r) {
 (async () => {
   const all = JSON.parse(fs.readFileSync(path.join(__dirname, '../test/eval-cases.json'), 'utf8'));
   const cases = only ? all.filter(c => only.includes(c.id)) : all;
+  const total = cases.filter(c => !c.informativo).length;
   if (!cases.length) { console.error('Ningún caso coincide con --only.'); process.exit(2); }
 
   const out = [];
   const log = s => { out.push(s); console.log(s); };
   let failed = 0;
 
+  const stability = [];
   for (let i = 0; i < cases.length; i++) {
-    let r;
-    try { r = await runCase(cases[i], i); }
-    catch (err) { r = { c: cases[i], kind: '?', reply: '', answer: '', tool: null, discarded: null, retried: [], failures: [`excepción: ${err.message}`], ms: 0, logs: currentLogs.slice() }; }
-    skewMs += 15 * 60 * 1000;
+    let passes = 0;
+    for (let n = 1; n <= repeat; n++) {
+      let r;
+      try { r = await runCase(cases[i], i, n - 1); }
+      catch (err) { r = { c: cases[i], kind: '?', reply: '', answer: '', tool: null, discarded: null, retried: [], failures: [`excepción: ${err.message}`], ms: 0, logs: currentLogs.slice() }; }
+      skewMs += 15 * 60 * 1000;
 
-    const ok = r.failures.length === 0;
-    if (!ok) failed++;
-    log(`\n[${i + 1}/${cases.length}] ${ok ? 'OK  ' : 'FALLA'} ${r.c.id} — ${r.c.input}`);
-    log(`  esperado : ${r.c.note || '(sin nota)'}`);
-    log(`  ruta     : ${r.kind || 'ninguna'} · ${(r.ms / 1000).toFixed(1)} s${r.tool ? ` · buscar_juego("${r.tool.query}") → ${r.tool.result}` : ''}`);
-    log(`  respuesta: ${r.reply || '(ninguna)'}`);
-    if (r.discarded) log(`  DESCARTADA por ${r.discarded.by}${r.discarded.original ? `\n  original : ${r.discarded.original}` : ''}`);
-    else if (r.retried.length) log(`  reintentos por: ${r.retried.join('; ')}`);
-    else log('  filtros  : ninguno');
-    for (const msg of r.failures) log(`  ✘ ${msg}`);
-    if (verbose) for (const l of r.logs) log(`    · ${l}`);
+      const ok = r.failures.length === 0;
+      if (ok) passes++;
+      log(`\n[${i + 1}/${cases.length}${repeat > 1 ? ` · ${n}/${repeat}` : ''}] ${ok ? 'OK  ' : r.c.informativo ? 'AVISO' : 'FALLA'} ${r.c.id} — ${r.c.input}`);
+      log(`  esperado : ${r.c.note || '(sin nota)'}`);
+      log(`  ruta     : ${r.kind || 'ninguna'} · ${(r.ms / 1000).toFixed(1)} s${r.tool ? ` · buscar_juego("${r.tool.query}") → ${r.tool.result}` : ''}`);
+      if (verbose || r.ms > 10000) log(`  tiempos  : ${(r.calls || []).join(', ') || 'sin llamadas'}${r.rate429 ? ` · ${r.rate429} × 429` : ''}`);
+      log(`  respuesta: ${r.reply || '(ninguna)'}`);
+      if (r.discarded) log(`  DESCARTADA por ${r.discarded.by}${r.discarded.original ? `\n  original : ${r.discarded.original}` : ''}`);
+      else if (r.retried.length) log(`  reintentos por: ${r.retried.join('; ')}`);
+      else log('  filtros  : ninguno');
+      for (const msg of r.failures) log(`  ✘ ${msg}`);
+      if (verbose) for (const l of r.logs) log(`    · ${l}`);
+    }
+    if (passes < repeat && !cases[i].informativo) failed++;
+    stability.push(`${passes === repeat ? 'estable  ' : cases[i].informativo ? 'AVISO    ' : passes === 0 ? 'FALLA    ' : 'INESTABLE'} ${cases[i].id}: ${passes}/${repeat}${cases[i].informativo ? ' (informativo, no cuenta)' : ''}`);
   }
+  if (repeat > 1) log(`\nRepeticiones por caso:\n  ${stability.join('\n  ')}`);
 
-  log(`\n${cases.length - failed}/${cases.length} casos cumplen lo esperado.${blockedWrites.size ? ` (escrituras Supabase bloqueadas: ${[...blockedWrites].join(', ')})` : ''}`);
+  log(`\n${total - failed}/${total} casos cumplen lo esperado (sin contar los informativos)${repeat > 1 ? ` en las ${repeat} repeticiones` : ''}.${blockedWrites.size ? ` (escrituras Supabase bloqueadas: ${[...blockedWrites].join(', ')})` : ''}`);
   try {
     const dir = path.join(__dirname, '../logs');
     fs.mkdirSync(dir, { recursive: true });

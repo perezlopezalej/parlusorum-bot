@@ -62,3 +62,15 @@ describe('contador de modelos de reserva', () => {
     assert.deepEqual(getGroqFallbackUse(), {});
   });
 });
+
+describe('tope de espera por 429', () => {
+  test('si el retry-after supera maxDelayMs falla al momento sin dormir', async () => {
+    let calls = 0;
+    const err = Object.assign(new Error('rate limit'), { status: 429, headers: { 'retry-after': '20' } });
+    const create = async () => { calls++; throw err; };
+    const t0 = Date.now();
+    await assert.rejects(runWithFallback(create, { model: 'a' }, 2, [], 3000), /rate limit/);
+    assert.equal(calls, 1);
+    assert.ok(Date.now() - t0 < 1000);
+  });
+});

@@ -4,6 +4,7 @@ const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChann
 const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent } = require('../utils/state');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
 const factcheck = require('./factcheck');
+const { buildRawgTemplate } = require('./rawg-template');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudget, isStale } = require('./patterns');
 const { translateGenres } = require('../utils/genres');
 const quality = require('./quality');
@@ -36,6 +37,10 @@ const PROVOCATION_WINDOW = parseInt(process.env.PROVOCATION_WINDOW_MS || '600000
 const MENTION_MAX_PER_USER = parseInt(process.env.MENTION_MAX_PER_USER || '3', 10);
 const MENTION_WINDOW = parseInt(process.env.MENTION_WINDOW_MS || '300000', 10);
 const MENTION_MAX_AGE_MS = 20000;
+const PROVOCATION_MAX_RETRY_DELAY_MS = 3000; // una réplica tardía se descarta (MENTION_MAX_AGE_MS): mejor la de reserva al momento
+const MENTION_MAX_RETRY_DELAY_MS = 5000;
+const GENERAL_TEMPERATURE = 0.3; // cultura general: menos creatividad, menos datos inventados
+const MENTION_MAX_CHARS = 200; // tope de las respuestas a menciones (con el @usuario), recortadas en final de frase
 const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
 
 // FIX #1: roles claramente definidos
@@ -994,21 +999,27 @@ const BUSCAR_JUEGO_TOOL = {
   }
 };
 
-async function buscarJuegoTool(nombre) {
+// { text, info }: text es lo que ve la IA; info solo viene con coincidencia exacta (para la plantilla de reserva)
+async function buscarJuegoLookup(nombre) {
   const clean = sanitizeForAI(nombre || '');
-  if (!clean) return 'SIN DATOS: no se indicó ningún juego.';
+  if (!clean) return { text: 'SIN DATOS: no se indicó ningún juego.', info: null };
   const info = await getGameInfo(clean.slice(0, 80), { detail: true }).catch(() => null);
   const match = info ? classifyGameMatch(clean, info.name) : 'none';
   logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? `${info.name} (${match})` : 'sin datos'}`);
-  if (match === 'none') return `SIN DATOS: no hay información de "${clean}". Si es un videojuego no inventes nada y dilo con humor sin hablar de datos ni de fuentes; si no es un videojuego, responde con lo que sepas.`;
-  if (match === 'maybe') return `SIN DATOS, quizá se refiera a ${info.name}. Sin hablar de datos ni de fuentes: no presentes ese juego como el pedido ni uses sus datos; pregunta si se refiere a ese.`;
-  return [
+  if (match === 'none') return { info: null, text: `SIN DATOS: no hay información de "${clean}". Si es un videojuego no inventes nada y dilo con humor sin hablar de datos ni de fuentes; si no es un videojuego, responde con lo que sepas.` };
+  if (match === 'maybe') return { info: null, text: `SIN DATOS, quizá se refiera a ${info.name}. Sin hablar de datos ni de fuentes: no presentes ese juego como el pedido ni uses sus datos; pregunta si se refiere a ese.` };
+  const text = [
     `Nombre: ${info.name}`,
     `Salida: ${info.released || 'desconocida'}`,
     `Desarrolladora: ${info.developers || 'desconocida'}`,
     `Géneros: ${info.genres || 'desconocidos'}`,
     `Descripción (puede estar en inglés): ${info.description || 'sin descripción'}`
   ].join('\n');
+  return { text, info };
+}
+
+async function buscarJuegoTool(nombre) {
+  return (await buscarJuegoLookup(nombre)).text;
 }
 
 // --- !dios_fua --- FIX #4 + #7: prompt mejorado + busqueda web Tavily
@@ -1060,6 +1071,7 @@ async function handleQuestion(client, channel, tags, args) {
     let response = await groqWithRetry({
       model: GROQ_MODEL_COMPOUND,
       max_tokens: qMaxTokens,
+      ...(quality.isGameQuestion(question) || quality.talksAboutGames(question) ? {} : { temperature: GENERAL_TEMPERATURE }),
       tools: [BUSCAR_JUEGO_TOOL],
       tool_choice: 'auto',
       messages
@@ -1067,6 +1079,7 @@ async function handleQuestion(client, channel, tags, args) {
     // Una sola ronda de herramienta: ejecutar buscar_juego y pedir la respuesta final sin tools
     const toolCalls = response.choices[0]?.message?.tool_calls;
     let rawgData = '';
+    let rawgInfo = null;
     if (toolCalls?.length) {
       messages.push(response.choices[0].message);
       for (const call of toolCalls.slice(0, 2)) {
@@ -1075,7 +1088,9 @@ async function handleQuestion(client, channel, tags, args) {
           let nombre = '';
           try { nombre = String(JSON.parse(call.function.arguments || '{}').nombre || ''); } catch { /* args inválidos */ }
           chatlog.noteTool('buscar_juego');
-          result = await buscarJuegoTool(nombre);
+          const lookup = await buscarJuegoLookup(nombre);
+          result = lookup.text;
+          rawgInfo = rawgInfo || lookup.info;
           rawgData += `${result}\n`;
         }
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
@@ -1086,16 +1101,34 @@ async function handleQuestion(client, channel, tags, args) {
         messages
       });
     }
-    const answer = response.choices[0].message.content;
+    let answer = response.choices[0].message.content;
     const qMaxChars = qModeConfig.max_chars ?? TWITCH_MAX_LENGTH;
     // Datos del juego: solo los que devolvió buscar_juego (RAWG); si afirma algo más, no se envía.
     // Solo si hablan de videojuegos: la cultura general se responde con el conocimiento del modelo.
     const gameTopic = quality.isGameQuestion(question) || quality.talksAboutGames(`${question} ${answer}`)
       || (!!toolCalls?.length && rawgData.length > 0 && !rawgData.startsWith('SIN DATOS'));
     const techLeak = quality.leaksTech(answer);
-    if (techLeak || (gameTopic && await factcheck.shouldDiscard(answer, rawgData, { source: 'rawg' }))) {
+    let discard = techLeak;
+    let claim = '';
+    if (!techLeak && gameTopic) ({ discard, claim } = await factcheck.evaluate(answer, rawgData, { source: 'rawg' }));
+    // Con datos reales de RAWG, un único reintento diciéndole qué frase no estaba respaldada
+    if (discard && !techLeak && /^Nombre: /m.test(rawgData)) {
+      const what = claim ? `Esto no estaba en los datos: "${claim}". No lo digas;` : 'Tu respuesta añadía datos que no están en la información del juego;';
+      messages.push({ role: 'user', content: `${what} cíñete a los datos (fecha, estudio, géneros, descripción) y a opiniones sin inventar mecánicas, armas, zonas ni tramas. Responde otra vez.` });
+      const retry = await groqWithRetry({ model: GROQ_MODEL_COMPOUND, max_tokens: qMaxTokens, messages });
+      const retryAnswer = retry.choices[0].message.content;
+      if (retryAnswer && !quality.leaksTech(retryAnswer) && !await factcheck.shouldDiscard(retryAnswer, rawgData, { source: 'rawg' })) { answer = retryAnswer; discard = false; }
+    }
+    // Sigue fallando pero RAWG sí tiene el juego: plantilla solo con datos de RAWG en vez de la frase de reserva
+    if (discard && !techLeak && rawgInfo) {
+      const tpl = buildRawgTemplate(rawgInfo, messagesConfig.dios_fua_rawg_quips);
+      if (tpl) { answer = tpl; discard = false; logger.info(`!dios_fua: plantilla RAWG para "${rawgInfo.name}"`); }
+    }
+    if (discard) {
       logger.info(`!dios_fua descartado (${techLeak ? 'respuesta técnica' : 'datos del juego sin respaldo'}): ${String(answer).slice(0, 80)}`);
-      client.say(channel, truncate(`@${username} ${pickRandom(messagesConfig.dios_fua_no_data)}`));
+      // Juego que RAWG no conoce: lo dice con humor en vez de la frase de reserva genérica
+      const unknownGame = !techLeak && rawgData.includes('SIN DATOS') && !/^Nombre: /m.test(rawgData);
+      client.say(channel, truncate(`@${username} ${pickRandom(unknownGame ? messagesConfig.dios_fua_unknown_game : messagesConfig.dios_fua_no_data)}`));
       questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
       return;
     }
@@ -1437,7 +1470,7 @@ async function checkPatternMatch(client, channel, tags, message) {
   try {
     const emotes = channelConfig.channel_emotes || [];
     const allowEmote = quality.emoteAllowed(getBotHistory().map(e => e.msg), emotes) && !isProvocation;
-    const maxChars = isProvocation ? Math.min(160, modeConfig.max_chars ?? 160) : (modeConfig.max_chars ?? TWITCH_MAX_LENGTH);
+    const maxChars = isProvocation ? Math.min(160, modeConfig.max_chars ?? 160) : Math.min(MENTION_MAX_CHARS, modeConfig.max_chars ?? MENTION_MAX_CHARS);
     let answer = '';
 
     if (isProvocation) {
@@ -1473,12 +1506,13 @@ async function checkPatternMatch(client, channel, tags, message) {
         const response = await groqWithRetry({
           model: GROQ_MODEL_FAST,
           max_tokens: modeConfig.max_tokens ?? 120,
+          temperature: GENERAL_TEMPERATURE,
           messages: [
-            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve. SIEMPRE en espanol. ${SPAIN_RULE} NUNCA digas datos de videojuegos (fechas, desarrolladoras, argumentos, mecánicas, armas, zonas, dificultad, consejos), ni del juego actual ni de otros: si insisten, sugiere usar !dios_fua. Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. SIEMPRE en espanol. ${SPAIN_RULE} NUNCA digas datos de videojuegos (fechas, desarrolladoras, argumentos, mecánicas, armas, zonas, dificultad, consejos), ni del juego actual ni de otros: si insisten, sugiere usar !dios_fua. Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
             ...userConv,
             { role: 'user', content: `${username}: ${question}` }
           ]
-        });
+        }, 2, { maxDelayMs: MENTION_MAX_RETRY_DELAY_MS });
         const choice = response.choices[0];
         const raw = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
         const check = quality.validateMention(raw);
@@ -1539,7 +1573,7 @@ async function generateProvocationReply(username, question, maxChars) {
         { role: 'system', content: `${personality}\n${PROVOCATION_RULE} ${SPAIN_RULE}` },
         { role: 'user', content: `${username}: ${question}` }
       ]
-    });
+    }, 1, { maxDelayMs: PROVOCATION_MAX_RETRY_DELAY_MS });
     const choice = response.choices[0];
     const text = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
     if (quality.validateMention(text).ok && text.length <= maxChars) return text;
