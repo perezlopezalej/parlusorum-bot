@@ -22,4 +22,11 @@ function predictFromRows(rows, game) {
 // La profecía es para HOY: rechaza "el próximo stream" y similares
 function refersToNextStream(text) { return NEXT_STREAM_RE.test(text); }
 
-module.exports = { predictFromRows, refersToNextStream };
+// "superando", "récord", "más que nunca"... solo valen si la cifra supera de verdad todas las anteriores
+const SURPASS_RE = /\bsuper\w*|\br[eé]cord\b|\bbat(?:ir|e|iendo|ido)\b|m[aá]s que (?:nunca|antes|en)|nuevo m[aá]ximo|mejora\w* (?:su|tu)s? (?:marca|cifra)|\bpor encima\b/i;
+function falseSurpass(text, deaths, history = []) {
+  if (!history.length || deaths > Math.max(...history)) return false;
+  return SURPASS_RE.test(text);
+}
+
+module.exports = { predictFromRows, refersToNextStream, falseSurpass };

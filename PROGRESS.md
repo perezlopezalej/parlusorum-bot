@@ -33,12 +33,19 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - **Lore y tono**: vlxj97 es el creador del bot, no del canal (Manu y Pao); sin género para ParLusorum (`validateMention` rechaza tía/tío/amigo/amiga junto a ParLusorum); resumen de fin de stream siempre en positivo con muertes/jefes (`negativeSummary` y `positiveSummaryFallback`).
 - **Profecía**: ignora sesiones con 0 muertes, sin historial del juego usa la media de todas las que tienen muertes, y dice siempre "hoy" (`src/ai/prophecy.js`).
 - **Encuestas y predicciones**: se narran una sola vez por tipo + id del evento, además del Message-Id (`isRepeatedEvent`). `npm run check:eventsub`: 12 suscripciones, una por tipo, sin duplicados ni callbacks obsoletos.
+- **Menciones**: tope por usuario (`MENTION_MAX_PER_USER` 3 cada `MENTION_WINDOW_MS` 5 min) y las respuestas con más de 20 s de espera se descartan (también en la cola IRC, `expiresAt`). Si la IA no da respuesta válida en una mención normal, se calla; las réplicas de reserva son solo para provocaciones reales.
+- **`!quemeperdi`**: datos etiquetados (minutos, muertes, jefes), `validateQueMePerdi` (sin "enemigos derribados", cifras de muertes y jefes), factcheck y 1 reintento.
+- **Hooks estáticos**: sin nota de RAWG y con géneros en español (`src/utils/genres.js`).
+- **`timer_ia`**: tema obligatorio sorteado distinto al anterior (lore, FUA, usuario activo, tiempo, pregunta al chat); sin nombrar otros juegos ni repetir el año; el tema "usuario" respeta los 15 min sin nombrar al mismo usuario.
+- **Profecía**: `falseSurpass` rechaza "superando/récord" si la cifra no supera las anteriores.
 
 ## Pendiente de probar en directo
 
 - Cohost libre y por eventos (≈4 libres/h, que reaccionen a un tema sin juzgar el ambiente; `!muertes +2` dispara primera muerte/racha/récord) y la comprobación SÍ/NO: mirar en `bot.log` la línea "cohost descartado" para ver si descarta demasiado.
 - Redirección de menciones del juego a `!dios_fua` y respuesta con el contador de muertes.
 - Menciones y provocaciones (que no dé cuerda al troleo).
+- Tope de menciones (3 cada 5 min) con un usuario spameando "dios fua", y que no salgan respuestas tardías.
+- `!quemeperdi` con cifras correctas y variedad de temas en `timer_ia`.
 - Profecía persistente (con la nueva media y diciendo "hoy").
 - Resumen de fin de stream en positivo y que no trate a ParLusorum con género.
 - Encuesta/predicción: un solo mensaje por evento.

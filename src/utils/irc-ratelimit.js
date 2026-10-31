@@ -37,7 +37,11 @@ function _waitMs(now) {
 
 // Envía el primer mensaje de la cola (asume que _waitMs() ya dio 0)
 async function _sendNext() {
-  const { sayFn, channel, msg, client, meta } = _queue.shift();
+  const { sayFn, channel, msg, client, meta, expiresAt } = _queue.shift();
+  if (expiresAt && Date.now() > expiresAt) {
+    logger.info(`IRC: mensaje caducado en cola, descartado: "${String(msg).slice(0, 60)}"`);
+    return;
+  }
   if (client && client.readyState() !== 'OPEN') {
     logger.warn('IRC: mensaje descartado — cliente no conectado');
     return;
@@ -71,13 +75,14 @@ async function _drain() {
 function wrapClientSay(client) {
   const _say = client.say.bind(client);
   // meta opcional (3er arg): { origin, model, usedTool, latencyMs }; pisa lo heredado del contexto
-  client.say = (channel, msg, explicitMeta) => {
+  // opts opcional (4º arg): { expiresAt } — si al llegar su turno ya pasó, el mensaje se descarta
+  client.say = (channel, msg, explicitMeta, opts) => {
     if (_queue.length >= MAX_QUEUE) {
       logger.warn(`IRC queue llena (${MAX_QUEUE}), mensaje descartado: "${String(msg).slice(0, 60)}"`);
       return;
     }
     // El contexto (origen, modelo, latencia) se captura al encolar: al enviar ya no existe
-    _queue.push({ sayFn: _say, channel, msg, client, meta: chatlog.currentMeta(explicitMeta) });
+    _queue.push({ sayFn: _say, channel, msg, client, meta: chatlog.currentMeta(explicitMeta), expiresAt: opts?.expiresAt });
     _scheduleDrain(0);
   };
 }

@@ -148,4 +148,17 @@ function cooldownGate(kind, { now, lastGlobalAt = 0, userUntil = 0, multiplier =
   return now - lastGlobalAt >= globalMs && now >= userUntil;
 }
 
-module.exports = { COOLDOWNS, editDistance, isDirectMention, isNaturalQuestion, isProvocation, isAddressedToBot, classifyMessage, provocationGate, cooldownMs, cooldownGate };
+// Tope de respuestas por usuario en una ventana deslizante. stamps = instantes de sus respuestas recientes.
+// Devuelve { ok, stamps }: stamps ya sin los caducados (y con `now` añadido si ok)
+function mentionBudget(stamps, now, max, windowMs) {
+  const kept = (stamps || []).filter(t => now - t < windowMs);
+  if (kept.length >= max) return { ok: false, stamps: kept };
+  return { ok: true, stamps: [...kept, now] };
+}
+
+// Una respuesta que lleva más de maxMs esperando ya no tiene sentido
+function isStale(startedAt, now, maxMs) {
+  return now - startedAt > maxMs;
+}
+
+module.exports = { mentionBudget, isStale, COOLDOWNS, editDistance, isDirectMention, isNaturalQuestion, isProvocation, isAddressedToBot, classifyMessage, provocationGate, cooldownMs, cooldownGate };

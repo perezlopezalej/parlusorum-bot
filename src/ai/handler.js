@@ -4,9 +4,10 @@ const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChann
 const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent } = require('../utils/state');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
 const factcheck = require('./factcheck');
-const { classifyMessage, cooldownMs, cooldownGate, provocationGate } = require('./patterns');
+const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudget, isStale } = require('./patterns');
+const { translateGenres } = require('../utils/genres');
 const quality = require('./quality');
-const { predictFromRows, refersToNextStream } = require('./prophecy');
+const { predictFromRows, refersToNextStream, falseSurpass } = require('./prophecy');
 const { sanitizeForAI } = require('../utils/filter');
 const { classifyGameMatch } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
@@ -30,6 +31,11 @@ const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || String(E
 const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
 // Provocaciones: solo la primera de cada usuario en esta ventana recibe réplica
 const PROVOCATION_WINDOW = parseInt(process.env.PROVOCATION_WINDOW_MS || '600000', 10);
+// Menciones: máximo MENTION_MAX_PER_USER respuestas por usuario cada MENTION_WINDOW_MS; una respuesta que lleva
+// más de MENTION_MAX_AGE_MS esperando (IA + cola IRC) se descarta en vez de salir tarde
+const MENTION_MAX_PER_USER = parseInt(process.env.MENTION_MAX_PER_USER || '3', 10);
+const MENTION_WINDOW = parseInt(process.env.MENTION_WINDOW_MS || '300000', 10);
+const MENTION_MAX_AGE_MS = 20000;
 const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
 
 // FIX #1: roles claramente definidos
@@ -700,6 +706,7 @@ async function onProphecy(client, channel, game) {
   const prediction = await predictDeaths(game);
   // Sin histórico: número al azar y tono más vago
   const deaths = prediction ? prediction.deaths : 3 + Math.floor(Math.random() * 6);
+  const history = prediction ? prediction.history : [];
   let text = truncate(prophecyMsgs.fallback.replace('{deaths}', deaths));
   if (canMakeRequest()) {
     try {
@@ -708,11 +715,11 @@ async function onProphecy(client, channel, game) {
         max_tokens: 120,
         messages: [
           { role: 'system', content: NARRATOR_BASE(game ? `Juego de hoy: "${game}".` : '') },
-          { role: 'user', content: `Profetiza, como oráculo del FUA, que HOY, en el stream de ahora, el streamer morirá EXACTAMENTE ${deaths} veces. ${basis} El número ${deaths} debe aparecer en el mensaje. Di "hoy"; nunca "el próximo stream" ni "la próxima vez". Máx 2 frases.` }
+          { role: 'user', content: `Profetiza, como oráculo del FUA, que HOY, en el stream de ahora, el streamer morirá EXACTAMENTE ${deaths} veces. ${basis} El número ${deaths} debe aparecer en el mensaje. Di "hoy"; nunca "el próximo stream" ni "la próxima vez".${history.length && deaths <= Math.max(...history) ? ` ${deaths} NO supera las cifras anteriores: prohibido decir "superando", "récord", "batir" o "más que nunca".` : ''} Máx 2 frases.` }
         ]
       });
       const out = (response.choices[0].message.content || '').trim();
-      if (out && out.includes(String(deaths)) && !refersToNextStream(out)) text = truncate(out);
+      if (out && out.includes(String(deaths)) && !refersToNextStream(out) && !falseSurpass(out, deaths, history)) text = truncate(out);
     } catch (err) {
       logger.warn(`Profecía IA: ${err.message}`);
     }
@@ -794,14 +801,32 @@ async function handleQueMePerdi(client, channel, tags) {
   }
   try {
     const story = buildStoryBlock(narrative);
-    const response = await groqWithRetry({
-      max_tokens: 150,
-      messages: [
-        { role: 'system', content: NARRATOR_BASE(game ? `Juego: "${game}".` : '') },
-        { role: 'user', content: `Un espectador llega tarde y pregunta qué se ha perdido. Datos: ${minutes} min de stream, ${deaths} muertes del streamer.${story}\n<chat>\n${chat}\n</chat>\nResume en EXACTAMENTE 2 frases lo que ha pasado hasta ahora, con tu personalidad. No inventes nada que no esté en los datos.` }
-      ]
-    });
-    client.say(channel, truncate(`@${username} ${(response.choices[0].message.content || '').trim()}`));
+    const bosses = narrative.filter(e => e.type === 'boss').length;
+    const facts = `Minutos de stream: ${minutes}. Muertes del streamer (veces que ha caído): ${deaths}. Jefes derrotados: ${bosses}.`;
+    let text = '';
+    let feedback = '';
+    for (let attempt = 0; attempt < 2 && !text; attempt++) {
+      if (attempt > 0 && !canMakeRequest()) break;
+      const response = await groqWithRetry({
+        max_tokens: 150,
+        messages: [
+          { role: 'system', content: NARRATOR_BASE(game ? `Juego: "${game}".` : '') },
+          { role: 'user', content: `Un espectador llega tarde y pregunta qué se ha perdido. Datos (etiquetados, no mezcles unos con otros): ${facts}${story}
+<chat>
+${chat}
+</chat>
+Resume en EXACTAMENTE 2 frases lo que ha pasado hasta ahora, con tu personalidad. Las muertes son caídas del streamer, NO victorias ni enemigos derribados. No inventes cifras ni hechos que no estén en los datos.${feedback ? `
+TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
+        ]
+      });
+      const out = (response.choices[0].message.content || '').trim();
+      const problem = quality.validateQueMePerdi(out, { deathCount: deaths, bosses, minutes });
+      if (problem) { feedback = problem; logger.info(`!quemeperdi descartado (${problem}): ${out.slice(0, 80)}`); continue; }
+      if (await factcheck.shouldDiscard(out, `Juego: ${game || 'desconocido'}. ${facts}`)) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
+      text = out;
+    }
+    if (!text) throw new Error('sin respuesta válida');
+    client.say(channel, truncate(`@${username} ${text}`));
   } catch (err) {
     logger.warn(`!quemeperdi: ${err.message}`);
     queMePerdiCooldowns.delete(userId);
@@ -849,7 +874,7 @@ async function checkChatHook(client, channel) {
     try {
       const rawg = await getGameInfo(game).catch(() => null);
       const gameContext = rawg
-        ? `${game} (${rawg.genres || 'sin género'}, ${rawg.released?.slice(0,4) || '?'})`
+        ? `${game} (${translateGenres(rawg.genres) || 'sin género'}, ${rawg.released?.slice(0,4) || '?'})`
         : game;
 
       const learnedLore = await getLoreContext();
@@ -904,12 +929,13 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
   if (game) {
     try {
       const rawg = await getGameInfo(game);
-      if (rawg?.genres && rawg?.rating) {
+      const genres = translateGenres(rawg?.genres);
+      if (genres) {
         const year = rawg.released?.slice(0, 4) || '';
         gameHooks = [
-          `🎮 ${channelConfig.streamer} jugando a ${game} (${rawg.genres}${year ? ', ' + year : ''}) - ${rawg.rating}/5 en RAWG. Alguien lo ha jugado?`,
-          `Que os parece ${game} hasta ahora? Genero: ${rawg.genres} 🎮`,
-          `${game} - Nota ${rawg.rating}/5 en RAWG. Estais de acuerdo? 🤔`,
+          `🎮 ${channelConfig.streamer} jugando a ${game} (${genres}${year ? ', ' + year : ''}). Alguien lo ha jugado?`,
+          `Que os parece ${game} hasta ahora? Genero: ${genres} 🎮`,
+          `${game} - ${genres}${year ? ', ' + year : ''}. Alguien lo conocia ya? 🤔`,
         ];
       } else {
         gameHooks = [
@@ -1333,6 +1359,12 @@ setInterval(() => {
   for (const [k, v] of directMentionUserCooldowns) if (now > v) directMentionUserCooldowns.delete(k);
 }, 15 * 60 * 1000);
 
+const mentionStamps = new Map(); // userId -> instantes de sus últimas respuestas a menciones
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of mentionStamps) if (!v.some(t => now - t < MENTION_WINDOW)) mentionStamps.delete(k);
+}, 15 * 60 * 1000);
+
 // Provocaciones: userId -> fin de su ventana (solo la primera de cada ventana recibe réplica)
 const provocationUntil = new Map();
 setInterval(() => {
@@ -1356,6 +1388,7 @@ async function checkPatternMatch(client, channel, tags, message) {
   if (!kind) return false;
 
   const now = Date.now();
+  const startedAt = now;
   const userId = tags['user-id'] || tags['username'];
   const isProvocation = kind === 'provocation';
   const isDirect = kind === 'direct' || isProvocation;
@@ -1377,7 +1410,21 @@ async function checkPatternMatch(client, channel, tags, message) {
   if (!question) return 'blocked';
   if (!canMakeRequest()) return 'blocked';
 
+  // Tope por usuario: pasado el límite se ignora en silencio (y el cohost tampoco entra)
+  const prevStamps = mentionStamps.get(userId);
+  if (isDirect) {
+    const budget = mentionBudget(prevStamps, now, MENTION_MAX_PER_USER, MENTION_WINDOW);
+    if (!budget.ok) { mentionStamps.set(userId, budget.stamps); return 'blocked'; }
+    mentionStamps.set(userId, budget.stamps);
+  }
+
   // Se reservan antes de esperar a la IA (evita dobles respuestas) y se devuelven si la IA falla
+  const release = () => {
+    if (isDirect) lastDirectMentionTime = prevGlobal; else lastPatternTime = prevGlobal;
+    if (prevUser) userCooldowns.set(userId, prevUser); else userCooldowns.delete(userId);
+    if (isProvocation) provocationUntil.delete(userId);
+    if (isDirect) { if (prevStamps) mentionStamps.set(userId, prevStamps); else mentionStamps.delete(userId); }
+  };
   const cd = cooldownMs(cdKind, multiplier);
   if (isDirect) lastDirectMentionTime = now; else lastPatternTime = now;
   userCooldowns.set(userId, now + cd.userMs);
@@ -1439,21 +1486,29 @@ async function checkPatternMatch(client, channel, tags, message) {
         }
         answer = raw;
       }
-      if (!answer) answer = pickProvocationReply(); // sin respuesta válida: réplica de reserva con personalidad, nunca un rechazo
+      // Sin respuesta válida tras reintentar: callar. Las réplicas de reserva son solo para provocaciones reales
+      if (!answer) {
+        logger.info(`Mención sin respuesta válida, se calla: ${question.slice(0, 80)}`);
+        release();
+        return 'blocked';
+      }
       addToUserConversation(userId, 'user', `${username}: ${question}`);
       addToUserConversation(userId, 'assistant', answer);
     }
 
+    if (isStale(startedAt, Date.now(), MENTION_MAX_AGE_MS)) {
+      logger.info(`Respuesta a ${username} descartada por tardía (${Math.round((Date.now() - startedAt) / 1000)} s): ${String(answer).slice(0, 60)}`);
+      release();
+      return 'blocked';
+    }
     const out = quality.applyEmotePolicy(truncate(`@${username} ${answer}`, maxChars), allowEmote, emotes);
-    client.say(channel, out);
+    client.say(channel, out, undefined, { expiresAt: startedAt + MENTION_MAX_AGE_MS });
     addBotMessage(out.replace(/^@\S+\s*/, ''));
     markNamed([username]);
     return true;
   } catch (err) {
     logger.warn(`Pattern matcher: ${err.message}`);
-    if (isDirect) lastDirectMentionTime = prevGlobal; else lastPatternTime = prevGlobal;
-    if (prevUser) userCooldowns.set(userId, prevUser); else userCooldowns.delete(userId);
-    if (isProvocation) provocationUntil.delete(userId);
+    release();
     return false;
   }
 }
@@ -1488,6 +1543,19 @@ async function generateProvocationReply(username, question, maxChars) {
   return pickProvocationReply();
 }
 
+// Logins distintos que han escrito en los últimos windowMs (más recientes primero)
+function getRecentChatters(windowMs = 5 * 60 * 1000, now = Date.now()) {
+  const botName = (process.env.BOT_USERNAME || '').toLowerCase();
+  const seen = new Set();
+  for (let i = chatHistory.length - 1; i >= 0; i--) {
+    const m = chatHistory[i];
+    if (now - m.ts > windowMs) break;
+    const login = String(m.username || '').toLowerCase();
+    if (login && login !== botName) seen.add(login);
+  }
+  return [...seen];
+}
+
 function getStreamChatBuffer() {
   return streamChatBuffer.map(m => `${m.username}: ${m.message}`).join('\n');
 }
@@ -1514,7 +1582,7 @@ module.exports = {
   initStreamStatus, invalidateContextCache, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,
   getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
-  getStreamChatBuffer, resetStreamChatBuffer,
+  getStreamChatBuffer, resetStreamChatBuffer, getRecentChatters,
   restoreCooldowns, clearUserFactsCache, getCachedUserFacts,
   getBotPersonality, NARRATOR_BASE,
 };

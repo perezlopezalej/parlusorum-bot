@@ -172,8 +172,46 @@ function validateHook(text, { deathCount = 0, recent = [] } = {}) {
   return { ok: true };
 }
 
+// Otros videojuegos que la IA suele citar por asociación ("vibra de Ragnarok y Sekiro"). Los del canal (games_played) se añaden aparte.
+const OTHER_GAMES_RE = /\b(sekiro|elden ring|dark souls|bloodborne|ragnar[oö]k|god of war|hollow knight|nioh|wukong|genshin|zelda|mario|minecraft|fortnite|witcher|cyberpunk|devil may cry|bayonetta|ghost of (?:tsushima|y[oō]tei)|lies of p|stellar blade|hades|celeste|cuphead|resident evil|silent hill|last of us|it takes two|stick of truth)\b/i;
+// Juego actual y juegos del canal, para no tratarlos como "otro juego" salvo que no sea el actual
+function mentionsOtherGame(text, currentGame = '', channelGames = []) {
+  const t = norm(text);
+  const cur = norm(currentGame);
+  const isCurrent = name => cur && (cur.includes(name) || name.includes(cur));
+  for (const g of channelGames) {
+    const n = norm(g).replace(/\(.*?\)/g, '').trim();
+    if (n.length >= 4 && !isCurrent(n) && t.includes(n)) return g;
+  }
+  const m = norm(text).match(OTHER_GAMES_RE);
+  return m && !isCurrent(m[1]) ? m[1] : null;
+}
+
+// "ha derribado 11 enemigos": el bot confundía muertes con victorias; no hay dato de enemigos derribados
+const KILLS_CLAIM_RE = /\b(?:derrib\w+|elimin\w+|abati\w+|mat[oó]|liquid\w+|vencid\w+)\s+(?:a\s+)?(?:\d+|\w+)\s+enemig\w+|\b\d+\s+enemig\w+/i;
+function claimsEnemyKills(text) { return KILLS_CLAIM_RE.test(String(text || '')); }
+
+// !quemeperdi: validación del resumen; devuelve el motivo de rechazo o null
+function validateQueMePerdi(text, { deathCount = 0, bosses = 0 } = {}) {
+  if (!text || text.length < 8) return 'vacío o demasiado corto';
+  if (claimsEnemyKills(text)) return 'habla de enemigos derribados; no hay ese dato (las muertes son caídas del streamer)';
+  if (hasLatam(text)) return 'usa expresiones latinoamericanas; escribe español de España';
+  if (isRobotRefusal(text)) return 'suena a rechazo de robot';
+  if (mentionsUnrecordedDeaths(text, deathCount)) return 'menciona muertes que no están en el contador';
+  const boss = text.match(/(\d+)\s+(?:jefes?|bosses|boss)\b/i);
+  if (boss && parseInt(boss[1], 10) !== bosses) return `cita ${boss[1]} jefes y llevamos ${bosses}`;
+  return null;
+}
+
+// Años (2026...) que ya salieron en comentarios anteriores
+function repeatsYear(text, recent) {
+  const years = String(text).match(/\b20\d\d\b/g) || [];
+  return years.some(y => recent.some(r => String(r).includes(y)));
+}
+
 // Comentario IA del timer: misma validación que el hook, sin nota de RAWG y sin repetir ideas del stream
-function validateTimerIA(text, { deathCount = 0, recent = [] } = {}) {
+// ctx.currentGame/channelGames: sin nombrar otros juegos; ctx.named: usuarios nombrados hace poco (no repetirlos)
+function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
@@ -182,6 +220,11 @@ function validateTimerIA(text, { deathCount = 0, recent = [] } = {}) {
   if (citesRawgScore(text)) return { ok: false, reason: 'cita la nota de RAWG; no la menciones' };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent, 0.5)) return { ok: false, reason: 'repite una idea de un comentario anterior de este stream' };
+  const other = mentionsOtherGame(text, currentGame, channelGames);
+  if (other) return { ok: false, reason: `nombra otro videojuego (${other}); habla solo del juego actual o de ningún juego` };
+  if (repeatsYear(text, recent)) return { ok: false, reason: 'repite el año del juego que ya dijiste; no lo menciones' };
+  const names = recentlyNamedIn(text, named, now, nameWindowMs);
+  if (names.length) return { ok: false, reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas` };
   const game = gameTalkProblem(text);
   if (game) return { ok: false, reason: game };
   return { ok: true };
@@ -246,5 +289,6 @@ module.exports = {
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
+  mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   mentionsGame, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };
