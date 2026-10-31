@@ -43,7 +43,11 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 
 - **Cultura general sin control de videojuegos**: `!dios_fua` y menciones solo aplican la comprobación contra RAWG / "no inventar" si la pregunta o la respuesta hablan de juegos (`quality.talksAboutGames`: palabras de gaming o nombre del juego actual). Para el resto (ej. las abejas) responde con el conocimiento del modelo, corto y con humor si duda (`GENERAL_RULE` en `prompts.js`; la herramienta `buscar_juego` queda marcada solo para videojuegos). Nada técnico en el chat: `quality.leaksTech` (solo RAWG, "base(s) de datos", "no tengo datos", "mis datos", "herramienta(s)", "API" y `buscar_juego`; la palabra "datos" suelta se permite) rechaza la mención o cambia `!dios_fua` por una de las frases de `dios_fua_no_data` (ahora lista con personalidad); `!juego` y `!ayuda` ya no citan RAWG.
 
+- **Evaluación con IA real**: `npm run eval` (`scripts/eval.js` + `test/eval-cases.json`, 9 casos de los logs) pasa cada caso por `handleQuestion`/`checkPatternMatch` reales con un cliente de chat falso y las escrituras a Supabase bloqueadas; muestra respuesta, filtro que descartó y si cumple lo esperado (informe en `logs/eval.txt`, `--only id`, `--verbose`). No se ejecuta en `npm test` ni en la CI.
+
 ## Pendiente de probar en directo
+
+- Primer `npm run eval` (2026-10-31), 3 casos fallan: el factcheck descarta Hell is Us (y Fuaventura Legends 3 sale con la frase de reserva en vez de "no lo conozco"), la mención del cielo azul pasa de 290 caracteres y `applyEmotePolicy` quita el espacio en "usa !dios_fua" ("usa!dios_fua").
 
 - Pregunta de cultura general con `!dios_fua` y por mención ("es cierto que las abejas en verano viven menos que en invierno?"): debe responder corto y sin hablar de RAWG/datos; una pregunta de juego sigue consultando `buscar_juego`.
 

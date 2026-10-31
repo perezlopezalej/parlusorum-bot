@@ -1,0 +1,64 @@
+[
+  {
+    "id": "hell-is-us",
+    "input": "!dios_fua qué opinas de Hell is Us",
+    "note": "Debe responder usando datos del juego (buscar_juego con resultado) y sin caer en el descarte.",
+    "expect": { "route": "question", "tool": "buscar_juego", "toolData": true, "discarded": false, "notFromPool": ["dios_fua_no_data"] }
+  },
+  {
+    "id": "abejas",
+    "input": "!dios_fua es cierto que las abejas en verano viven menos que en invierno?",
+    "note": "Cultura general: responde (sí) sin tocar buscar_juego ni mencionar RAWG.",
+    "expect": {
+      "route": "question", "tool": "none", "discarded": false,
+      "matchAny": ["\\bs[ií]\\b", "cierto", "verdad", "exacto", "correcto", "menos"],
+      "matchNone": ["rawg", "base de datos", "herramienta", "datos del juego"]
+    }
+  },
+  {
+    "id": "cielo-azul",
+    "input": "dios fua por qué el cielo es azul?",
+    "note": "Cultura general sin prefijo: respuesta corta.",
+    "expect": { "route": "natural_or_direct", "reply": true, "maxChars": 220, "matchNone": ["rawg", "base de datos", "herramienta"] }
+  },
+  {
+    "id": "signo-zodiaco",
+    "input": "Dios fua que signo del zodiaco eres?",
+    "note": "Respuesta normal, nunca una réplica de provocación.",
+    "expect": { "route": "direct", "reply": true, "notFromPool": ["provocation_replies", "mention_game_redirect"] }
+  },
+  {
+    "id": "provocacion",
+    "input": "Dios fua vete a cagar subnormal",
+    "note": "Réplica de provocación corta.",
+    "expect": { "route": "provocation", "reply": true, "maxChars": 160, "matchNone": ["no puedo", "lo siento", "soy un bot"] }
+  },
+  {
+    "id": "juego-inexistente",
+    "input": "!dios_fua qué opinas del Fuaventura Legends 3",
+    "note": "Debe decir que no lo conoce, sin inventar (buscar_juego sin datos).",
+    "expect": {
+      "route": "question", "tool": "buscar_juego", "toolData": false,
+      "matchAny": ["no (lo )?(conozco|me suena|s[eé]|tengo)", "ni idea", "no (lo )?(encuentro|existe)", "no pondr", "no me f[ií]o", "ni el fua", "inventar", "callo", "nombre exacto"]
+    }
+  },
+  {
+    "id": "dificultad-redirige",
+    "input": "dios fua se puede subir la dificultad en este juego?",
+    "note": "Pregunta concreta del juego sin prefijo: redirige a !dios_fua.",
+    "expect": { "route": "direct", "reply": true, "fromPool": "mention_game_redirect" }
+  },
+  {
+    "id": "muertes",
+    "input": "dios fua cuántas muertes llevamos?",
+    "note": "Contador real (se fija en 7), sin IA.",
+    "deaths": 7,
+    "expect": { "route": "direct", "reply": true, "matchAll": ["\\b7\\b", "muertes"] }
+  },
+  {
+    "id": "quien-lleva-el-canal",
+    "input": "!dios_fua quién lleva este canal?",
+    "note": "Manu y Pao llevan el canal; vlxj97 creó el bot.",
+    "expect": { "route": "question", "discarded": false, "matchAll": ["manu", "pao", "vlxj97"] }
+  }
+]

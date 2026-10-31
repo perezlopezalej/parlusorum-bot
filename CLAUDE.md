@@ -14,6 +14,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 - Salidas largas a un fichero en `logs/` y resumen corto en el chat.
 - Tras cualquier cambio de código, ejecutar `npm test`; no dar la tarea por terminada si algún test falla.
 - Si se añade una función pura nueva, añadirle su test en `test/`.
+- Antes de desplegar cambios en prompts o filtros (`prompts.js`, `quality.js`, `factcheck.js`, `patterns.js`), ejecutar `npm run eval` (casos en `test/eval-cases.json`, informe en `logs/eval.txt`).
 - Al terminar cada tarea, actualizar `PROGRESS.md` (Hecho / Pendiente de probar en directo / Ideas futuras).
 
 ## Comandos
@@ -22,6 +23,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 npm start | npm run dev      # producción | --watch
 npm test                     # node --test sobre test/**/*.test.js
 npm run check:eventsub       # lista suscripciones EventSub y marca callbacks obsoletos
+npm run eval                 # batería con la IA REAL (gasta Groq/RAWG; no va en npm test ni en la CI)
 npm run backup | chatlog | bot-token
 ```
 
