@@ -17,7 +17,7 @@
     { "name": "silencio", "mod": true, "help": "(Mods) Activa/desactiva todos los mensajes automaticos del bot." },
     { "name": "brb", "mod": true, "help": "(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min." },
     { "name": "so", "mod": true, "help": "(Mods) Shoutout con IA. Uso: !so @usuario" },
-    { "name": "boss", "mod": true, "help": "(Mods) Suma un boss eliminado al marcador." },
+    { "name": "boss", "mod": true, "help": "(Mods) Suma un boss eliminado al marcador. !boss -N resta N (sin bajar de 0)." },
     { "name": "clip", "mod": true, "help": "(Mods) Crea un clip del momento actual." },
     { "name": "marker", "mod": true, "help": "(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]" },
     { "name": "resumen", "mod": true, "help": "(Mods) Resumen completo del stream actual." },

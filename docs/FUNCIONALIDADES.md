@@ -32,7 +32,7 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 | !uptime | 8 | 4 | 2 | 5.0 | **5.0** | B | Sin cambios. |
 | !juego (RAWG) | 8 | 5 | 5 | 6.2 | **6.2** | B | Sin cambios. |
 | !estadisticas | 7 | 4 | 3 | 4.9 | **4.9** | B | Sin cambios. |
-| !muertes (+1/reset) | 8 | 6 | 3 | 5.9 | **5.9** | I | ▲ Ya se persiste en stream_sessions.death_count (guardado con retardo de 3 s) y se recupera si el bot arranca con el stream en directo; test de pickOpenSession. Límites: se pierde si no hay sesión abierta y no se restaura fuera de directo. _Importancia: Alimenta profecía, !quemeperdi y !score; el streamer lo usa a menudo._ |
+| !muertes (+1/reset) | 8 | 6 | 3 | 5.9 | **5.9** | I | ▲ Ya se persiste en stream_sessions.death_count (guardado con retardo de 3 s) y se recupera si el bot arranca con el stream en directo; test de pickOpenSession. Límites: se pierde si no hay sesión abierta y no se restaura fuera de directo. _Importancia: Alimenta !quemeperdi y !score; el streamer lo usa a menudo._ |
 | !boss / !score | 6 | 6 | 4 | 5.1 | **5.4** ▲ | I | ▲ (V) !boss ya alimenta la narrativa y dispara el modo victoria. Sigue sin atomicidad y con total_losses huérfano. |
 | !brb | 7 | 5 | 3 | 5.2 | **5.2** | I | Sin cambios. no se apaga al acabar el stream (no re-verificado). _Importancia: Comando de stream._ |
 | !silencio | 7 | 6 | 3 | 5.5 | **5.5** | I | Sin cambios. _Importancia: Interruptor de seguridad de los mods; protege el funcionamiento._ |
@@ -62,7 +62,6 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 | Filtro anti-inyección / contenido | 7 | 6 | 5 | 6.1 | **6.1** | N | Sin cambios. Lista de bloqueo evasible. _Importancia: Seguridad._ |
 | Infra Groq (retry, rate limit, reasoning, modelos de reserva) | 8 | 6 | 3 | 5.9 | **5.9** | N | ▲ Cadena de modelos de reserva ante 404/model_decommissioned (GROQ_MODEL_FALLBACKS, por defecto el modelo rápido), parámetros de razonamiento por modelo, tests. Límites: si el modelo de reserva también cae no hay tercero; GROQ_MODEL_FALLBACKS no está en CLAUDE.md. _Importancia: Toda la IA depende de ella: estabilidad._ |
 | !quemeperdi | 8 | 8 | 8 | 7.6 | **8.0** ▲ | I | ▲ Usa la narrativa ampliada y con tiempos: resume mucho mejor lo que se perdió el espectador. |
-| Profecía de muertes | 7 | 6 | 9 | 7.3 | **7.3** | I | Sin cambios. no compara si nadie lleva la cuenta (!muertes); ahora el contador sobrevive a reinicios. _Importancia: Listado como Importante._ |
 
 ## Memoria
 
@@ -72,7 +71,7 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 | Hechos por usuario (user_facts) | 6 | 5 | 8 | 5.6 | **6.3** ▲ | I | ▲ recurring_joke ya se usa (contexto de subs) y trivia_wins se lee sin la caducidad de 30 días. Siguen siendo pocos tipos de hecho y poco visibles fuera de los subs. |
 | Conversación por usuario | 7 | 6 | 7 | 6.7 | **6.7** | N | Sin cambios. solo RAM. _Importancia: Da continuidad a cada charla con el bot (dudoso)._ |
 | Narrativa del stream (eventos) | 8 | 7 | 8 | 6.6 | **7.7** ▲ | N | ▲ 12 eventos (antes 5) con poda por prioridad, alimentada por subs, raids, bits ≥500, hitos y bosses (antes solo muertes/rage/victoria), persistida en Supabase y recuperada tras reinicio, bloque con "hace Nmin"; tests. Límite: depende de la columna stream_sessions.narrative, sin migración en el repo (no verificado en la base); se pierde si el proceso muere dentro de los 3 s de retardo. |
-| Sesiones, highlights y métricas en Supabase | 6 | 6 | 5 | 5.7 | **5.7** | I | Sin cambios. _Importancia: Base de profecía, memoria y backup._ |
+| Sesiones, highlights y métricas en Supabase | 6 | 6 | 5 | 5.7 | **5.7** | I | Sin cambios. _Importancia: Base de memoria y backup._ |
 
 ## Moderación
 

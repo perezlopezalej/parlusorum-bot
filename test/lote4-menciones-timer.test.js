@@ -4,7 +4,6 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const q = require('../src/ai/quality');
 const { mentionBudget, isStale, classifyMessage } = require('../src/ai/patterns');
-const { falseSurpass } = require('../src/ai/prophecy');
 const { translateGenres } = require('../src/utils/genres');
 const { pickTimerTopic } = require('../src/timers/handler');
 const channel = require('../config/channel.json');
@@ -15,7 +14,6 @@ const REAL = {
   quemeperdi: '¡Vaya maratón! En 225 minutos el streamer ha derribado 11 enemigos y ha caído 11 veces, pero ya ha vencido dos jefes épicos mientras la audiencia vibra sin parar.',
   timer1: 'Phantom Blade Zero nos trae otra dosis de acción 2026, y el FUA ya está listo para impulsar cada golpe épico. ¡Vamos con todo, que el juego está cargado de vibra de Ragnarok y sekiro!',
   timer2: '11 muertes anotadas y el FUA ya vibra en cada ataque, ¡listos para que el directo siga a tope! Phantom Blade Zero 2026 trae esa energía de Ragnarok y sekiro que tanto nos gusta.',
-  profecia: '🔮 ¡Atentos, fans! Hoy el streamer caerá 12 veces en Phantom Blade Zero, superando sus 8 y 15 muertes anteriores con una danza mortal que hará temblar los teclados.',
 };
 
 describe('0. el signo del zodiaco no es una provocación', () => {
@@ -101,15 +99,14 @@ describe('4. timer IA', () => {
     const later = q.validateTimerIA('gangar79 hoy trae el FUA muy cargado de energía rara.', { ...ctx, named, now: now + 16 * 60000 });
     assert.equal(later.ok, true);
   });
-  test('tema "usuario": solo chatters no nombrados en 15 min', () => {
-    const now = Date.now();
-    const named = new Map([['gangar79', now - 60000]]);
-    for (let i = 0; i < 40; i++) {
-      const { topic, user } = pickTimerTopic({ chatters: ['gangar79', 'markosssx'], named, now, rand: Math.random });
-      if (topic.id === 'usuario') assert.equal(user, 'markosssx');
-    }
-    const only = pickTimerTopic({ chatters: ['gangar79'], named, now, rand: () => 0.99 });
-    assert.notEqual(only.topic.id, 'usuario');
+  test('el timer no etiqueta a nadie (ningún tema es "usuario") y rechaza el @', () => {
+    for (let i = 0; i < 40; i++) assert.notEqual(pickTimerTopic({ rand: Math.random }).topic.id, 'usuario');
+    const r = q.validateTimerIA('@harocho3847, el FUA te vigila desde hace rato en este directo.', ctx);
+    assert.equal(r.ok, false);
+  });
+  test('"Manu y Pao" jugando o muriendo se rechaza: quien juega es Manu', () => {
+    assert.equal(q.validateTimerIA('El FUA lo ve claro, Manu y Pao siguen firmes en este directo.', ctx).ok, false);
+    assert.equal(q.validateTimerIA('El FUA lo ve claro, Manu sigue firme en este directo.', ctx).ok, true);
   });
   test('el tema nunca repite el anterior', () => {
     for (let i = 0; i < 30; i++) {
@@ -118,15 +115,4 @@ describe('4. timer IA', () => {
   });
 });
 
-describe('5. profecía sin "superando" falso', () => {
-  test('12 no supera 15: "superando sus 8 y 15" se rechaza', () => {
-    assert.equal(falseSurpass(REAL.profecia, 12, [8, 15]), true);
-  });
-  test('si supera todas las cifras anteriores, vale', () => {
-    assert.equal(falseSurpass('Hoy caerá 20 veces, superando su récord.', 20, [8, 15]), false);
-  });
-  test('sin "superando" y sin historial no se rechaza', () => {
-    assert.equal(falseSurpass('Hoy caerá 12 veces.', 12, [8, 15]), false);
-    assert.equal(falseSurpass('superando todo', 5, []), false);
-  });
-});
+

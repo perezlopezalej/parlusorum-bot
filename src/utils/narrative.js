@@ -144,7 +144,7 @@ function deathStreakLength(events, now = Date.now(), windowMs = DEATH_STREAK_WIN
 function classifyCohostMoment(event, { events = [], deathCount = 0, recordToBeat = 0, now = Date.now() } = {}) {
   if (!event) return null;
   const { type, description } = event;
-  if (['boss', 'sub', 'raid', 'milestone', 'victory'].includes(type)) return { kind: type, description };
+  if (['boss', 'raid', 'milestone', 'victory'].includes(type)) return { kind: type, description };
   if (type !== 'death') return null;
   const added = Number.isInteger(event.n) && event.n > 0 ? event.n : 1;
   const before = Math.max(0, deathCount - added);

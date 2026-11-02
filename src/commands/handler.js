@@ -1,7 +1,7 @@
 const { canMakeRequest } = require('../utils/ratelimit');
 const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths, getSessionsDeathsByGame, getCurrentSessionId } = require('../utils/supabase');
 const { loadUsers } = require('../utils/storage');
-const { MAX_DEATHS_ADD, parseMuertesArgs, sumGameDeaths, formatSince, findUserByName } = require('./stats');
+const { MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
 const { handleShoutout, invalidateContextCache } = require('../ai/handler');
@@ -58,7 +58,7 @@ async function handle(client, channel, tags, command, args, config) {
     case 'tiempo': return await handleTiempo(client, channel, username, userId, args[1]);
     case 'boss':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
-      return await handleBoss(client, channel);
+      return await handleBoss(client, channel, args);
     case 'score': return await handleScore(client, channel);
     case 'brb':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
@@ -94,7 +94,7 @@ const lurkMessages = [
   '👀 @{username} entra en modo lurker. ¡El FUA te acompaña en las sombras! 🌙',
   '🕵️ @{username} activa el modo espía. ¡Te vemos aunque no hables! 👀',
   '🌙 @{username} se funde con la oscuridad del lurk. ¡Gracias por quedarte! 💜',
-  '🐱 @{username} en modo fantasma. El canal te da las gracias por estar aquí! 🔥',
+  '🐱 @{username} en modo fantasma. ¡El canal te da las gracias por estar aquí! 🔥',
   '😴 @{username} se va al lurk. ¡El FUA cuida de los lurkers! 💪',
 ];
 
@@ -150,7 +150,7 @@ function handleUptime(client, channel) {
 
 async function handleJuego(client, channel) {
   const g = await getCurrentGame();
-  if (!g?.game) { client.say(channel, '🎮 Sin informacion del juego actual.'); return; }
+  if (!g?.game) { client.say(channel, '🎮 Sin información del juego actual.'); return; }
   try {
     const rawg = await getGameInfo(g.game);
     if (rawg?.genres && rawg?.rating) {
@@ -190,8 +190,18 @@ async function handleEstadisticas(client, channel) {
   }
 }
 
-async function handleBoss(client, channel) {
-  sessionWins++;
+async function handleBoss(client, channel, args = []) {
+  const cmd = parseBossArgs(args);
+  if (cmd.type === 'bad_format') { client.say(channel, truncate(`Uso: !boss (suma uno) | !boss -N (resta N, de 1 a ${MAX_DEATHS_ADD})`)); return; }
+  const { wins, removed } = applyBossDelta(sessionWins, cmd);
+  if (cmd.type === 'sub') {
+    if (removed === 0) { client.say(channel, '💀 No hay bosses que restar: el marcador está en 0'); return; }
+    sessionWins = wins;
+    incrementChannelStat('total_wins', -removed).catch(() => {});
+    client.say(channel, `💀 Marcador corregido: ${sessionWins} boss${sessionWins !== 1 ? 'es' : ''} este stream`);
+    return;
+  }
+  sessionWins = wins;
   incrementChannelStat('total_wins').catch(() => {});
   addNarrativeEvent('boss', `Boss derrotado (#${sessionWins} de este stream)`);
   client.say(channel, `¡Boss eliminado! 💀 ${sessionWins} boss${sessionWins !== 1 ? 'es' : ''} este stream`);
@@ -263,7 +273,7 @@ function handleBrb(client, channel, username) {
   if (isBrb()) {
     const mins = getBrbDuration();
     setBrbMode(false, null, null);
-    client.say(channel, `🔙 ¡@${username} ha vuelto despues de ${mins} min! 🎉`);
+    client.say(channel, `🔙 ¡@${username} ha vuelto después de ${mins} min! 🎉`);
   } else {
     setBrbMode(true, client, `#${process.env.CHANNEL}`);
     client.say(channel, `🚪 El streamer ha salido un momento. ¡Ahora vuelve! 👀`);
@@ -277,7 +287,7 @@ function handleSilencio(client, channel, username) {
 }
 
 async function handleClip(client, channel) {
-  if (!isLiveViaEventSub()) { client.say(channel, `❌ El canal no esta en directo.`); return; }
+  if (!isLiveViaEventSub()) { client.say(channel, `❌ El canal no está en directo.`); return; }
   client.say(channel, `🎬 Creando clip...`);
   try {
     const url = await createClip();
@@ -289,11 +299,11 @@ async function handleClip(client, channel) {
 }
 
 async function handleMarker(client, channel, args) {
-  if (!isLiveViaEventSub()) { client.say(channel, '❌ El canal no esta en directo.'); return; }
+  if (!isLiveViaEventSub()) { client.say(channel, '❌ El canal no está en directo.'); return; }
   const desc = args.slice(1).join(' ') || 'Momento marcado manualmente';
   try {
     const marker = await createStreamMarker(desc.slice(0, 140));
-    if (marker) client.say(channel, `🏁 Marker creado: "${desc.slice(0, 50)}" FUA!`);
+    if (marker) client.say(channel, `🏁 Marker creado: "${desc.slice(0, 50)}" ¡FUA!`);
     else client.say(channel, '❌ No se pudo crear el marker. Revisa scope user:edit:broadcast.');
   } catch (err) {
     logger.error(`!marker: ${err.message}`);

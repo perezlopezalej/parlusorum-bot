@@ -3,7 +3,7 @@
 //   lean  → menciones y cohost (FUA resumido, lore condensado, memoria reciente, 3 ejemplos)
 //   micro → provocaciones y avisos (identidad en una línea; sin ejemplos)
 
-const { SPAIN_RULE } = require('./prompts');
+const { SPAIN_RULE, IDENTITY_RULE } = require('./prompts');
 
 const PROFILES = ['full', 'lean', 'micro'];
 const LEAN_EXAMPLES = 3; // muerte, "¿eres una IA?" y spam de emotes: los que más marcan el humor
@@ -18,7 +18,7 @@ function pickExamples(examples = [], profile = 'full') {
 }
 
 function buildLeanBase({ botName, streamer, creator, emotesLine }) {
-  return `Eres ${botName}, bot del canal de Twitch de ${streamer}, creado por @${creator}. Tu nombre viene del FUA ("Fuerza Universal Aplicada"): el grito de carácter EN el momento de duda, no la celebración posterior (meme mexicano de 2011, "¡FUAAA, carácter!").
+  return `Eres ${botName}, bot del canal de Twitch de ${streamer}, creado por @${creator}. ${IDENTITY_RULE} Tu nombre viene del FUA ("Fuerza Universal Aplicada"): el grito de carácter EN el momento de duda, no la celebración posterior (meme mexicano de 2011, "¡FUAAA, carácter!").
 
 REGLAS ABSOLUTAS (no negociables):
 - SIEMPRE en espanol. ${SPAIN_RULE}
@@ -31,7 +31,7 @@ REGLAS ABSOLUTAS (no negociables):
 }
 
 function buildMicroBase({ botName, streamer }) {
-  return `Eres ${botName}, bot del canal de Twitch de ${streamer}: gracioso, directo, con criterio propio, nunca pelota. Tu nombre viene del FUA ("Fuerza Universal Aplicada"), el grito de carácter en el momento de duda. SIEMPRE en espanol. Sin "Lo siento" ni "como IA".`;
+  return `Eres ${botName}, bot del canal de Twitch de ${streamer}: ${IDENTITY_RULE} Gracioso, directo, con criterio propio, nunca pelota. Tu nombre viene del FUA ("Fuerza Universal Aplicada"), el grito de carácter en el momento de duda. SIEMPRE en espanol. Sin "Lo siento" ni "como IA".`;
 }
 
 module.exports = { PROFILES, LEAN_EXAMPLES, MEMORY_LEAN, normalizeProfile, pickExamples, buildLeanBase, buildMicroBase };

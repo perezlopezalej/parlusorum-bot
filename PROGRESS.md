@@ -4,6 +4,9 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 
 ## Hecho
 
+- **Calidad de frases y cohost (logs 31-10/1-11)**: el cohost libre reacciona a cualquier tema del stream, pero `quality.styleProblem` descarta vida personal (comida, sueño, familia, trabajo, salud, fútbol), insultos del chat, "el bot", "la FUA", "Manu y Pao" jugando, frases cortadas ("el stream y.") y afirmaciones de ser "creador del canal"; los comentarios libres no ven los @ dirigidos a otros usuarios y se saltan si el chat es charla entre dos. Cohost y menciones pasan a gpt-oss-120b; `STYLE_RULES` (una idea, frases sencillas, sin metáforas, sin copiar jerga del chat). `factcheck.evaluate(..., { sense: true })` añade "¿tiene sentido y está bien escrito?" en la misma llamada (cohost, timer_ia, hook, menciones). `dropTrailingFragment` ya no cierra fragmentos con un punto. Nombre repetido tras el reintento: se quita el vocativo inicial o se descarta. Comentarios del mismo tipo (jefe, etc.) no se repiten en el stream (umbral 0.4). Subs: solo la alerta (el cohost ya no las comenta). Canjes: solo los de "pregunta". `timer_ia` sin etiquetar a nadie y sin tema "usuario". Hooks estáticos sin repetirse en el stream. `!boss -N` resta (sin bajar de 0). Avisos con IA (bienvenida, raid, subs, encuestas) pasan por `validateAuto`/`vetAuto`. Léxico: parcero, enojarse y concha prohibidos. Identidad: "Dios Fua es el bot del canal de Manu y Pao, creado por vlxj97". Ortografía de textos fijos corregida y vigilada por `test/spelling.test.js`. Tests nuevos en `test/calidad-frases.test.js`.
+- **Profecía eliminada** (código, mensajes, tests, configuración y docs de funcionalidades). La columna `stream_sessions.prophecy` sobra: ejecutar `supabase/migrations/007_drop_prophecy.sql` DESPUÉS de desplegar (la 005 se conserva como historial).
+- **Eval** (`--repeat 2`, 33 casos): 26/32 en la primera pasada; tras reforzar la identidad y el revisor de sentido, 6/9 en los casos que fallaban: `f-flor-mariposa`, `f-obra-de-arte` estables; `quien-eres` inestable (1/2: a veces responde "el FUA del canal" sin decir que es el bot); `f-poder-del-exito` y `f-ami-wukong` (borderline) el revisor los deja pasar, ahora marcados como informativos.
 - **Comandos y ayuda**: comandos con cooldowns y permisos, `!ayuda`/`!comandos`, timers recurrentes.
 - **IA (Dios Fua)**: respuestas por mención, chistes, cohost, hooks para animar el chat, reacción a emotes/caps, `!quemeperdi` y resumen de fin de stream.
 - **Memoria y lore**: resúmenes entre streams, lore manual y aprendido, `!lore` para mods, memoria conversacional por usuario.
@@ -31,7 +34,7 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - **CI**: `.github/workflows/test.yml` ejecuta `npm ci` y `npm test` (Node 22) en cada push y PR a `main`, con variables falsas.
 
 - **Lore y tono**: vlxj97 es el creador del bot, no del canal (Manu y Pao); sin género para ParLusorum (`validateMention` rechaza tía/tío/amigo/amiga junto a ParLusorum); resumen de fin de stream siempre en positivo con muertes/jefes (`negativeSummary` y `positiveSummaryFallback`).
-- **Profecía**: ignora sesiones con 0 muertes, sin historial del juego usa la media de todas las que tienen muertes, y dice siempre "hoy" (`src/ai/prophecy.js`).
+- **(Retirada)** Profecía: ignora sesiones con 0 muertes, sin historial del juego usa la media de todas las que tienen muertes, y dice siempre "hoy" (`src/ai/prophecy.js`).
 - **Encuestas y predicciones**: se narran una sola vez por tipo + id del evento, además del Message-Id (`isRepeatedEvent`). `npm run check:eventsub`: 12 suscripciones, una por tipo, sin duplicados ni callbacks obsoletos.
 - **Menciones**: tope por usuario (`MENTION_MAX_PER_USER` 3 cada `MENTION_WINDOW_MS` 5 min) y las respuestas con más de 20 s de espera se descartan (también en la cola IRC, `expiresAt`). Si la IA no da respuesta válida en una mención normal, se calla; las réplicas de reserva son solo para provocaciones reales.
 - **`!quemeperdi`**: datos etiquetados (minutos, muertes, jefes), `validateQueMePerdi` (sin "enemigos derribados", cifras de muertes y jefes), factcheck y 1 reintento.
@@ -68,7 +71,8 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - Menciones y provocaciones (que no dé cuerda al troleo).
 - Tope de menciones (3 cada 5 min) con un usuario spameando "dios fua", y que no salgan respuestas tardías.
 - `!quemeperdi` con cifras correctas y variedad de temas en `timer_ia`.
-- Profecía persistente (con la nueva media y diciendo "hoy").
+- Calidad de frases: en el próximo directo revisar en `bot.log` los descartes `quality:personal`, `quality:cortada`, `sentido` y `privado`, y que el cohost libre siga hablando lo bastante (si calla demasiado, aflojar `isPrivateExchange` o el revisor de sentido); vigilar el gasto de Groq (ahora cada mensaje automático hace una revisión extra con 120b y el cohost/menciones usan 120b).
+- `!boss -1` en directo y ejecutar la migración 007 tras desplegar.
 - Resumen de fin de stream en positivo y que no trate a ParLusorum con género.
 - Encuesta/predicción: un solo mensaje por evento.
 - Lore aprendido.

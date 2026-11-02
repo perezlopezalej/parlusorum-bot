@@ -20,6 +20,22 @@ function parseMuertesArgs(args) {
 
 // Total de muertes de un juego sumando sesiones. rows: [{ id, game, death_count }].
 // liveSession: { id, deaths } para usar el contador en directo en vez del último guardado.
+// !boss → suma 1; !boss -N → resta N (sin bajar de 0); un "-" mal escrito es formato incorrecto
+function parseBossArgs(args) {
+  const rest = args.slice(1).map(a => String(a).trim()).filter(Boolean);
+  if (!rest.length || !rest[0].startsWith('-')) return { type: 'add' };
+  const m = rest.length === 1 && /^-(\d+)$/.exec(rest[0]);
+  const n = m ? parseInt(m[1], 10) : 0;
+  return n >= 1 && n <= MAX_DEATHS_ADD ? { type: 'sub', n } : { type: 'bad_format' };
+}
+
+// Boss de la sesión tras aplicar el comando; sin bajar de 0. Devuelve { wins, removed }
+function applyBossDelta(wins, cmd) {
+  if (cmd.type === 'add') return { wins: wins + 1, removed: 0 };
+  const next = Math.max(0, wins - cmd.n);
+  return { wins: next, removed: wins - next };
+}
+
 function sumGameDeaths(query, rows, liveSession = null) {
   const counts = new Map();
   let total = 0;
@@ -65,4 +81,4 @@ function findUserByName(users, name) {
   return Object.values(users || {}).find(u => String(u.username || '').toLowerCase() === target) || null;
 }
 
-module.exports = { MAX_DEATHS_ADD, parseMuertesArgs, sumGameDeaths, formatSince, findUserByName };
+module.exports = { MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName };

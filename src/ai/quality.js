@@ -1,7 +1,7 @@
 // Control de calidad puro de las respuestas de la IA (sin estado ni I/O): tono, repetición, emotes, muertes y cortes.
 
 // Léxico latinoamericano que no encaja con un chat de España
-const LATAM_RE = /\b(pucha|puchas|qu[eé] onda|(?:la|esa|esta) onda|[oó]rale|[aá]ndale|chido|chida|ahorita|ch[eé]vere|bac[aá]n|g[uü]ey|wey|parce|boludo|che|vos|platicar|platicamos|padr[ií]simo|no manches)\b/i;
+const LATAM_RE = /\b(pucha|puchas|qu[eé] onda|(?:la|esa|esta) onda|[oó]rale|[aá]ndale|chido|chida|ahorita|ch[eé]vere|bac[aá]n|g[uü]ey|wey|parce(?:r[oa]s?)?|enoj\w*|concha|boludo|che|vos|platicar|platicamos|padr[ií]simo|no manches)\b/i;
 
 // Rechazos con voz de robot ("No puedo participar en eso", "Lo siento, no puedo ayudar")
 const ROBOT_REFUSAL_RE = /\b(no puedo (?:participar|ayudar|ayudarte|responder|continuar|hacer eso|cumplir)|no es algo que (?:haga|pueda)|lo siento|como (?:ia|inteligencia artificial|modelo)|no estoy (?:programado|autorizado)|no me est[aá] permitido|no entiend[eo] esos insultos)\b/i;
@@ -159,22 +159,93 @@ function gameTalkProblem(text) {
 const MOOD_JUDGING_RE = /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
 function judgesChatMood(text) { return MOOD_JUDGING_RE.test(String(text || '')); }
 
-// Validación del cohost. ctx: { deathCount, recent: string[], named: Map, now, nameWindowMs }
+// --- Redacción y temas vetados (cohost, hook, timer, menciones y avisos) ---
+// Vida personal: el bot no comenta comida, sueño, familia, trabajo, salud ni fútbol de nadie
+const PERSONAL_RE = /\b(paella|tapas?|comer|comiendo|comida|cenar|cenando|cena|desayun\w*|almuerz\w*|hambre|sue[ñn]o|dormir|durmiendo|siesta|familia|hij[oa]s?|ni[ñn][oa]s?|madre|padre|abuel[oa]s?|novi[oa]|esposa|marido|trabajo|trabajar|curro|oficina|enferm[oa]s?|enfermedad|m[eé]dico|hospital|resfriad[oa]|salud|f[uú]tbol)\b/i;
+// Insultos y groserías del chat: el bot no las repite
+const PROFANITY_RE = /\b(put[oa]s?|joder|jod\w+|co[ñn]o|co[ñn]azo|mierda|cabr[oó]n\w*|gilipoll\w+|subnormal\w*|imb[eé]cil\w*|idiota\w*|cag\w+|polla|capull\w+|zorra|maric[oó]n\w*|hostia\w*|retrasad[oa]s?)\b/i;
+// El bot no habla de sí mismo en tercera persona
+const BOT_SELF_RE = /\b(?:el|este|ese) bot\b/i;
+// "el FUA" siempre en masculino
+const FUA_GENDER_RE = /\b(?:la|una|esa|esta|mi|tu|su)\s+fua\b/i;
+// Quien juega es Manu; Pao no
+const MANU_PAO_RE = /\bmanu y pao\b[^.!?]{0,40}\b(?:mueren|muere|caen|cae|juegan|juega|se levantan|renacen|siguen|sigue|brillan|vuelven|vuelvan|firmes?)\b/i;
+// Dios Fua es el bot del canal, no su creador (lo creó vlxj97)
+const CREATOR_CLAIM_RE = /\b(?:soy|somos)\s+(?:el\s+)?(?:creador|due[ñn]o|jefe)\b|\b(?:creador|due[ñn]o) del canal\b/i;
+// Final colgando ("el stream y.", "cuando la.")
+const DANGLING_RE = /(?:^|\s)(?:y|e|o|u|a|de|del|la|el|los|las|un|una|que|con|por|para|en|se|su|sus|al|como|pero|cuando|mi|tu|ni|sin|sobre)$/i;
+// Consejos y mecánicas que el usuario no ha pedido
+const TIPS_RE = /\b(tips?|consejos?|trucos?)\b/i;
+const REDIRECT_RE = /no me mola hablar de|no hablo de (?:mec[aá]nicas|juegos?)|prefiero no hablar de (?:mec[aá]nicas|juegos?)/i;
+
+function isCutOff(text) {
+  const t = String(text || '').replace(/\bparlus1\w+/gi, '').replace(/[\s.!?…¡¿"”»)]+$/, '').trim();
+  return DANGLING_RE.test(t);
+}
+function talksPersonalLife(text) { return PERSONAL_RE.test(String(text || '')); }
+function repeatsProfanity(text) { return PROFANITY_RE.test(String(text || '')); }
+
+// Motivo de rechazo por redacción o tema vetado (null si pasa). opts.personal=false deja pasar la vida personal (menciones)
+function styleProblem(text, { personal = true } = {}) {
+  const t = String(text || '');
+  if (isCutOff(t)) return { rule: 'cortada', reason: 'la frase está cortada o termina a medias; escribe una frase completa y sencilla' };
+  if (PROFANITY_RE.test(t)) return { rule: 'grosería', reason: 'repite una grosería o insulto; no los repitas ni los cites' };
+  if (BOT_SELF_RE.test(t) && !/\bsoy\b[^.!?]{0,30}\bbot\b/i.test(t)) return { rule: 'bot', reason: 'habla de sí mismo como "el bot"; habla en primera persona o como el FUA' };
+  if (FUA_GENDER_RE.test(t)) return { rule: 'fua', reason: '"el FUA" va siempre en masculino' };
+  if (MANU_PAO_RE.test(t)) return { rule: 'manu', reason: 'quien juega es Manu; no pongas a Pao a jugar ni a morir' };
+  if (CREATOR_CLAIM_RE.test(t)) return { rule: 'creador', reason: 'eres el bot del canal, no su creador; te creó vlxj97' };
+  if (personal && PERSONAL_RE.test(t)) return { rule: 'personal', reason: 'habla de vida personal (comida, sueño, familia, trabajo, salud, fútbol); habla solo del stream, el juego y el chat sobre la partida' };
+  return null;
+}
+
+// Nombres ya citados: si la frase empieza con ellos como vocativo ("Mujica90, ...") se quitan; en otro sitio no hay arreglo (null)
+function stripLeadingNames(text, names) {
+  let t = String(text || '');
+  for (const login of names) {
+    const re = new RegExp(`^([¡¿"\\s]*)@?${login.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[,:]\\s*`, 'i');
+    t = t.replace(re, '$1');
+  }
+  t = t.replace(/^([¡¿"\s]*)(\p{Ll})/u, (_, p, c) => p + c.toUpperCase());
+  return t.trim() ? t.trim() : null;
+}
+
+// Aviso automático (inicio de stream, encuestas, avisos): mismo tono que el resto, sin comprobar nombres ni muertes
+function validateAuto(text) {
+  if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
+  if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
+  if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
+  const style = styleProblem(text, { personal: false });
+  if (style) return { ok: false, reason: style.reason };
+  return { ok: true };
+}
+
+// Validación del cohost. ctx: { deathCount, recent: string[], sameKind: string[], named: Map, now, nameWindowMs }
 // Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
 // se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
-function validateCohost(text, { deathCount = 0, recent = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
+function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
   if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
   if (hasLatam(text)) return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, rule: 'muertes', reason: 'menciona muertes que no están en el contador' };
+  const style = styleProblem(text);
+  if (style) return { ok: false, rule: style.rule, reason: style.reason };
   const game = gameTalkProblem(text);
   if (game) return { ok: false, rule: 'juego', reason: game };
   const names = recentlyNamedIn(text, named, now, nameWindowMs);
   if (names.length) return { ok: false, soft: true, rule: 'nombre', reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas` };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, soft: true, rule: 'formula', reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent)) return { ok: false, soft: true, rule: 'parecido', reason: 'se parece demasiado a un mensaje reciente' };
+  if (sameKind.length && tooSimilar(text, sameKind, 0.4)) return { ok: false, soft: true, rule: 'parecido', reason: 'repite una idea de otro comentario de este stream sobre lo mismo; cambia de enfoque' };
   if (judgesChatMood(text)) return { ok: false, soft: true, rule: 'ambiente', reason: 'juzga el ambiente del chat; reacciona a un tema concreto con humor' };
   return { ok: true };
+}
+
+// Para avisos con IA (bienvenida, encuestas, raids, subs): devuelve el texto limpio o lanza para que actúe la reserva fija
+function vetAuto(text) {
+  const t = String(text || '').trim();
+  const check = validateAuto(t);
+  if (!check.ok) throw new Error(`mensaje automático descartado (${check.reason})`);
+  return t;
 }
 
 // Hook anti-silencio: voz de Dios Fua, sin deporte, sin muertes inventadas ni repetir los últimos hooks
@@ -185,6 +256,8 @@ function validateHook(text, { deathCount = 0, recent = [] } = {}) {
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
+  const style = styleProblem(text);
+  if (style) return { ok: false, reason: style.reason };
   const game = gameTalkProblem(text);
   if (game) return { ok: false, reason: game };
   return { ok: true };
@@ -236,6 +309,9 @@ function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', 
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (citesRawgScore(text)) return { ok: false, reason: 'cita la nota de RAWG; no la menciones' };
+  if (/@\w/.test(text)) return { ok: false, reason: 'no etiquetes a nadie con @' };
+  const style = styleProblem(text);
+  if (style) return { ok: false, reason: style.reason };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent, 0.5)) return { ok: false, reason: 'repite una idea de un comentario anterior de este stream' };
   const other = mentionsOtherGame(text, currentGame, channelGames);
@@ -266,12 +342,17 @@ function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
 }
 
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
-function validateMention(text) {
+// ctx.question: lo que escribió el usuario (los consejos y las mecánicas solo valen si él los sacó)
+function validateMention(text, { question = '' } = {}) {
   if (!text || text.length < 3) return { ok: false, reason: 'vacío' };
   if (leaksTech(text)) return { ok: false, reason: 'menciona datos, herramientas o RAWG; habla con personalidad, sin nada técnico' };
   if (genderedParlusorum(text)) return { ok: false, reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
+  const style = styleProblem(text, { personal: false });
+  if (style) return { ok: false, reason: style.reason };
+  if (TIPS_RE.test(text) && !TIPS_RE.test(question)) return { ok: false, reason: 'ofrece consejos o tips que nadie ha pedido' };
+  if (REDIRECT_RE.test(text) && !MECHANICS_RE.test(question)) return { ok: false, reason: 'dice que no habla de mecánicas cuando nadie las ha mencionado; responde a lo que dice el usuario' };
   return { ok: true };
 }
 
@@ -295,18 +376,19 @@ function cutAtSentence(text, limit) {
   return head.slice(0, sp).replace(/[\s,;:¡¿-]+$/, '') + '.';
 }
 
-// Respuesta cortada por max_tokens (finish_reason 'length'): se queda con las frases completas si las hay
+// Respuesta cortada por max_tokens (finish_reason 'length'): se queda con las frases completas; sin ninguna, vacío (nunca se cierra un fragmento con un punto)
 function dropTrailingFragment(text) {
   const t = String(text || '').trim();
   if (/[.!?…]$/.test(t)) return t;
   const end = lastSentenceEnd(t, t.length, 0.25);
-  return end > 0 ? t.slice(0, end).trim() : t.replace(/[\s,;:¡¿-]+$/, '') + '.';
+  return end > 0 ? t.slice(0, end).trim() : '';
 }
 
 module.exports = {
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
+  vetAuto, styleProblem, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,

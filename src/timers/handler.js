@@ -1,17 +1,17 @@
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
-const { isSilenced, getDeathCount, getNamedUsers, markNamed } = require('../utils/state');
+const { isSilenced, getDeathCount } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 const { withOrigin } = require('../utils/chatlog');
-const { getBotPersonality, getRecentChatters } = require('../ai/handler');
+const { getBotPersonality } = require('../ai/handler');
 const { translateGenres } = require('../utils/genres');
 const quality = require('../ai/quality');
 const factcheck = require('../ai/factcheck');
-const { AUTO_GAME_RULE } = require('../ai/prompts');
+const { AUTO_GAME_RULE, STYLE_RULES } = require('../ai/prompts');
 const { getLoreContext } = require('../lore/handler');
-const { groqWithRetry, truncate } = require('../utils/groq-utils');
+const { groqWithRetry, truncate, GROQ_MODEL } = require('../utils/groq-utils');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
 
 // Separación mínima entre mensajes de timer: si varios coinciden en el mismo minuto salen espaciados
@@ -35,27 +35,22 @@ function drainTimerQueue() {
 }
 
 // Últimos comentarios IA del timer en este stream (para no repetir ideas)
-const MAX_RECENT_TIMER_IA = 10;
+const MAX_RECENT_TIMER_IA = 20;
 const recentTimerIA = [];
 let lastTimerTopic = '';
-const NAME_WINDOW_MS = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
 
-// Tema obligatorio de cada comentario, para que dos seguidos no sean el mismo. 'usuario' nombra a un chatter activo.
+// Tema obligatorio de cada comentario, para que dos seguidos no sean el mismo. Ninguno nombra ni etiqueta a nadie.
 const TIMER_TOPICS = [
   { id: 'lore', note: 'una anécdota o broma del lore del canal' },
   { id: 'fua', note: 'el FUA como fuerza universal, con una comparación absurda y cotidiana' },
-  { id: 'usuario', note: 'una broma cariñosa dirigida a @{user}, que está en el chat' },
   { id: 'tiempo', note: 'el tiempo que llevamos de directo ({uptime})' },
   { id: 'chat', note: 'una pregunta abierta y divertida para el chat, que no sea sobre el juego' },
 ];
 
-// Elige tema distinto al anterior; 'usuario' solo si hay un chatter activo al que no se nombró en la ventana
-function pickTimerTopic({ chatters = [], named = new Map(), now = Date.now(), last = '', windowMs = NAME_WINDOW_MS, rand = Math.random } = {}) {
-  const eligible = chatters.filter(l => !(named.get(l) && now - named.get(l) < windowMs));
-  const pool = TIMER_TOPICS.filter(t => t.id !== last && (t.id !== 'usuario' || eligible.length > 0));
-  const topic = pool[Math.floor(rand() * pool.length)];
-  const user = topic.id === 'usuario' ? eligible[Math.floor(rand() * eligible.length)] : null;
-  return { topic, user };
+// Elige un tema distinto al anterior
+function pickTimerTopic({ last = '', rand = Math.random } = {}) {
+  const pool = TIMER_TOPICS.filter(t => t.id !== last);
+  return { topic: pool[Math.floor(rand() * pool.length)] };
 }
 
 const timerRefs = [];
@@ -112,9 +107,8 @@ function start(client, config) {
       const deathNote = deathCount === 0
         ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
         : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
-      const named = getNamedUsers();
-      const { topic, user } = pickTimerTopic({ chatters: getRecentChatters(), named, last: lastTimerTopic });
-      const topicNote = topic.note.replace('{user}', user || '').replace('{uptime}', String(getStreamUptime() || ''));
+      const { topic } = pickTimerTopic({ last: lastTimerTopic });
+      const topicNote = topic.note.replace('{uptime}', String(getStreamUptime() || ''));
       const tone = ['burla cariñosa', 'épica', 'observación curiosa'][Math.floor(Math.random() * 3)];
       const prior = recentTimerIA.length ? `
 YA DIJISTE (no repitas ni parafrasees ninguna idea): ${recentTimerIA.map(m => `"${m}"`).join(' | ')}` : '';
@@ -124,28 +118,30 @@ YA DIJISTE (no repitas ni parafrasees ninguna idea): ${recentTimerIA.map(m => `"
       for (let attempt = 0; attempt < 2 && !msg; attempt++) {
         if (attempt > 0 && !canMakeRequest()) break;
         const response = await groqWithRetry({
+          model: GROQ_MODEL,
           max_tokens: 80,
           messages: [
             {
               role: 'system',
-              content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve con tu personalidad y el lore del canal, sobre este tema: ${topicNote}. No nombres a ningún usuario${user ? ` salvo a @${user}` : ''} ni otros videojuegos que no sean el actual (nada de comparaciones con otros juegos), y no menciones el año de salida. ${AUTO_GAME_RULE} ${deathNote} Tono: ${tone}. Sin metáforas forzadas de otros temas ni estilo de comentarista deportivo. Máx 2 frases cortas. Sin presentarte.${prior}${feedback ? `
+              content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve con tu personalidad y el lore del canal, sobre este tema: ${topicNote}. No nombres ni etiquetes (@) a ningún usuario, ni otros videojuegos que no sean el actual (nada de comparaciones con otros juegos), y no menciones el año de salida. Quien juega es Manu: habla de Manu, nunca de "Manu y Pao" jugando o muriendo. ${AUTO_GAME_RULE} ${deathNote} Tono: ${tone}. Estilo de comentarista deportivo prohibido. ${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.${prior}${feedback ? `
 TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
             },
             { role: 'user', content: `Suelta un comentario sobre el directo de ${game} (tono: ${tone})` }
           ]
         });
         const out = truncate((response.choices[0].message.content || '').trim());
-        const check = quality.validateTimerIA(out, { deathCount, recent: recentTimerIA, currentGame: game, channelGames: channelConfig.games_played || [], named, now: Date.now(), nameWindowMs: NAME_WINDOW_MS });
+        const check = quality.validateTimerIA(out, { deathCount, recent: recentTimerIA, currentGame: game, channelGames: channelConfig.games_played || [] });
         if (!check.ok) { feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
-        if (await factcheck.shouldDiscard(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`)) {
+        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: true });
+        if (review.discard) {
           logger.info(`Timer IA descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;
         }
+        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas'; logger.info(`Timer IA descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
         msg = out;
       }
       if (msg) {
         lastTimerTopic = topic.id;
-        if (user && quality.namesIn(msg, [user]).length) markNamed([user]);
         recentTimerIA.push(msg);
         if (recentTimerIA.length > MAX_RECENT_TIMER_IA) recentTimerIA.shift();
         enqueueTimerMessage(withOrigin('timer_ia', () => client.say(`#${process.env.CHANNEL}`, msg)));

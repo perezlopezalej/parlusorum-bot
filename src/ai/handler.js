@@ -1,26 +1,25 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, getProphecy, setProphecy, clearProphecy, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { buildRawgTemplate } = require('./rawg-template');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudget, isStale } = require('./patterns');
 const { translateGenres } = require('../utils/genres');
 const quality = require('./quality');
-const { predictFromRows, refersToNextStream, falseSurpass } = require('./prophecy');
 const { sanitizeForAI } = require('../utils/filter');
 const { classifyGameMatch } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
 const { MEMORY_LEAN, normalizeProfile, pickExamples, buildLeanBase, buildMicroBase } = require('./persona');
-const { LORE_RULE, SPAIN_RULE, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, buildQuestionSystemContent } = require('./prompts');
-const { persistCooldown, getRecentSessionDeaths, saveSessionProphecy } = require('../utils/supabase');
+const { LORE_RULE, SPAIN_RULE, IDENTITY_RULE, STYLE_RULES, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, buildQuestionSystemContent } = require('./prompts');
+const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
 const { saveHighlight } = require('../utils/storage');
-const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
+const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
 // Cohost: los eventos (jefe, muerte, sub...) se comentan siempre y esperan en cola hasta EVENT_TTL_MS; los comentarios libres
@@ -308,7 +307,7 @@ async function getPersonality(messageCount, userType = 'normal', username = null
   // FIX #1: nota especial con roles 100% claros
   let specialNote = '';
   if (userType === 'creator') {
-    specialNote = ` ATENCION: Hablas con @${CREATOR_USERNAME}, quien te PROGRAMO y CREO. Es tu amo creador. NO es el streamer del canal (eso es @${STREAMER_USERNAME}). Tratale con humor reverente como a tu creador literal.`;
+    specialNote = ` ATENCION: Hablas con @${CREATOR_USERNAME}, quien programó y creó este BOT (a ti). Él no creó el canal (el canal es de Manu y Pao) y tú NO eres el creador de nada. NO es el streamer del canal (eso es @${STREAMER_USERNAME}). Tratale con humor reverente como al creador del bot.`;
   } else if (userType === 'streamer') {
     specialNote = ` ATENCION: Hablas con @${STREAMER_USERNAME}, el streamer/host del canal. No es tu creador (eso es @${CREATOR_USERNAME}). Tratale con respeto y complicidad como el jefe del canal.`;
   } else if (userType === 'sub') {
@@ -316,7 +315,7 @@ async function getPersonality(messageCount, userType = 'normal', username = null
   }
 
   // FIX #4: prompt reforzado con experto en gaming + español forzado
-  const fullBase = () => `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" FUA significa "Fuerza Universal Aplicada" y además es un grito. No es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}.
+  const fullBase = () => `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" FUA significa "Fuerza Universal Aplicada" y además es un grito. No es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}. ${IDENTITY_RULE}
 ${context}${specialNote}
 
 REGLAS ABSOLUTAS (no negociables):
@@ -377,6 +376,7 @@ Canal: ${channelConfig.vibe || ''}. ${getManualLore('lean')}
 Emotes del canal (usa solo si encajan, máx 1-2, separados por espacios, NUNCA pegados a puntuación): ${emotes}.
 REGLAS ABSOLUTAS: SIEMPRE en español. Máx 2 frases cortas. Sin presentarte ni saludar. Sin "Lo siento". Sin "como IA". Sin inventar datos.
 NO hagas: pelota automática al chat, tono de asistente genérico, repetir lo que ya se dijo.
+${STYLE_RULES}
 <examples>
 Streamer muere varias veces — NO: "¡Tú puedes! ¡Eres el mejor!" | SÍ: "Llevas 5 muertes en este tramo... la estrategia pide revisión FUAAA"
 Raid entrante — NO: "¡Bienvenidos a todos los nuevos viewers!" | SÍ: "La raid llegó con todo — el FUA se multiplica parlus1PORELPODERDELFUAAAAA"
@@ -432,8 +432,34 @@ async function getDeathRecord() {
   return deathRecordCache.max;
 }
 
+// Mensajes dirigidos con @ a otro usuario (no al bot ni al streamer): conversación entre ellos, no del cohost
+const BOT_LOGIN = (process.env.BOT_USERNAME || 'dios_fua').toLowerCase();
+function isDirectedElsewhere(message) {
+  const m = /^\s*@(\w+)/.exec(String(message || ''));
+  if (!m) return false;
+  const login = m[1].toLowerCase();
+  return login !== BOT_LOGIN && login !== STREAMER_USERNAME && login !== 'parlusorum';
+}
+
+// Chat reciente sin las conversaciones privadas entre usuarios (para los comentarios libres)
+function publicChatContext(n = 5) {
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  return chatHistory
+    .filter(m => m.ts > cutoff && !isDirectedElsewhere(m.message))
+    .slice(-n)
+    .map(m => `${m.username}: ${m.message}`)
+    .join('\n');
+}
+
+// Si la mayoría de los últimos mensajes son charla entre dos usuarios, el cohost libre no entra
+function isPrivateExchange(now = Date.now(), window = 6, min = 3) {
+  const last = chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).slice(-window);
+  return last.filter(m => isDirectedElsewhere(m.message)).length >= min;
+}
+
 async function runCohost(client, channel, moment = null) {
   const kind = moment ? 'event' : 'free';
+  const kindKey = moment ? moment.kind : 'free';
   if (!getEventSubLiveStatus()) return 'dropped';
   const blocked = isSilenced() ? 'silencio' : isBrb() ? 'brb' : isTriviaActive() ? 'trivia' : null;
   if (blocked) {
@@ -448,8 +474,9 @@ async function runCohost(client, channel, moment = null) {
     recordCohostAttempt(kind); recordCohostDiscard('ratelimit');
     return 'dropped';
   }
-  const recentContext = getRecentHistory(5);
+  const recentContext = moment ? getRecentHistory(5) : publicChatContext(5);
   if (!moment && !recentContext) return 'dropped';
+  if (!moment && isPrivateExchange(now)) { recordCohostAttempt(kind); recordCohostDiscard('privado'); return 'dropped'; }
 
   recordCohostAttempt(kind);
   if (!moment) freeCohostTimes = pruneHourly([...freeCohostTimes, now]);
@@ -494,13 +521,34 @@ async function runCohost(client, channel, moment = null) {
       : '';
     const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
 
+    const validateCtx = { deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW };
+    // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
+    const reviewText = async text => {
+      const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense: true });
+      if (review.discard) {
+        logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`);
+        return { ok: false, reason: 'factcheck', feedback: 'afirma datos del juego sin respaldo; no hables del juego' };
+      }
+      if (review.nonsense) {
+        logger.info(`Co-host descartado (sin sentido o mal escrito): ${text.slice(0, 80)}`);
+        return { ok: false, reason: 'sentido', feedback: 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas, sin metáforas' };
+      }
+      return { ok: true };
+    };
+    // Fallo leve que persiste tras el reintento: un nombre repetido se quita (solo si es un vocativo inicial); lo demás se envía igual
+    const settleSoft = (text, rule) => {
+      if (rule !== 'nombre') return text;
+      const stripped = quality.stripLeadingNames(text, quality.recentlyNamedIn(text, named, now, COHOST_NAME_WINDOW));
+      return stripped && quality.validateCohost(stripped, validateCtx).ok ? stripped : null;
+    };
+
     let reply = '';
-    let softCandidate = '';
+    let softCandidate = null;
     let feedback = '';
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
       if (attempt > 0 && !canMakeRequest()) { reason = 'ratelimit'; break; }
       const response = await groqWithRetry({
-        model: GROQ_MODEL_FAST,
+        model: GROQ_MODEL,
         max_tokens: Math.min(90, modeConfig.max_tokens ?? 90),
         frequency_penalty: 0.8,
         presence_penalty: 0.6,
@@ -510,38 +558,44 @@ async function runCohost(client, channel, moment = null) {
             content: `${personalityBase} ${game}${streamNote}${raidNote}${nameNote}${emoteNote} ${COHOST_RULES} Sin saludos. Sin presentarte.${moodNote}${historyNote}${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
           },
           { role: 'user', content: moment
-            ? `Acaba de pasar esto en el stream: ${moment.description}.${recentContext ? `\nChat reciente:\n${recentContext}` : ''}\nComenta ESE hecho con humor y la voz de Dios Fua, en una frase. No hables de mecánicas del juego. Es un suceso importante: comenta siempre, no respondas SKIP.`
-            : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nElige UN tema concreto de lo que se está hablando en el chat y suelta una reacción con humor u opinión propia, con la voz de Dios Fua (no lo describas ni lo resumas). Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. Si no hay nada que decir, responde SKIP.` }
+            ? `Acaba de pasar esto en el stream: ${moment.description}.${recentContext ? `\nChat reciente:\n${recentContext}` : ''}\nComenta ESE hecho con humor y la voz de Dios Fua, en una frase sencilla con una sola idea. No hables de mecánicas del juego. Es un suceso importante: comenta siempre, no respondas SKIP.`
+            : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nReacciona con humor a UN tema del stream: la partida, lo que le pasa a Manu, lo que el chat comenta sobre el juego o una broma del canal (no lo describas ni lo resumas). Ignora la vida personal de la gente y las conversaciones entre usuarios. Una sola idea, frase sencilla. Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. Si no hay nada que decir de eso, responde SKIP.` }
         ]
       });
       const choice = response.choices[0];
       const raw = (choice.message.content || '').trim();
       if (!moment && /^SKIP\b/i.test(raw)) { reason = 'skip'; logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
       const complete = choice.finish_reason === 'length' ? quality.dropTrailingFragment(raw) : raw;
-      const text = quality.applyEmotePolicy(truncate(complete, maxChars), allowEmote, emotes);
-      const check = quality.validateCohost(text, { deathCount, recent: recentBot, named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW });
+      let text = quality.applyEmotePolicy(truncate(complete, maxChars), allowEmote, emotes);
+      const check = quality.validateCohost(text, validateCtx);
       if (!check.ok && !check.soft) {
         feedback = check.reason; reason = `quality:${check.rule}`;
         logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`);
         continue;
       }
       if (!check.ok && attempt === 0) { // leve: un reintento; si no mejora se enviará este mismo
-        softCandidate = text; feedback = check.reason; reason = `quality:${check.rule}`;
+        softCandidate = { text, rule: check.rule }; feedback = check.reason; reason = `quality:${check.rule}`;
         continue;
       }
-      if (await factcheck.shouldDiscard(text, facts, { game: gameInfo?.game })) {
-        feedback = 'afirma datos del juego sin respaldo; no hables del juego'; reason = 'factcheck';
-        logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`);
-        continue;
+      if (!check.ok) {
+        const settled = settleSoft(text, check.rule);
+        if (!settled) { feedback = check.reason; reason = `quality:${check.rule}`; logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`); continue; }
+        text = settled;
       }
+      const review = await reviewText(text);
+      if (!review.ok) { feedback = review.feedback; reason = review.reason; continue; }
       reply = text;
     }
-    // El reintento falló en algo grave pero el primer texto solo tenía un fallo leve: se envía ese (si pasa el factcheck)
-    if (!reply && softCandidate && reason !== 'ratelimit' && reason !== 'skip' && !await factcheck.shouldDiscard(softCandidate, facts, { game: gameInfo?.game })) reply = softCandidate;
+    // El reintento falló en algo grave pero el primer texto solo tenía un fallo leve: se envía ese (si pasa la revisión)
+    if (!reply && softCandidate && reason !== 'ratelimit' && reason !== 'skip') {
+      const settled = settleSoft(softCandidate.text, softCandidate.rule);
+      if (settled && (await reviewText(settled)).ok) reply = settled;
+    }
 
     if (!reply) { recordCohostDiscard(reason); return 'dropped'; }
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
+    addCohostText(kindKey, reply);
     markNamed(quality.namesIn(reply, chatHistory.slice(-60).map(m => m.username)));
     recordCohost();
     recordCohostSent(kind);
@@ -690,7 +744,7 @@ async function onWarmupMode(client, channel, game) {
         { role: 'user', content: `Calienta el chat` }
       ]
     });
-    client.say(channel, truncate(response.choices[0].message.content));
+    client.say(channel, truncate(quality.vetAuto(response.choices[0].message.content)));
     logger.info(`🔥 Warmup mode activado`);
   } catch (err) {
     logger.warn(`Warmup mode: ${err.message}`);
@@ -707,80 +761,6 @@ function postStreamEnd(client, channel, aiSummary) {
     ? `🎬 ¡Fin del stream! ${aiSummary} ¡Hasta la próxima! FUA! 💜🔥`
     : pickRandom(streamEndMessages);
   throttleSay(client, channel, truncate(msg));
-  postProphecyResult(client, channel).catch(err => logger.warn(`Profecía resultado: ${err.message}`));
-}
-
-// --- Profecía de muertes ---
-const prophecyMsgs = messagesConfig.prophecy;
-
-// Media de muertes de sesiones previas con muertes apuntadas (prioriza el mismo juego); null si no hay histórico
-async function predictDeaths(game) {
-  return predictFromRows(await getRecentSessionDeaths(10), game);
-}
-
-// Llamado desde eventsub.js poco después del warmup
-async function onProphecy(client, channel, game) {
-  if (isSilenced() || getProphecy()) return;
-  const prediction = await predictDeaths(game);
-  // Sin histórico: número al azar y tono más vago
-  const deaths = prediction ? prediction.deaths : 3 + Math.floor(Math.random() * 6);
-  const history = prediction ? prediction.history : [];
-  let text = truncate(prophecyMsgs.fallback.replace('{deaths}', deaths));
-  if (canMakeRequest()) {
-    try {
-      const basis = prediction ? `Base: ${prediction.basis}, muertes en cada uno: ${prediction.history.join(', ')}.` : 'No hay streams anteriores: improvisa con aire de oráculo.';
-      const response = await groqWithRetry({
-        max_tokens: 120,
-        messages: [
-          { role: 'system', content: NARRATOR_BASE(game ? `Juego de hoy: "${game}".` : '') },
-          { role: 'user', content: `Profetiza, como oráculo del FUA, que HOY, en el stream de ahora, el streamer morirá EXACTAMENTE ${deaths} veces. ${basis} El número ${deaths} debe aparecer en el mensaje. Di "hoy"; nunca "el próximo stream" ni "la próxima vez".${history.length && deaths <= Math.max(...history) ? ` ${deaths} NO supera las cifras anteriores: prohibido decir "superando", "récord", "batir" o "más que nunca".` : ''} Máx 2 frases.` }
-        ]
-      });
-      const out = (response.choices[0].message.content || '').trim();
-      if (out && out.includes(String(deaths)) && !refersToNextStream(out) && !falseSurpass(out, deaths, history)) text = truncate(out);
-    } catch (err) {
-      logger.warn(`Profecía IA: ${err.message}`);
-    }
-  }
-  const prophecy = { deaths, text, game: game || null, ts: Date.now() };
-  setProphecy(prophecy);
-  saveSessionProphecy(prophecy).catch(() => {});
-  throttleSay(client, channel, `🔮 ${text.replace(/^🔮\s*/, '')}`);
-  logger.info(`🔮 Profecía: ${deaths} muertes`);
-}
-
-// Al cierre del stream: compara la profecía con las muertes reales (!muertes) y presume o se excusa
-async function postProphecyResult(client, channel) {
-  const prophecy = getProphecy();
-  if (!prophecy) { logger.info('🔮 Fin de stream sin profecía que comparar (no se hizo o se perdió en un reinicio)'); return; }
-  clearProphecy();
-  const actual = getDeathCount();
-  if (actual === 0) {
-    throttleSay(client, channel, truncate(prophecyMsgs.result_untracked.replace('{predicted}', prophecy.deaths)));
-    return;
-  }
-  const diff = Math.abs(actual - prophecy.deaths);
-  const outcome = diff === 0 ? 'exact' : diff === 1 ? 'close' : 'miss';
-  let msg = prophecyMsgs[`result_${outcome}`].replace('{predicted}', prophecy.deaths).replace('{actual}', actual);
-  if (canMakeRequest()) {
-    try {
-      const tone = outcome === 'miss'
-        ? 'Te equivocaste: pon una excusa absurda y orgullosa, nunca admitas el error.'
-        : 'Acertaste (o casi): presume sin piedad.';
-      const response = await groqWithRetry({
-        max_tokens: 120,
-        messages: [
-          { role: 'system', content: NARRATOR_BASE(prophecy.game ? `Juego de hoy: "${prophecy.game}".` : '') },
-          { role: 'user', content: `Al empezar el stream profetizaste ${prophecy.deaths} muertes y han sido ${actual}. ${tone} Ambos números deben aparecer. Máx 2 frases.` }
-        ]
-      });
-      const out = (response.choices[0].message.content || '').trim();
-      if (out && out.includes(String(actual)) && out.includes(String(prophecy.deaths))) msg = out;
-    } catch (err) {
-      logger.warn(`Profecía resultado IA: ${err.message}`);
-    }
-  }
-  throttleSay(client, channel, truncate(`🔮 ${msg.replace(/^🔮\s*/, '')}`));
 }
 
 // --- !quemeperdi ---
@@ -855,6 +835,7 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
 // --- Conversation hooks --- FIX #6: game hooks enriquecidos con RAWG + comentarios IA espontáneos
 let lastHookTime = 0;
 const recentHooks = [];
+const usedStaticHooks = new Set(); // hooks estáticos ya dichos en este stream
 const HOOK_INTERVAL = parseInt(process.env.HOOK_INTERVAL_MS || '600000', 10);
 const HOOK_MIN_SILENCE = parseInt(process.env.HOOK_SILENCE_MS || '300000', 10);
 const MIN_VIEWERS_FOR_HOOKS = 3;
@@ -871,7 +852,7 @@ async function checkChatHook(client, channel) {
   if (isRaidActive() && silenceTime >= 60000) {
     if (!claimHookPause(lastChatMessageTime, now)) return;
     lastHookTime = now;
-    client.say(channel, `👋 Bienvenidos a los raiders de @${getRaidUsername()}! Si tenéis preguntas sobre el canal usad !dios_fua, y si os apetece un desafío probad !trivia 🔥`);
+    client.say(channel, `👋 ¡Bienvenidos a los raiders de @${getRaidUsername()}! Si tenéis preguntas sobre el canal usad !dios_fua, y si os apetece un desafío probad !trivia 🔥`);
     return;
   }
 
@@ -900,13 +881,14 @@ async function checkChatHook(client, channel) {
       const deathNote = deathCount === 0
         ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
         : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
-      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve, con tu voz y el lore del canal, sobre lo que pasa en el stream o sobre el FUA. ${AUTO_GAME_RULE} ${deathNote} Sin estilo de narrador ni metáforas deportivas. No nombres a ningún usuario. Máx 2 frases cortas. Sin presentarte.`;
+      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve, con tu voz y el lore del canal, sobre lo que pasa en el stream o sobre el FUA. ${AUTO_GAME_RULE} ${deathNote} Sin estilo de narrador ni metáforas deportivas. No nombres a ningún usuario. Quien juega es Manu (nunca "Manu y Pao" jugando o muriendo). ${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.`;
 
       let text = '';
       let feedback = '';
       for (let attempt = 0; attempt < 2 && !text; attempt++) {
         if (attempt > 0 && !canMakeRequest()) break;
         const response = await groqWithRetry({
+          model: GROQ_MODEL,
           max_tokens: 80,
           messages: [
             { role: 'system', content: `${system}${feedback ? `
@@ -916,16 +898,18 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
         });
         const out = truncate((response.choices[0].message.content || '').trim());
         const check = quality.validateHook(out, { deathCount, recent: recentHooks });
-        if (check.ok && await factcheck.shouldDiscard(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`)) {
+        if (!check.ok) { feedback = check.reason; logger.info(`Hook descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
+        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: true });
+        if (review.discard) {
           logger.info(`Hook descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;
         }
-        if (check.ok) text = out;
-        else { feedback = check.reason; logger.info(`Hook descartado (${check.reason}): ${out.slice(0, 80)}`); }
+        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas'; logger.info(`Hook descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
+        text = out;
       }
       if (!text) throw new Error('hook IA sin respuesta válida');
       recentHooks.push(text);
-      if (recentHooks.length > 5) recentHooks.shift();
+      if (recentHooks.length > 12) recentHooks.shift();
       client.say(channel, text, { origin: 'hook' });
       return;
     } catch (err) {
@@ -936,11 +920,11 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
 
   // Hooks estáticos de fallback
   const genericHooks = [
-    'Sois mas de cooperativo o en solitario? 💬',
-    'Chat! Alguien se anima con un !trivia? 🧠',
-    'Cuantas muertes creeis que habra hoy? 💀',
-    'Cual es vuestro juego favorito de todos los tiempos? 🎮',
-    'Usad !chiste para que cuente un chiste! 😂',
+    '¿Sois más de cooperativo o en solitario? 💬',
+    '¡Chat! ¿Alguien se anima con un !trivia? 🧠',
+    '¿Cuántas muertes creéis que habrá hoy? 💀',
+    '¿Cuál es vuestro juego favorito de todos los tiempos? 🎮',
+    '¡Usad !chiste para que cuente un chiste! 😂',
   ];
 
   let gameHooks = [];
@@ -951,26 +935,30 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
       if (genres) {
         const year = rawg.released?.slice(0, 4) || '';
         gameHooks = [
-          `🎮 ${channelConfig.streamer} jugando a ${game} (${genres}${year ? ', ' + year : ''}). Alguien lo ha jugado?`,
-          `Que os parece ${game} hasta ahora? Genero: ${genres} 🎮`,
-          `${game} - ${genres}${year ? ', ' + year : ''}. Alguien lo conocia ya? 🤔`,
+          `🎮 ${channelConfig.streamer} jugando a ${game} (${genres}${year ? ', ' + year : ''}). ¿Alguien lo ha jugado?`,
+          `¿Qué os parece ${game} hasta ahora? Género: ${genres} 🎮`,
+          `${game} - ${genres}${year ? ', ' + year : ''}. ¿Alguien lo conocía ya? 🤔`,
         ];
       } else {
         gameHooks = [
-          `Que os parece ${game} hasta ahora? 🎮`,
-          `Alguien ha jugado ${game} antes? Es dificil? 🤔`,
+          `¿Qué os parece ${game} hasta ahora? 🎮`,
+          `¿Alguien ha jugado ${game} antes? ¿Es difícil? 🤔`,
         ];
       }
     } catch {
       gameHooks = [
-        `Que os parece ${game} hasta ahora? 🎮`,
-        `Alguien ha jugado ${game}? Que tal? 🤔`,
+        `¿Qué os parece ${game} hasta ahora? 🎮`,
+        `¿Alguien ha jugado ${game}? ¿Qué tal? 🤔`,
       ];
     }
   }
 
-  const allHooks = [...gameHooks, ...genericHooks];
-  client.say(channel, allHooks[Math.floor(Math.random() * allHooks.length)], { origin: 'hook' });
+  // Sin repetir en este stream: se descartan los ya usados; si se agotan, se vuelve a empezar
+  let allHooks = [...gameHooks, ...genericHooks].filter(h => !usedStaticHooks.has(h));
+  if (!allHooks.length) { usedStaticHooks.clear(); allHooks = [...gameHooks, ...genericHooks]; }
+  const hook = allHooks[Math.floor(Math.random() * allHooks.length)];
+  usedStaticHooks.add(hook);
+  client.say(channel, hook, { origin: 'hook' });
 }
 
 // --- !chiste ---
@@ -1052,7 +1040,7 @@ async function handleQuestion(client, channel, tags, args) {
   }
 
   const rawQuestion = args.slice(1).join(' ');
-  if (!rawQuestion) { client.say(channel, `@${username} escribe algo despues de !dios_fua 😅`); return; }
+  if (!rawQuestion) { client.say(channel, `@${username} escribe algo después de !dios_fua 😅`); return; }
   const question = sanitizeForAI(rawQuestion);
   if (!question) { client.say(channel, `@${username} esa pregunta no la puedo responder 🙅`); return; }
   if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones globales ⏳`); return; }
@@ -1172,7 +1160,7 @@ async function handleShoutout(client, channel, tags, targetUsername) {
 
   try {
     if (!canMakeRequest()) {
-      client.say(channel, `📢 Échad un ojo a @${target}! 💜 twitch.tv/${target}`);
+      client.say(channel, `📢 ¡Échad un ojo a @${target}! 💜 twitch.tv/${target}`);
       return;
     }
     const info = await getChannelInfo(target);
@@ -1187,7 +1175,7 @@ async function handleShoutout(client, channel, tags, targetUsername) {
     client.say(channel, truncate(`📢 ${response.choices[0].message.content.trim()} twitch.tv/${target}`));
   } catch (err) {
     logger.error(`!so: ${err.message}`);
-    client.say(channel, `📢 Echad un ojo a @${target}! 💜 twitch.tv/${target}`);
+    client.say(channel, `📢 ¡Échad un ojo a @${target}! 💜 twitch.tv/${target}`);
   }
 }
 
@@ -1249,18 +1237,18 @@ async function checkForHighlight(client, channel, message, userId) {
           saveHighlight(triggerMessages, markerResult.id, 'Momento epico detectado por el chat')
             .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
             .catch(() => {});
-          client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
+          client.say(channel, `🏁 ¡Momento marcado para el VOD! ¡FUA! 🔥`);
         } else {
-          client.say(channel, `🔥 QUÉ MOMENTO FUA! 💜`);
+          client.say(channel, `🔥 ¡QUÉ MOMENTO, FUA! 💜`);
         }
       }
     } else if (markerCreated) {
       saveHighlight(triggerMessages, markerResult.id, 'Momento epico detectado por el chat')
         .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
         .catch(() => {});
-      client.say(channel, `🏁 Momento marcado para el VOD! FUA! 🔥`);
+      client.say(channel, `🏁 ¡Momento marcado para el VOD! ¡FUA! 🔥`);
     } else {
-      client.say(channel, `🔥 QUÉ MOMENTO FUA! 💜`);
+      client.say(channel, `🔥 ¡QUÉ MOMENTO, FUA! 💜`);
     }
   }
 }
@@ -1517,26 +1505,27 @@ async function checkPatternMatch(client, channel, tags, message) {
       let feedback = '';
       for (let attempt = 0; attempt < 2 && !answer; attempt++) {
         const response = await groqWithRetry({
-          model: GROQ_MODEL_FAST,
+          model: GROQ_MODEL,
           max_tokens: modeConfig.max_tokens ?? 120,
           temperature: GENERAL_TEMPERATURE,
           messages: [
-            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. NUNCA digas datos de videojuegos (fechas, desarrolladoras, argumentos, mecánicas, armas, zonas, dificultad, consejos), ni del juego actual ni de otros: si insisten, sugiere usar !dios_fua. Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. No des datos de videojuegos ni consejos: solo si te los piden, sugiere usar !dios_fua. Responde a lo que dice el usuario y no saques temas que no ha mencionado. ${STYLE_RULES} Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
             ...userConv,
             { role: 'user', content: `${username}: ${question}` }
           ]
         }, 2, { maxDelayMs: MENTION_MAX_RETRY_DELAY_MS });
         const choice = response.choices[0];
         const raw = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
-        const check = quality.validateMention(raw);
+        const check = quality.validateMention(raw, { question });
         if (!check.ok) { feedback = check.reason; continue; }
         const mentionGame = await getCurrentGame().catch(() => null);
         // Solo se vigila lo que habla de videojuegos; "resistencia" o "zona" en una pregunta de cultura general no cuentan
         const gameTalk = quality.talksAboutGames(`${question} ${raw}`, mentionGame?.game);
-        if (gameTalk && (quality.mentionsMechanics(raw) || await factcheck.shouldDiscard(raw, `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`))) {
-          feedback = 'afirma datos del juego sin respaldo; no hables del juego';
-          continue;
-        }
+        if (gameTalk && quality.mentionsMechanics(raw)) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
+        // Una sola llamada: datos del juego (solo si habla de videojuegos) y sentido/redacción
+        const review = await factcheck.evaluate(raw, `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`, { game: mentionGame?.game, sense: true, checkData: gameTalk });
+        if (review.discard) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
+        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas'; continue; }
         answer = raw;
       }
       // Sin respuesta válida tras reintentar: callar. Las réplicas de reserva son solo para provocaciones reales
@@ -1615,6 +1604,8 @@ function getStreamChatBuffer() {
 
 function resetStreamChatBuffer() {
   streamChatBuffer.length = 0;
+  recentHooks.length = 0;
+  usedStaticHooks.clear();
   resetLoreSample();
 }
 
@@ -1630,7 +1621,7 @@ function restoreCooldowns(data) {
 }
 
 module.exports = {
-  handleCohost, runCohost, enqueueCohostMoment, startEventCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi, onProphecy,
+  handleCohost, runCohost, enqueueCohostMoment, startEventCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi,
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
   initStreamStatus, invalidateContextCache, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,

@@ -1,7 +1,7 @@
 // Comprobación SÍ/NO con el modelo rápido: ¿el mensaje afirma algo concreto del juego que no está en los datos?
 // Solo se comprueba lo que habla del juego; si es de eso y hay duda o fallo, se descarta. Lo que no habla del juego se envía sin comprobar.
 
-const { groqWithRetry, GROQ_MODEL_FAST } = require('../utils/groq-utils');
+const { groqWithRetry, GROQ_MODEL, GROQ_MODEL_FAST } = require('../utils/groq-utils');
 const { canMakeAuxRequest } = require('../utils/ratelimit');
 const { mentionsGame } = require('./quality');
 const logger = require('../utils/logger');
@@ -32,14 +32,57 @@ function gameFromData(data) {
   return m ? m[1] : '';
 }
 
+// Pregunta de redacción, en la misma llamada que la de datos: ¿se entiende y está bien escrita?
+const SENSE_QUESTION = 'SENTIDO: ¿el mensaje tiene sentido y está bien escrito en español de España? Responde NO si la idea no se entiende, mezcla imágenes que no encajan (metáforas absurdas), usa palabras inventadas o mal usadas, copia palabras sueltas del chat sin entenderlas, tiene errores gramaticales o suena a traducción. Responde NO también si suena poético o profundo pero no dice nada concreto, si compara cosas sin relación lógica, si dice que alguien "se hace" o "será" algo que no se entiende, o si el sujeto y lo que hace no encajan. Los chistes y exageraciones claros (que se entienden a la primera) SÍ valen. "El FUA" (grito de carácter del canal) y "Dios Fua" (nombre del bot) no son errores.';
+
+function buildReviewPrompt(text, data, { checkData }) {
+  const ctx = String(data || '').trim() || '(ninguno)';
+  const dataPart = checkData
+    ? 'DATOS: ¿el mensaje afirma algo concreto del juego (mecánicas, armas, zonas, dificultad, jefes, historia, consejos, fechas) que no esté en los datos? Las bromas, el FUA y los hechos del stream (muertes, chat, eventos) no cuentan. Responde "DATOS: SÍ" o "DATOS: NO".\n'
+    : '';
+  return `Datos disponibles:\n${ctx}\n\nMensaje:\n${text.replace(/\bparlus1\w+/gi, '').replace(/\s{2,}/g, ' ').trim()}\n\nResponde en ${checkData ? 'dos líneas' : 'una línea'}.\n${dataPart}${SENSE_QUESTION} Responde "SENTIDO: SÍ" o "SENTIDO: NO".`;
+}
+
+// { data, sense }: 'yes' | 'no' | null por línea
+function parseReview(raw) {
+  const t = String(raw || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+  const pick = key => { const m = new RegExp(key + '\\s*[:\\-]?\\s*(si|yes|no)\\b').exec(t); return m ? (m[1] === 'no' ? 'no' : 'yes') : null; };
+  return { data: pick('datos'), sense: pick('sentido') };
+}
+
 // Frase no respaldada tras "SÍ:" (solo la pide el prompt de RAWG)
 function parseClaim(raw) {
   const m = /^\s*s[ií]\s*[:\-–]\s*(.+)$/is.exec(String(raw || ''));
   return m ? m[1].trim().replace(/^["“«]|["”»]$/g, '').slice(0, 120) : '';
 }
 
+// Mensajes automáticos con revisión de sentido (opts.sense): datos del juego (solo si hablan de él) y redacción, en una llamada
+// { discard, claim, nonsense }. Un fallo de la revisión de redacción no bloquea (se envía); uno de la de datos sí descarta.
+async function evaluateReview(text, data, { game, checkData: forced } = {}) {
+  const checkData = typeof forced === 'boolean' ? forced : mentionsGame(text, game ?? gameFromData(data));
+  if (!canMakeAuxRequest()) { recordFactcheckFailure('ratelimit'); return { discard: checkData, claim: '', nonsense: false }; }
+  try {
+    const response = await groqWithRetry({
+      model: GROQ_MODEL,
+      max_tokens: 24,
+      temperature: 0,
+      messages: [
+        { role: 'system', content: 'Eres un revisor estricto de mensajes de un chat de Twitch en España. Respondes solo con las líneas pedidas.' },
+        { role: 'user', content: buildReviewPrompt(text, data, { checkData }) },
+      ],
+    });
+    const r = parseReview(response.choices[0]?.message?.content);
+    return { discard: checkData && r.data !== 'no', claim: '', nonsense: r.sense === 'no' };
+  } catch (err) {
+    logger.warn(`Revisión del mensaje falló: ${err.message}`);
+    recordFactcheckFailure(err.status === 429 ? 'groq429' : 'error');
+    return { discard: checkData, claim: '', nonsense: false };
+  }
+}
+
 // { discard, claim }: claim es lo no respaldado cuando el verificador lo indica
-async function evaluate(text, data, { source = 'stream', game } = {}) {
+async function evaluate(text, data, { source = 'stream', game, sense = false, checkData } = {}) {
+  if (sense && source === 'stream') return evaluateReview(text, data, { game, checkData });
   if (source === 'stream' && !mentionsGame(text, game ?? gameFromData(data))) return { discard: false, claim: '' };
   if (!canMakeAuxRequest()) { recordFactcheckFailure('ratelimit'); return { discard: true, claim: '' }; }
   try {
@@ -67,4 +110,4 @@ async function shouldDiscard(text, data, opts) {
   return (await evaluate(text, data, opts)).discard;
 }
 
-module.exports = { parseVerdict, parseClaim, evaluate, buildCheckPrompt, gameFromData, shouldDiscard };
+module.exports = { parseVerdict, parseClaim, parseReview, buildReviewPrompt, evaluate, buildCheckPrompt, gameFromData, shouldDiscard };

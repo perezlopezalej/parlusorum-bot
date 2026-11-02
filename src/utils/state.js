@@ -145,7 +145,18 @@ function addBotMessage(msg) {
 }
 
 function getBotHistory() { return [...botMessageHistory]; }
-function resetBotHistory() { botMessageHistory = []; }
+function resetBotHistory() { botMessageHistory = []; cohostTextsByKind.clear(); }
+
+// Textos del cohost de este stream por tipo de momento ('boss', 'first_death', 'free'...): para que un jefe no se comente dos veces igual
+const MAX_TEXTS_PER_KIND = 12;
+const cohostTextsByKind = new Map();
+function addCohostText(kind, text) {
+  const list = cohostTextsByKind.get(kind) || [];
+  list.push(text);
+  if (list.length > MAX_TEXTS_PER_KIND) list.shift();
+  cohostTextsByKind.set(kind, list);
+}
+function getCohostTexts(kind) { return [...(cohostTextsByKind.get(kind) || [])]; }
 
 // --- Usuarios nombrados por el bot (login en minúsculas → ts): evita citar al mismo usuario una y otra vez ---
 const NAMED_TTL_MS = 60 * 60 * 1000;
@@ -210,12 +221,6 @@ function getDeathCount() { return deathCount; }
 function incrementDeathCount() { deathCount++; return deathCount; }
 function resetDeathCount() { deathCount = 0; }
 function setDeathCount(n) { deathCount = Math.max(0, Math.floor(n) || 0); }
-
-// --- Profecía de muertes del stream ({ deaths, text, game, ts } o null) ---
-let streamProphecy = null;
-function getProphecy() { return streamProphecy ? { ...streamProphecy } : null; }
-function setProphecy(val) { streamProphecy = val; }
-function clearProphecy() { streamProphecy = null; }
 
 // --- Predicción activa ---
 let activePrediction = null;
@@ -354,7 +359,7 @@ module.exports = {
   setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt,
   addNarrativeEvent, onNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
   recordCohost, getLastCohostTime, getCohostTimes, claimHookPause,
-  addBotMessage, getBotHistory, resetBotHistory, markNamed, getNamedUsers, resetNamedUsers,
+  addBotMessage, getBotHistory, resetBotHistory, addCohostText, getCohostTexts, markNamed, getNamedUsers, resetNamedUsers,
   getLastCohostContextHash, setLastCohostContextHash,
   tickReinforce, resetReinforceCounter,
   setGameContextFailed, getGameContextFailed,
@@ -363,7 +368,6 @@ module.exports = {
   setStreamIsLive, getStreamIsLive,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, incrementDeathCount, resetDeathCount, setDeathCount,
-  getProphecy, setProphecy, clearProphecy,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getTriviaStats, registrarAcierto, registrarFallo, resetTriviaStats,
   bumpTriviaStreak, getTriviaTopCache, setTriviaTopCache, invalidateTriviaTopCache,

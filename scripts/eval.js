@@ -5,6 +5,9 @@
  * prompts, buscar_juego, filtros de quality y factcheck. Solo cambia el cliente de chat (captura el say())
  * y las ESCRITURAS a Supabase (bloqueadas). No envía nada a Twitch.
  *
+ * Casos con "filter": pasan una frase real del bot por los validadores de quality y por la revisión de sentido de factcheck
+ * (cohost, timer_ia, hook o mention) y esperan que se descarte (expect.rejected) o que pase.
+ *
  * Uso: npm run eval [-- --only id1,id2] [-- --verbose] [-- --repeat N]
  * Sale con código 1 si algún caso no cumple lo esperado.
  */
@@ -64,7 +67,7 @@ wrap(quality, 'leaksTech', (a, r) => ({ filter: 'leaksTech', hit: !!r, text: a[0
 wrap(quality, 'mentionsMechanics', (a, r) => ({ filter: 'mentionsMechanics', hit: !!r, text: a[0] }));
 wrap(quality, 'validateMention', (a, r) => ({ filter: 'validateMention', hit: !r.ok, reason: r.reason, text: a[0] }));
 wrap(factcheck, 'shouldDiscard', (a, r) => ({ filter: `factcheck(${a[2]?.source || 'stream'})`, hit: !!r, text: a[0] }));
-wrap(factcheck, 'evaluate', (a, r) => ({ filter: `factcheck(${a[2]?.source || 'stream'})`, hit: !!r.discard, reason: r.claim, text: a[0] }));
+wrap(factcheck, 'evaluate', (a, r) => ({ filter: `factcheck(${a[2]?.source || 'stream'})`, hit: !!(r.discard || r.nonsense), reason: r.nonsense ? 'sin sentido o mal escrito (revisor)' : r.claim, text: a[0] }));
 
 // Tiempos de cada llamada a Groq y 429 por caso (diagnóstico de latencia)
 let aiCalls = [];
@@ -92,8 +95,36 @@ function flattenPool(key) {
 
 const stripMention = s => String(s || '').replace(/^@\S+\s*/, '');
 
+// Caso de filtro: no genera nada, comprueba que una frase real mala se descarta (o que una buena pasa)
+async function runFilterCase(c) {
+  const deaths = c.deaths ?? 5;
+  const game = c.game || 'Phantom Blade Zero';
+  const ctx = { deathCount: deaths, recent: [], named: new Map(), currentGame: game, channelGames: [] };
+  const rules = {
+    cohost: t => quality.validateCohost(t, ctx),
+    timer_ia: t => quality.validateTimerIA(t, ctx),
+    hook: t => quality.validateHook(t, ctx),
+    mention: t => quality.validateMention(t, { question: c.question || '' }),
+  };
+  if (!rules[c.filter]) throw new Error(`filtro desconocido: ${c.filter}`);
+  const started = realNow();
+  const n429 = state.getCohostStats().groq429;
+  const v = rules[c.filter](c.input);
+  let rejectedBy = v.ok ? null : `regla — ${v.reason}`;
+  if (!rejectedBy) {
+    const r = await factcheck.evaluate(c.input, `Juego: ${game}. Muertes anotadas: ${deaths}.`, { game, sense: true });
+    if (r.discard) rejectedBy = 'revisión de datos del juego';
+    else if (r.nonsense) rejectedBy = 'revisión de sentido (IA)';
+  }
+  const failures = [];
+  if (c.expect?.rejected === true && !rejectedBy) failures.push('la frase mala pasó todos los filtros');
+  if (c.expect?.rejected === false && rejectedBy) failures.push(`una frase buena se descartó (${rejectedBy})`);
+  return { c, kind: `filtro ${c.filter}`, reply: rejectedBy ? `(descartada por ${rejectedBy})` : '(pasa los filtros)', answer: '', tool: null, discarded: null, retried: [], failures, ms: realNow() - started, calls: aiCalls.map(a => a.model.split('/').pop() + ' ' + (a.ms / 1000).toFixed(1) + 's'), rate429: state.getCohostStats().groq429 - n429, logs: currentLogs.slice() };
+}
+
 async function runCase(c, i, rep = 0) {
   events = []; currentLogs = []; aiCalls = [];
+  if (c.filter) return runFilterCase(c);
   const n429 = state.getCohostStats().groq429;
   const said = [];
   const client = { say: (_ch, text) => { said.push(String(text)); } };

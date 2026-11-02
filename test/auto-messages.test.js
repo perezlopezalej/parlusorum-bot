@@ -116,10 +116,11 @@ describe('cohost por eventos', () => {
     assert.equal(n.classifyCohostMoment(e, { events: [e], deathCount: 16, recordToBeat: 15, now }).kind, 'record');
     assert.equal(n.classifyCohostMoment(death(15, 0), { events: [death(15, 0)], deathCount: 15, recordToBeat: 15, now }), null);
   });
-  test('boss, sub, raid y explosión del chat comentan; rage no', () => {
-    for (const type of ['boss', 'sub', 'raid', 'victory']) {
+  test('boss, raid y explosión del chat comentan; sub (ya la agradece la alerta) y rage no', () => {
+    for (const type of ['boss', 'raid', 'victory']) {
       assert.equal(n.classifyCohostMoment({ type, description: 'x', ts: now }, { now }).kind, type);
     }
+    assert.equal(n.classifyCohostMoment({ type: 'sub', description: 'x', ts: now }, { now }), null);
     assert.equal(n.classifyCohostMoment({ type: 'rage', description: 'x', ts: now }, { now }), null);
   });
   test('freno de eventos: 15 s entre comentarios y 20 por hora de seguridad', () => {

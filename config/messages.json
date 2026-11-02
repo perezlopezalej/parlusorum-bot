@@ -22,37 +22,37 @@
     ]
   },
   "anonymous_gifter": "un alma generosa anónima",
-  "sub_overflow": "Y gracias también a {names} por sus subs! 💜",
+  "sub_overflow": "¡Y gracias también a {names} por sus subs! 💜",
   "sub_messages": {
     "sub": [
-      "🎉 Muchisimas gracias @{username} por suscribirte{tier}! Eres increible! 💜",
-      "💜 @{username} se ha suscrito{tier}! La familia crece! Gracias! 🎊",
-      "🥳 @{username} acaba de suscribirse{tier}! Eres un crack! 🔥",
-      "⭐ Nuevo suscriptor! Bienvenid@ al club @{username}{tier}! 💜🎉"
+      "🎉 ¡Muchísimas gracias @{username} por suscribirte{tier}! ¡Eres increíble! 💜",
+      "💜 ¡@{username} se ha suscrito{tier}! ¡La familia crece! ¡Gracias! 🎊",
+      "🥳 ¡@{username} acaba de suscribirse{tier}! ¡Eres un crack! 🔥",
+      "⭐ ¡Nuevo suscriptor! ¡Bienvenid@ al club @{username}{tier}! 💜🎉"
     ],
     "resub": [
-      "🔁 @{username} renueva{tier} y ya van {months} meses! Gracias por tanto! 💜",
-      "🎉 {months} meses con nosotros: @{username}{tier}! Eres parte de la familia! 💪",
-      "💜 @{username} sigue al pie del cañon{tier}: {months} meses! Gracias! 🔥"
+      "🔁 ¡@{username} renueva{tier} y ya van {months} meses! ¡Gracias por tanto! 💜",
+      "🎉 ¡{months} meses con nosotros: @{username}{tier}! ¡Eres parte de la familia! 💪",
+      "💜 ¡@{username} sigue al pie del cañón{tier}: {months} meses! ¡Gracias! 🔥"
     ],
     "subgift": [
-      "🎁 {gifter} le regala una sub{tier} a @{recipient}! Gracias! 💜",
-      "🎊 @{recipient} recibe una sub{tier} cortesia de {gifter}! FUA! 🔥",
-      "💝 {gifter} reparte amor{tier}: sub para @{recipient}! 🎉"
+      "🎁 ¡{gifter} le regala una sub{tier} a @{recipient}! ¡Gracias! 💜",
+      "🎊 ¡@{recipient} recibe una sub{tier} cortesía de {gifter}! ¡FUA! 🔥",
+      "💝 ¡{gifter} reparte amor{tier}: sub para @{recipient}! 🎉"
     ],
     "mysterygift": [
-      "🎁 {gifter} suelta {count} subs{tier} para la comunidad! Locura! 🔥💜",
-      "💝 {count} subs{tier} cortesia de {gifter}! El chat explota! 🎉",
-      "🎊 {gifter} regala {count} subs{tier}! Gracias por tanta generosidad! 💜"
+      "🎁 ¡{gifter} suelta {count} subs{tier} para la comunidad! ¡Locura! 🔥💜",
+      "💝 ¡{count} subs{tier} cortesía de {gifter}! ¡El chat explota! 🎉",
+      "🎊 ¡{gifter} regala {count} subs{tier}! ¡Gracias por tanta generosidad! 💜"
     ],
-    "giftpaidupgrade": "💜 @{username} continua la sub que le regalo {gifter}! Gracias! 🎉",
-    "anongiftpaidupgrade": "💜 @{username} continua la sub que le regalaron! Gracias! 🎉"
+    "giftpaidupgrade": "💜 ¡@{username} continúa la sub que le regaló {gifter}! ¡Gracias! 🎉",
+    "anongiftpaidupgrade": "💜 ¡@{username} continúa la sub que le regalaron! ¡Gracias! 🎉"
   },
-  "warmup_fallback": "¡El stream acaba de empezar! Bienvenidos 🔥 FUA!",
+  "warmup_fallback": "¡El stream acaba de empezar! Bienvenidos 🔥 ¡FUA!",
   "quemeperdi": {
     "offline": "@{username} no hay stream en directo ahora mismo 😴",
     "cooldown": "@{username} espera {seconds}s para otro resumen.",
-    "nothing_yet": "@{username} el stream acaba de arrancar, aún no hay nada que contar 👀 FUA!",
+    "nothing_yet": "@{username} el stream acaba de arrancar, aún no hay nada que contar 👀 ¡FUA!",
     "fallback": "📜 Llevamos {minutes} min de {game} con {deaths} muertes. El FUA sigue vivo, el streamer no tanto 💀"
   },
   "muertes": {
@@ -68,24 +68,17 @@
     "unknown": "⏳ No tengo ningún mensaje registrado de @{target} todavía",
     "unavailable": "⏳ Ahora mismo no puedo consultar el registro, prueba en un rato"
   },
-  "prophecy": {
-    "fallback": "🔮 El FUA ha hablado: hoy habrá {deaths} muertes. Quedáis avisados. FUAAA",
-    "result_untracked": "🔮 Nadie llevó la cuenta de las muertes, así que mi profecía de {predicted} queda en el misterio. El FUA lo sabe 🤫",
-    "result_exact": "🔮 Profecía cumplida: predije {predicted} muertes y hubo {actual}. Exacto. Inclinaos ante el FUA 👑",
-    "result_close": "🔮 Predije {predicted} muertes y hubo {actual}. Casi clavado, el FUA no falla, redondea 😎",
-    "result_miss": "🔮 Predije {predicted} muertes y hubo {actual}. La culpa es del lag, del streamer y de Mercurio retrógrado. El FUA no se equivoca 🙃"
-  },
   "stream_start_messages": [
-    "LIVE! Bienvenidos todos! FUA! 💪🔥",
-    "El canal ha arrancado! A disfrutar! FUA! 🔥",
-    "ESTAMOS EN DIRECTO! El FUA nos convoca! 💪",
-    "Arranca el stream! Preparaos para el caos! FUA! 🔥"
+    "¡LIVE! ¡Bienvenidos todos! ¡FUA! 💪🔥",
+    "¡El canal ha arrancado! ¡A disfrutar! ¡FUA! 🔥",
+    "¡ESTAMOS EN DIRECTO! ¡El FUA nos convoca! 💪",
+    "¡Arranca el stream! ¡Preparaos para el caos! ¡FUA! 🔥"
   ],
   "stream_end_messages": [
-    "Y hasta aqui el stream! Gracias a todos! FUA y hasta la proxima! 💜🔥",
-    "Stream terminado! Gracias por acompanarhos! FUA! 🔥",
-    "Eso es todo por hoy! Gracias a la comunidad! FUA! 💜",
-    "Se acabo! FUA y nos vemos pronto! 🔥💪"
+    "¡Y hasta aquí el stream! ¡Gracias a todos! ¡FUA y hasta la próxima! 💜🔥",
+    "¡Stream terminado! ¡Gracias por acompañarnos! ¡FUA! 🔥",
+    "¡Eso es todo por hoy! ¡Gracias a la comunidad! ¡FUA! 💜",
+    "¡Se acabó! ¡FUA y nos vemos pronto! 🔥💪"
   ],
   "trivia_rank": {
     "win": "🎉 ¡@{username} ha acertado! ¡Enhorabuena! 🏆",

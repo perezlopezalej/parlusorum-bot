@@ -164,7 +164,6 @@ eventSubHandler = createEventSubHandler(client, CHANNEL, {
   startStreamSession,
   invalidateMemoryCache: memory.invalidateMemoryCache,
   onWarmupMode: ai.onWarmupMode,
-  onProphecy: ai.onProphecy,
   postStreamEnd: ai.postStreamEnd,
   getSummary,
   onStreamEnd: memory.onStreamEnd,

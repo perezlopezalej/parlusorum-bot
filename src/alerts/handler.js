@@ -6,6 +6,7 @@ const { loadUsers, saveUser } = require('../utils/storage');
 const { setRaidActive, markGiftBatch, isGiftBatch, isSilenced, addNarrativeEvent } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const { sanitizeForAI } = require('../utils/filter');
+const quality = require('../ai/quality');
 const { groqWithRetry, truncate } = require('../utils/groq-utils');
 const { getNickname, touchesAvoidedTopic } = require('../lore/handler');
 const { buildSubContext } = require('./sub-context');
@@ -16,23 +17,23 @@ const STREAMER_USERNAME = (channelConfig.streamer_username || 'parlusorum').toLo
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 const welcomeMessages = [
-  '👋 Bienvenid@ @{username}! Es tu primer mensaje aqui 🎉 Si tienes alguna pregunta usa !dios_fua',
-  '🎊 Ey @{username}! Primera vez por aqui, que alegria! 💜 Preguntame lo que quieras con !dios_fua!',
-  '✨ @{username} entra al chat por primera vez! Bienvenid@! 🔥 Usa !comandos para ver que puedo hacer',
-  '🌟 @{username} estrena su primer mensaje! Bienvenid@! 👋 El FUA te da la bienvenida! 💪',
+  '👋 ¡Bienvenid@ @{username}! Es tu primer mensaje aquí 🎉 Si tienes alguna pregunta usa !dios_fua',
+  '🎊 ¡Ey @{username}! Primera vez por aquí, ¡qué alegría! 💜 ¡Pregúntame lo que quieras con !dios_fua!',
+  '✨ ¡@{username} entra al chat por primera vez! ¡Bienvenid@! 🔥 Usa !comandos para ver qué puedo hacer',
+  '🌟 ¡@{username} estrena su primer mensaje! ¡Bienvenid@! 👋 ¡El FUA te da la bienvenida! 💪',
 ];
 
 const returnMessages = [
-  '🎊 @{username} ha vuelto despues de {days} dias! Bienvenid@ de nuevo! 🔥',
-  '👀 @{username} resucita despues de {days} dias! Cuanto tiempo! 🎉',
-  '🥳 Ha vuelto @{username} despues de {days} dias! El canal estaba incompleto sin ti! 💜',
+  '🎊 ¡@{username} ha vuelto después de {days} días! ¡Bienvenid@ de nuevo! 🔥',
+  '👀 ¡@{username} resucita después de {days} días! ¡Cuánto tiempo! 🎉',
+  '🥳 ¡Ha vuelto @{username} después de {days} días! ¡El canal estaba incompleto sin ti! 💜',
 ];
 
 const lurkerMessages = [
-  '👀 @{username} ha salido del modo lurker! Gracias por seguir ahi 💜',
-  '🕵️ @{username} sale de las sombras! Sabiamos que estabas ahi 😏',
-  '🐱 @{username} vuelve al chat! El lurker ha hablado 🎉',
-  '🌙 @{username} abandona el modo fantasma! Bienvenid@ de vuelta! 👋',
+  '👀 ¡@{username} ha salido del modo lurker! Gracias por seguir ahí 💜',
+  '🕵️ ¡@{username} sale de las sombras! Sabíamos que estabas ahí 😏',
+  '🐱 ¡@{username} vuelve al chat! El lurker ha hablado 🎉',
+  '🌙 ¡@{username} abandona el modo fantasma! ¡Bienvenid@ de vuelta! 👋',
 ];
 
 const subMessages = messagesConfig.sub_messages;
@@ -121,7 +122,7 @@ async function checkFirstMessage(client, channel, tags) {
             { role: 'user', content: `Bienvenida para @${safeUsername}` }
           ]
         });
-        throttleSay(client, channel, truncate(response.choices[0].message.content));
+        throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
       } catch {
         throttleSay(client, channel, pick(welcomeMessages).replace('{username}', username));
       }
@@ -162,7 +163,7 @@ function checkAnniversary(client, channel, username, userData, now) {
   const sameMonth = firstSeen.getMonth() === now.getMonth();
   const years = now.getFullYear() - firstSeen.getFullYear();
   if (sameDay && sameMonth && years > 0) {
-    throttleSay(client, channel, `🎂 Hoy es el aniversario de @${username} en el canal! Hace ${years} año(s) que estas aqui! 🥳`);
+    throttleSay(client, channel, `🎂 ¡Hoy es el aniversario de @${username} en el canal! Hace ${years} año(s) que estás aquí 🥳`);
   }
 }
 
@@ -215,9 +216,9 @@ function trackLurker(client, channel, tags) {
 
 // --- Logros ---
 const achievementsList = [
-  { id: 'messages_10', condition: u => u.messageCount >= 10, message: '🏅 @{username} ha conseguido el logro "Conversador"! (10 mensajes)' },
-  { id: 'messages_100', condition: u => u.messageCount >= 100, message: '🥈 @{username} ha conseguido el logro "Habladín"! (100 mensajes)' },
-  { id: 'messages_500', condition: u => u.messageCount >= 500, message: '🥇 @{username} ha conseguido el logro "Leyenda del chat"! (500 mensajes)' },
+  { id: 'messages_10', condition: u => u.messageCount >= 10, message: '🏅 ¡@{username} ha conseguido el logro "Conversador"! (10 mensajes)' },
+  { id: 'messages_100', condition: u => u.messageCount >= 100, message: '🥈 ¡@{username} ha conseguido el logro "Habladín"! (100 mensajes)' },
+  { id: 'messages_500', condition: u => u.messageCount >= 500, message: '🥇 ¡@{username} ha conseguido el logro "Leyenda del chat"! (500 mensajes)' },
 ];
 
 function checkAchievements(client, channel, username, userData) {
@@ -274,7 +275,7 @@ async function announceSub(client, channel, kind, vars, userMessage) {
         { role: 'user', content: `${facts}${known ? ` ${known}` : ''}${safeMsg ? ` Mensaje del usuario: "${safeMsg}"` : ''}` }
       ]
     });
-    const text = truncate(response.choices[0].message.content, SUB_AI_MAX_CHARS);
+    const text = truncate(quality.vetAuto(response.choices[0].message.content), SUB_AI_MAX_CHARS);
     throttleSay(client, channel, text || fixed, opts);
   } catch (err) {
     logger.error(`Error en sub IA: ${err.message}`);
@@ -318,15 +319,15 @@ function onGiftUpgrade(client, channel, username, gifter) {
 
 function onBits(client, channel, username, bits) {
   if (bits >= 500) narrate('sub', `${who(username)} donó ${Number(bits)} bits`);
-  if (bits >= 1000) throttleSay(client, channel, `💎 WOW! @${username} acaba de donar ${bits} bits! INCREIBLE! 🔥🔥🔥`);
-  else if (bits >= 100) throttleSay(client, channel, `💜 @${username} ha donado ${bits} bits! Muchas gracias! 🎉`);
-  else throttleSay(client, channel, `✨ Gracias @${username} por los ${bits} bits! 💜`);
+  if (bits >= 1000) throttleSay(client, channel, `💎 ¡WOW! ¡@${username} acaba de donar ${bits} bits! ¡INCREÍBLE! 🔥🔥🔥`);
+  else if (bits >= 100) throttleSay(client, channel, `💜 ¡@${username} ha donado ${bits} bits! ¡Muchas gracias! 🎉`);
+  else throttleSay(client, channel, `✨ ¡Gracias @${username} por los ${bits} bits! 💜`);
 }
 
 async function onRaid(client, channel, username, viewers) {
   const { getBotPersonality } = require('../ai/handler'); // lazy: circular dep alerts↔ai
   narrate('raid', `Raid de ${who(username)} con ${Number(viewers) || '?'} viewers`);
-  if (!isSilenced()) client.say(channel, `⚔️ RAID de @${username} con ${viewers} viewers! Bienvenidos a todos! 🔥`);
+  if (!isSilenced()) client.say(channel, `⚔️ ¡RAID de @${username} con ${viewers} viewers! ¡Bienvenidos a todos! 🔥`);
   if (isSilenced() || !canMakeRequest()) { setRaidActive(username); return; }
   try {
     const raidInfo = await getChannelInfo(username);
@@ -339,7 +340,7 @@ async function onRaid(client, channel, username, viewers) {
         { role: 'user', content: `@${username} ha hecho raid con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado y gracioso. Maximo 1-2 frases.` }
       ]
     });
-    const extra = response.choices[0].message.content.trim();
+    const extra = quality.vetAuto(response.choices[0].message.content);
     if (extra && !isSilenced()) client.say(channel, truncate(extra));
   } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
 
@@ -363,7 +364,7 @@ async function checkFollowerMilestones(client, channel) {
   for (const milestone of milestones) {
     if (lastFollowerCount < milestone && current >= milestone) {
       narrate('milestone', `El canal llegó a ${milestone} seguidores`);
-      if (!isSilenced()) client.say(channel, `🎊 EL CANAL HA LLEGADO A ${milestone} SEGUIDORES!! INCREIBLE! 🥳🔥`);
+      if (!isSilenced()) client.say(channel, `🎊 ¡EL CANAL HA LLEGADO A ${milestone} SEGUIDORES! ¡INCREÍBLE! 🥳🔥`);
     }
   }
   lastFollowerCount = current;

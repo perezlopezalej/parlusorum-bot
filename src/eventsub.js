@@ -2,15 +2,16 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
-const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative, restoreSessionProphecy, getCurrentSessionId } = require('./utils/supabase');
+const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
+const quality = require('./ai/quality');
 const { throttleSay } = require('./alerts/handler');
 const {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive, isSilenced,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, setDeathCount,
-  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter, clearProphecy, setProphecy,
+  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getCohostStats, resetCohostStats,
 } = require('./utils/state');
@@ -145,8 +146,6 @@ async function initStreamState() {
       if (deaths !== null) {
         setStreamNarrative(await restoreSessionNarrative());
         logger.info(`📖 Narrativa recuperada: ${getStreamNarrative().length} eventos`);
-        const prophecy = await restoreSessionProphecy();
-        if (prophecy) { setProphecy(prophecy); logger.info(`🔮 Profecía recuperada: ${prophecy.deaths} muertes`); }
       }
     } else {
       setStreamIsLive(false);
@@ -314,7 +313,6 @@ function createEventSubHandler(client, channel, deps) {
     startStreamSession,
     invalidateMemoryCache,
     onWarmupMode,
-    onProphecy,
     postStreamEnd,
     getSummary,
     onStreamEnd,
@@ -396,7 +394,6 @@ function createEventSubHandler(client, channel, deps) {
         try { resetSessionCounters(); } catch {}
         try { resetStreamChatBuffer(); } catch {}
         try { resetStreamNarrative(); } catch {}
-        try { clearProphecy(); } catch {}
         try { resetBotHistory(); } catch {}
         try { resetReinforceCounter(); } catch {}
         try { clearUserFactsCache(); } catch {}
@@ -423,13 +420,6 @@ function createEventSubHandler(client, channel, deps) {
                 } catch (e) { logger.warn(`Warmup check: ${e.message}`); }
               }, 60 * 1000);
 
-              // Profecía de muertes: tras el warmup (60s), a los 90s
-              setTimeout(async () => {
-                try {
-                  if (!isLiveViaEventSub() || client.readyState() !== 'OPEN') return;
-                  await onProphecy(client, channel, warmupGame);
-                } catch (e) { logger.warn(`Profecía: ${e.message}`); }
-              }, 90 * 1000);
             } catch (e) { logger.warn(`Supabase session start: ${e.message}`); }
           })());
           await getSessionStarting().finally(() => { clearSessionStarting(); });
@@ -539,7 +529,7 @@ function createEventSubHandler(client, channel, deps) {
               { role: 'user', content: `El streamer ha abierto una predicción: '${title}'. Opciones: ${opcionesTexto}. Narra esto en 1-2 frases.` }
             ]
           });
-          throttleSay(client, channel, truncate(response.choices[0].message.content));
+          throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
         } catch {
           throttleSay(client, channel, truncate(`🔮 ¡PREDICCIÓN! "${title}" — ${opcionesTexto} — ¡Apuesta tus puntos! 🎯`));
         }
@@ -569,7 +559,7 @@ function createEventSubHandler(client, channel, deps) {
                 { role: 'user', content: `La predicción '${title}' terminó. Ganó: '${ganadorPred.title}' con ${numGanadores} acertantes y ${totalPuntos} puntos en juego. Anuncia el resultado en 1-2 frases.` }
               ]
             });
-            throttleSay(client, channel, truncate(response.choices[0].message.content));
+            throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
           } catch {
             throttleSay(client, channel, truncate(`🏆 ¡Ganó "${ganadorPred.title}"! ${numGanadores > 0 ? `¡${numGanadores} acertaron!` : ''} 🎉`));
           }
@@ -589,7 +579,7 @@ function createEventSubHandler(client, channel, deps) {
               { role: 'user', content: `El streamer ha abierto una encuesta: '${title}'. Opciones: ${opcionesTexto}. Comenta esto en 1-2 frases.` }
             ]
           });
-          throttleSay(client, channel, truncate(response.choices[0].message.content));
+          throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
         } catch {
           throttleSay(client, channel, truncate(`📊 ¡ENCUESTA! "${title}" — ${opcionesTexto} — ¡Vota en el chat!`));
         }
@@ -612,7 +602,7 @@ function createEventSubHandler(client, channel, deps) {
                 { role: 'user', content: `La encuesta '${title}' terminó. Ganó '${ganadorPoll.title}' con ${pct}% de ${totalVotos} votos.${esAjustado ? ' ¡Fue muy reñido!' : ''} Anuncia el resultado en 1-2 frases.` }
               ]
             });
-            throttleSay(client, channel, truncate(response.choices[0].message.content));
+            throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
           } catch {
             throttleSay(client, channel, truncate(`📊 Encuesta terminada: ganó "${ganadorPoll.title}" con ${pct}% de los votos${esAjustado ? ' (¡muy reñido!)' : ''}`));
           }
@@ -623,25 +613,14 @@ function createEventSubHandler(client, channel, deps) {
         try {
           const { user_name, reward, user_input } = event || {};
           const rewardTitle = reward?.title?.toLowerCase() || '';
-          const esPreguntaAlBot = ['bot', 'pregunta', 'dios'].some(kw => rewardTitle.includes(kw));
           logger.info(`🎁 Canje: ${user_name} → "${reward?.title}"`);
-          if (esPreguntaAlBot && user_input?.trim() && handleQuestion) {
+          // Solo se atienden los canjes de pregunta (se contestan como !dios_fua); el resto no se narra
+          if (rewardTitle.includes('pregunta') && user_input?.trim() && handleQuestion) {
             const fakeTags = { 'display-name': user_name, 'user-id': user_name, username: user_name };
             await handleQuestion(client, channel, fakeTags, ['!dios_fua', ...user_input.trim().split(' ')]);
-          } else {
-            const response = await groqWithRetry({
-              model: GROQ_MODEL_FAST,
-              max_tokens: 60,
-              messages: [
-                { role: 'system', content: `${getBotPersonality()} Agradece con humor y energía. Máx 200 caracteres. Sin presentarte.` },
-                { role: 'user', content: `El usuario ${user_name} canjeó la recompensa '${reward?.title}'. Agradécelo en 1 frase.` }
-              ]
-            });
-            throttleSay(client, channel, truncate(response.choices[0].message.content));
           }
-        } catch {
-          const { user_name, reward } = event || {};
-          throttleSay(client, channel, truncate(`🎁 ¡@${user_name} canjeó "${reward?.title}"! ¡Gracias! 💜`));
+        } catch (err) {
+          logger.warn(`Canje: ${err.message}`);
         }
       }
 
