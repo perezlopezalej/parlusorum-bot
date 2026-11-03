@@ -13,7 +13,7 @@ const {
 const logger = require('../utils/logger');
 const quality = require('../ai/quality');
 const { containsBlockedContent } = require('../utils/filter');
-const { groqWithRetry } = require('../utils/groq-utils');
+const { aiChat } = require('../utils/ai-router');
 const { onStreamEndLore } = require('../lore/handler');
 
 
@@ -45,7 +45,7 @@ Responde SOLO en JSON con este formato exacto:
   "recurringPhrases": ["frase1", "frase2"]
 }`;
 
-    const response = await groqWithRetry({
+    const response = await aiChat('endstream', {
       max_tokens: 300,
       messages: [{ role: 'user', content: prompt }]
     });

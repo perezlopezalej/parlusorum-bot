@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
-const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
+const { truncate } = require('./utils/groq-utils');
+const { aiChat } = require('./utils/ai-router');
 const { restoreOpenSession, restoreSessionBosses, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
 const quality = require('./ai/quality');
@@ -13,7 +14,7 @@ const {
   getDeathCount, setDeathCount, setBossCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter,
   getActivePrediction, setActivePrediction, clearActivePrediction,
-  getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getCohostStats, resetCohostStats,
+  getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getAiUsage, resetAiStreamUsage, getCohostStats, resetCohostStats,
 } = require('./utils/state');
 
 // La narrativa de la sesión se persiste en Supabase en cada cambio (escritura diferida)
@@ -82,6 +83,18 @@ function formatTokenUse({ stream, day }, limit = GROQ_DAILY_TOKEN_LIMIT) {
     const d = day[m]?.total || 0;
     const pct = limit > 0 ? Math.round(d / limit * 100) : 0;
     return `${m}: ${s} este stream (${stream[m]?.calls || 0} llamadas), ${d} hoy (${pct}% de ${limit}, quedan ~${Math.max(0, limit - d)})`;
+  }).join('; ');
+}
+
+// Peticiones por proveedor:modelo: este stream y hoy (Gemini: día del Pacífico) frente al RPD de Gemini
+const GEMINI_RPD = parseInt(process.env.AI_GEMINI_RPD || '500', 10);
+function formatAiUsage(usage, rpd = GEMINI_RPD) {
+  const keys = Object.keys(usage);
+  if (!keys.length) return 'peticiones de IA: ninguna';
+  return 'peticiones de IA — ' + keys.map(k => {
+    const u = usage[k];
+    const quota = k.startsWith('gemini:') && rpd > 0 ? ` (${Math.round(u.day.requests / rpd * 100)}% de ${rpd})` : '';
+    return `${k}: ${u.stream.requests} este stream, ${u.day.requests} hoy${quota}`;
   }).join('; ');
 }
 
@@ -449,6 +462,8 @@ function createEventSubHandler(client, channel, deps) {
           logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
           logger.info(`📊 Fin de stream — ${formatTokenUse(getGroqTokenUse())}`);
           resetGroqTokenUse();
+          logger.info(`📊 Fin de stream — ${formatAiUsage(getAiUsage())}`);
+          resetAiStreamUsage();
           const cohost = getCohostStats();
           resetCohostStats();
           logger.info(`📊 Fin de stream — ${formatCohostStats(cohost)}`);
@@ -523,8 +538,7 @@ function createEventSubHandler(client, channel, deps) {
         setActivePrediction({ title, outcomes });
         logger.info(`🔮 Predicción comenzada: "${title}"`);
         try {
-          const response = await groqWithRetry({
-            model: GROQ_MODEL_FAST,
+          const response = await aiChat('alert', {
             max_tokens: 120,
             messages: [
               { role: 'system', content: `${getBotPersonality()} Narra con energía de comentarista deportivo. Máx 400 caracteres. Sin presentarte.` },
@@ -553,8 +567,7 @@ function createEventSubHandler(client, channel, deps) {
           const numGanadores = ganadorPred.top_predictors?.length ?? 0;
           logger.info(`🏆 Predicción terminada: ganó "${ganadorPred.title}"`);
           try {
-            const response = await groqWithRetry({
-              model: GROQ_MODEL_FAST,
+            const response = await aiChat('alert', {
               max_tokens: 120,
               messages: [
                 { role: 'system', content: `${getBotPersonality()} Anuncia resultados con dramatismo. Máx 400 caracteres. Sin presentarte.` },
@@ -573,8 +586,7 @@ function createEventSubHandler(client, channel, deps) {
         const opcionesTexto = (choices || []).map((c, i) => `${i+1}) ${c.title}`).join(' | ');
         logger.info(`📊 Poll comenzado: "${title}"`);
         try {
-          const response = await groqWithRetry({
-            model: GROQ_MODEL_FAST,
+          const response = await aiChat('alert', {
             max_tokens: 120,
             messages: [
               { role: 'system', content: `${getBotPersonality()} Comenta encuestas con energía. Máx 400 caracteres. Sin presentarte.` },
@@ -596,8 +608,7 @@ function createEventSubHandler(client, channel, deps) {
           const esAjustado = pct < 40;
           logger.info(`📊 Poll terminado: ganó "${ganadorPoll.title}" con ${pct}%`);
           try {
-            const response = await groqWithRetry({
-              model: GROQ_MODEL_FAST,
+            const response = await aiChat('alert', {
               max_tokens: 120,
               messages: [
                 { role: 'system', content: `${getBotPersonality()} Anuncia resultados de encuestas con energía. Máx 400 caracteres. Sin presentarte.` },
@@ -641,7 +652,7 @@ function createEventSubHandler(client, channel, deps) {
 
 module.exports = {
   createEventSubHandler,
-  formatCohostStats, formatTokenUse,
+  formatCohostStats, formatTokenUse, formatAiUsage,
   registerSubscriptions,
   initStreamState,
   isLiveViaEventSub,

@@ -1,7 +1,7 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { buildRawgTemplate } = require('./rawg-template');
@@ -19,7 +19,8 @@ const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase')
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
 const { saveHighlight } = require('../utils/storage');
-const { groqWithRetry, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND } = require('../utils/groq-utils');
+const { truncate, TWITCH_MAX_LENGTH } = require('../utils/groq-utils');
+const { aiChat } = require('../utils/ai-router');
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
 // Cohost: los eventos (jefe, muerte, sub...) se comentan siempre y esperan en cola hasta EVENT_TTL_MS; los comentarios libres
@@ -192,6 +193,7 @@ function addToHistory(username, message) {
   if ((username || '').toLowerCase() === (process.env.BOT_USERNAME || '').toLowerCase()) return;
   const safe = sanitizeForAI(message);
   if (!safe) return;
+  noteChatter(username);
   chatHistory.push({ username, message: safe, ts: Date.now() });
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
   streamChatBuffer.push({ username, message: safe });
@@ -293,7 +295,7 @@ function getModeConfig() {
 }
 
 // --- Personalidad ---
-// profile: 'full' (!dios_fua) | 'lean' (menciones, cohost) | 'micro' (provocaciones); ver persona.js
+// profile: 'lean' (!dios_fua, menciones, cohost) | 'micro' (provocaciones) | 'full' (ya sin uso: ~3,3K tokens); ver persona.js
 async function getPersonality(messageCount, userType = 'normal', username = null, profile = 'full') {
   profile = normalizeProfile(profile);
   refreshMode();
@@ -525,8 +527,10 @@ async function runCohost(client, channel, moment = null) {
 
     const validateCtx = { deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures() };
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
+    // Lo que genera Gemini no pasa por la revisión de sentido por IA (solo reglas de quality.js y factcheck si habla del juego)
+    let senseReview = true;
     const reviewText = async text => {
-      const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense: true });
+      const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense: senseReview });
       if (review.discard) {
         logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`);
         return { ok: false, reason: 'factcheck', feedback: 'afirma datos del juego sin respaldo; no hables del juego' };
@@ -549,8 +553,7 @@ async function runCohost(client, channel, moment = null) {
     let feedback = '';
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
       if (attempt > 0 && !canMakeRequest()) { reason = 'ratelimit'; break; }
-      const response = await groqWithRetry({
-        model: GROQ_MODEL,
+      const response = await aiChat('cohost', {
         max_tokens: Math.min(90, modeConfig.max_tokens ?? 90),
         frequency_penalty: 0.8,
         presence_penalty: 0.6,
@@ -564,6 +567,7 @@ async function runCohost(client, channel, moment = null) {
             : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nReacciona con humor a UN tema del stream: la partida, lo que le pasa a Manu, lo que el chat comenta sobre el juego o una broma del canal (no lo describas ni lo resumas). Ignora la vida personal de la gente y las conversaciones entre usuarios. Una sola idea, frase sencilla. Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. Si no hay nada que decir de eso, responde SKIP.` }
         ]
       });
+      senseReview = response._ai?.provider !== 'gemini';
       const choice = response.choices[0];
       const raw = (choice.message.content || '').trim();
       if (!moment && /^SKIP\b/i.test(raw)) { reason = 'skip'; logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
@@ -737,7 +741,7 @@ async function onWarmupMode(client, channel, game) {
   if (!canMakeRequest()) return;
   try {
     const gameContext = game ? ` El juego de hoy: "${game}".` : '';
-    const response = await groqWithRetry({
+    const response = await aiChat('alert', {
       max_tokens: 100,
       messages: [
         {
@@ -808,7 +812,7 @@ async function handleQueMePerdi(client, channel, tags) {
     let feedback = '';
     for (let attempt = 0; attempt < 2 && !text; attempt++) {
       if (attempt > 0 && !canMakeRequest()) break;
-      const response = await groqWithRetry({
+      const response = await aiChat('quemeperdi', {
         max_tokens: 150,
         messages: [
           { role: 'system', content: NARRATOR_BASE(game ? `Juego: "${game}".` : '') },
@@ -890,8 +894,7 @@ async function checkChatHook(client, channel) {
       let feedback = '';
       for (let attempt = 0; attempt < 2 && !text; attempt++) {
         if (attempt > 0 && !canMakeRequest()) break;
-        const response = await groqWithRetry({
-          model: GROQ_MODEL,
+        const response = await aiChat('hook', {
           max_tokens: 80,
           messages: [
             { role: 'system', content: `${system}${feedback ? `
@@ -902,7 +905,7 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
         const out = truncate((response.choices[0].message.content || '').trim());
         const check = quality.validateHook(out, { deathCount, recent: recentHooks });
         if (!check.ok) { feedback = check.reason; logger.info(`Hook descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
-        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: true });
+        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: response._ai?.provider !== 'gemini' });
         if (review.discard) {
           logger.info(`Hook descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;
@@ -1053,7 +1056,7 @@ async function handleQuestion(client, channel, tags, args) {
   if (!canUserMakeRequest(userId, userType)) { client.say(channel, `@${username} espera un momento antes de volver a preguntar ⏳`); return; }
 
   try {
-    const personality = await getPersonality(trackMessage(), userType, username);
+    const personality = await getPersonality(trackMessage(), userType, username, 'lean'); // la 'full' (~3,3K tokens) llenaría el cupo por minuto del 120b
     const userConv = getUserConversation(userId);
 
     const tone = detectTone(question);
@@ -1073,8 +1076,7 @@ async function handleQuestion(client, channel, tags, args) {
     ];
     const qModeConfig = getModeConfig();
     const qMaxTokens = qModeConfig.max_tokens ?? 150;
-    let response = await groqWithRetry({
-      model: GROQ_MODEL_COMPOUND,
+    let response = await aiChat('diosfua', {
       max_tokens: qMaxTokens,
       ...(quality.isGameQuestion(question) || quality.talksAboutGames(question) ? {} : { temperature: GENERAL_TEMPERATURE }),
       tools: [BUSCAR_JUEGO_TOOL],
@@ -1108,8 +1110,7 @@ async function handleQuestion(client, channel, tags, args) {
         questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
         return;
       }
-      response = await groqWithRetry({
-        model: GROQ_MODEL_COMPOUND,
+      response = await aiChat('diosfua', {
         max_tokens: qMaxTokens,
         messages
       });
@@ -1135,7 +1136,7 @@ async function handleQuestion(client, channel, tags, args) {
     if (discard && !techLeak && /^Nombre: /m.test(rawgData)) {
       const what = claim ? `Esto no estaba en los datos: "${claim}". No lo digas;` : 'Tu respuesta añadía datos que no están en la información del juego;';
       messages.push({ role: 'user', content: `${what} cíñete a los datos (fecha, estudio, géneros, descripción) y a opiniones sin inventar mecánicas, armas, zonas ni tramas. Si te preguntan algo que los datos no dicen (país o nacionalidad del estudio, personas, cifras, presupuestos), admítelo con humor ("de eso no tengo ni idea") sin hablar de datos ni de fuentes. Responde otra vez.` });
-      const retry = await groqWithRetry({ model: GROQ_MODEL_COMPOUND, max_tokens: qMaxTokens, messages });
+      const retry = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
       const retryAnswer = retry.choices[0].message.content;
       if (retryAnswer && !quality.leaksTech(retryAnswer) && !quality.unsupportedAttributes(retryAnswer, rawgData) && !await factcheck.shouldDiscard(retryAnswer, rawgData, { source: 'rawg' })) { answer = retryAnswer; discard = false; }
     }
@@ -1184,7 +1185,7 @@ async function handleShoutout(client, channel, tags, targetUsername) {
     }
     const info = await getChannelInfo(target);
     const game = info?.game_name ? `Su ultimo juego: "${info.game_name}".` : '';
-    const response = await groqWithRetry({
+    const response = await aiChat('command', {
       max_tokens: 80,
       messages: [
         { role: 'system', content: `${getBotPersonality()} Haz un shoutout para @${target}. ${game} 1 frase cálida y graciosa. Usa FUA si el momento merece épica. Sin presentarte.` },
@@ -1236,7 +1237,7 @@ async function checkForHighlight(client, channel, message, userId) {
       try {
         const gameInfo = await getCurrentGame().catch(() => null);
         const game = gameInfo?.game ? ` Juego: "${gameInfo.game}".` : '';
-        const response = await groqWithRetry({
+        const response = await aiChat('reaction', {
           max_tokens: 70,
           messages: [
             { role: 'system', content: NARRATOR_BASE(game) },
@@ -1332,8 +1333,7 @@ async function checkEmoteSpam(client, channel, tags, message) {
       lastEmoteCommentTime = now;
       recentEmoteUse.delete(token);
       try {
-        const response = await groqWithRetry({
-          model: GROQ_MODEL_FAST,
+        const response = await aiChat('reaction', {
           max_tokens: 60,
           messages: [
             { role: 'system', content: NARRATOR_BASE('') },
@@ -1392,8 +1392,7 @@ async function checkCapsRage(client, channel, tags, message) {
     try {
       const gameInfo = await getCurrentGame().catch(() => null);
       const game = gameInfo?.game ? ` Juego: "${gameInfo.game}".` : '';
-      const response = await groqWithRetry({
-        model: GROQ_MODEL_FAST,
+      const response = await aiChat('reaction', {
         max_tokens: 60,
         messages: [
           { role: 'system', content: NARRATOR_BASE(game) },
@@ -1533,8 +1532,7 @@ async function checkPatternMatch(client, channel, tags, message) {
       const deathsNow = getDeathCount();
       const deathsNote = deathsNow === 0 ? ' Muertes anotadas hoy: ninguna.' : ` Muertes anotadas hoy del streamer: ${deathsNow}.`;
       for (let attempt = 0; attempt < 2 && !answer; attempt++) {
-        const response = await groqWithRetry({
-          model: GROQ_MODEL,
+        const response = await aiChat('mention', {
           max_tokens: modeConfig.max_tokens ?? 120,
           temperature: GENERAL_TEMPERATURE,
           messages: [
@@ -1599,8 +1597,7 @@ function pickProvocationReply() {
 async function generateProvocationReply(username, question, maxChars) {
   try {
     const personality = await getPersonality(recentMessages.length, 'normal', username, 'micro');
-    const response = await groqWithRetry({
-      model: GROQ_MODEL_FAST,
+    const response = await aiChat('provocation', {
       max_tokens: 60,
       messages: [
         { role: 'system', content: `${personality}\n${PROVOCATION_RULE} ${SPAIN_RULE}` },

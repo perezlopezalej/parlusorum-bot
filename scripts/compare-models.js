@@ -98,8 +98,9 @@ async function runWorker(name) {
   const aux = filters ? target : { label: auxName, ...TARGETS[auxName] };
   const only = argVal('--only') ? argVal('--only').split(',') : null;
 
-  // Una sola entrada en la cadena de modelos de groq-utils: los reintentos no saltan a otro modelo de Groq
-  for (const k of ['GROQ_MODEL', 'GROQ_MODEL_FAST', 'GROQ_MODEL_COMPOUND', 'GROQ_MODEL_FALLBACKS']) process.env[k] = 'openai/gpt-oss-120b';
+  // Una sola entrada en todas las cadenas del router: los reintentos no saltan de modelo y route() decide el destino
+  // (el candidato o el revisor común). Así este script no depende de GEMINI_API_KEY ni de la seudonimización del router.
+  for (const k of ['MENTION', 'PROVOCATION', 'DIOSFUA', 'TRIVIA', 'QUEMEPERDI', 'COMMAND', 'COHOST', 'TIMER', 'HOOK', 'ALERT', 'REACTION', 'ENDSTREAM', 'REVIEW']) process.env[`AI_CHAIN_${k}`] = 'groq:openai/gpt-oss-120b';
   process.env.BOT_USERNAME = process.env.BOT_USERNAME || 'dios_fua';
 
   let currentCase = null;

@@ -484,8 +484,9 @@
   {
     "id": "g-detective-muerte",
     "filter": "cohost",
+    "informativo": true,
     "input": "El FUA es un detective de la muerte, no un delator.",
-    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js). (informativo: el revisor de sentido no generaliza y los textos de Gemini ya no pasan por él)",
     "expect": {
       "rejected": true
     }
@@ -511,8 +512,9 @@
   {
     "id": "g-2003-tiempo",
     "filter": "cohost",
+    "informativo": true,
     "input": "2003, tío, parece que el tiempo está retrocediendo.",
-    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js). (informativo: el revisor de sentido no generaliza y los textos de Gemini ya no pasan por él)",
     "expect": {
       "rejected": true
     }
@@ -520,8 +522,9 @@
   {
     "id": "g-revientalos-panico",
     "filter": "cohost",
+    "informativo": true,
     "input": "Revientalos suena como un ataque de pánico.",
-    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js). (informativo: el revisor de sentido no generaliza y los textos de Gemini ya no pasan por él)",
     "expect": {
       "rejected": true
     }

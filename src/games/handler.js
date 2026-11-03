@@ -1,4 +1,5 @@
-const { groqWithRetry, truncate } = require('../utils/groq-utils');
+const { truncate } = require('../utils/groq-utils');
+const { aiChat } = require('../utils/ai-router');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
 const { canMakeRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
@@ -239,7 +240,7 @@ async function startTrivia(client, channel) {
               rawg.genres ? `Géneros: ${rawg.genres}` : null,
               `Descripción (puede estar en inglés): ${rawg.description}`
             ].filter(Boolean).join('\n');
-            const response = await groqWithRetry({
+            const response = await aiChat('trivia', {
               max_tokens: 500,
               reasoning_effort: 'low',
               tools: [{

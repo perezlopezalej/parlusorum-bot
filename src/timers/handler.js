@@ -13,7 +13,8 @@ const quality = require('../ai/quality');
 const factcheck = require('../ai/factcheck');
 const { AUTO_GAME_RULE, STYLE_RULES } = require('../ai/prompts');
 const { getLoreContext } = require('../lore/handler');
-const { groqWithRetry, truncate, GROQ_MODEL } = require('../utils/groq-utils');
+const { truncate } = require('../utils/groq-utils');
+const { aiChat } = require('../utils/ai-router');
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
 
 // Separación mínima entre mensajes de timer: si varios coinciden en el mismo minuto salen espaciados
@@ -121,8 +122,7 @@ YA DIJISTE (no repitas ni parafrasees ninguna idea): ${recentTimerIA.map(m => `"
       let feedback = '';
       for (let attempt = 0; attempt < 2 && !msg; attempt++) {
         if (attempt > 0 && !canMakeRequest()) break;
-        const response = await groqWithRetry({
-          model: GROQ_MODEL,
+        const response = await aiChat('timer', {
           max_tokens: 80,
           messages: [
             {
@@ -136,7 +136,7 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
         const out = truncate((response.choices[0].message.content || '').trim());
         const check = quality.validateTimerIA(out, { deathCount, recent: recentTimerIA, currentGame: game, channelGames: channelConfig.games_played || [], usedStructures: getUsedStructures() });
         if (!check.ok) { feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
-        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: true });
+        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: response._ai?.provider !== 'gemini' });
         if (review.discard) {
           logger.info(`Timer IA descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;

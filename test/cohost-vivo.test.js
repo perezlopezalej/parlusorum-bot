@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const quality = require('../src/ai/quality');
 const factcheck = require('../src/ai/factcheck');
 const state = require('../src/utils/state');
-const { runWithFallback } = require('../src/utils/groq-utils');
+const { runChain, parseChain, setTransport } = require('../src/utils/ai-router');
 const { formatCohostStats } = require('../src/eventsub');
 
 describe('mentionsGame', () => {
@@ -85,7 +85,8 @@ describe('contadores del cohost', () => {
     state.resetCohostStats();
     const err = Object.assign(new Error('rate limited'), { status: 429, headers: { 'retry-after': '0' } });
     let calls = 0;
-    await assert.rejects(runWithFallback(async () => { calls++; throw err; }, { model: 'x' }, 0, []));
+    setTransport('groq', async () => { calls++; throw err; });
+    await assert.rejects(runChain(parseChain('groq:x'), 'cohost', { messages: [] }, { maxRetries: 0 }));
     assert.equal(calls, 1);
     assert.equal(state.getCohostStats().groq429, 1);
     state.resetCohostStats();

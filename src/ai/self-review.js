@@ -31,7 +31,7 @@ function flagMessages(scored) {
 }
 
 async function writeReport(flagged, summary) {
-  const { groqWithRetry, GROQ_MODEL_FAST } = require('../utils/groq-utils'); // lazy: el cliente Groq exige GROQ_API_KEY al cargarse
+  const { aiChat } = require('../utils/ai-router'); // lazy: el cliente Groq exige GROQ_API_KEY al cargarse
   if (!flagged.length) return 'Sin mensajes sospechosos en este stream.';
   const list = flagged.map((f, i) => `${i + 1}. [${f.origin}] "${f.message}" → ${f.reasons.join('; ')}`).join('\n');
   const prompt = `Revisas los mensajes de un bot de Twitch (dios_fua) tras un stream, para que lo lea una persona.
@@ -40,7 +40,7 @@ Mensajes marcados por el código:
 ${list}
 
 Redacta en español un informe de como máximo 6 líneas: qué se repite, qué parece inventado y qué cayó mal o fue ignorado, con una mejora concreta. Usa solo estos mensajes; no inventes otros.`;
-  const response = await groqWithRetry({ model: GROQ_MODEL_FAST, max_tokens: 400, messages: [{ role: 'user', content: prompt }] });
+  const response = await aiChat('endstream', { max_tokens: 400, messages: [{ role: 'user', content: prompt }] });
   return (response.choices[0].message.content || '').trim().slice(0, MAX_REPORT_CHARS);
 }
 

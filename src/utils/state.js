@@ -317,6 +317,92 @@ const tokensOf = map => Object.fromEntries([...map].map(([m, v]) => [m, { ...v, 
 function getGroqTokenUse() { return { stream: tokensOf(groqTokensStream), day: tokensOf(groqTokensDay), dayKey: groqTokensDayKey }; }
 function resetGroqTokenUse() { groqTokensStream.clear(); }
 
+// --- Router de IA: bloqueos, uso por minuto y por día, y nicks conocidos ---
+// Clave de modelo: "proveedor:modelo". Todo en memoria: un reinicio lo pone a cero.
+const aiBlocks = new Map();
+function blockAi(key, until) { aiBlocks.set(key, until); }
+function aiBlockedUntil(key) { return aiBlocks.get(key) || 0; }
+function isAiBlocked(key, now = Date.now()) { return aiBlockedUntil(key) > now; }
+function resetAiBlocks() { aiBlocks.clear(); }
+
+// Groq repone el cupo a las 00:00 UTC; Gemini a medianoche del Pacífico (09:00 en España)
+const PACIFIC_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' });
+const PACIFIC_CLOCK_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Los_Angeles', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function aiDayKey(provider, now = Date.now()) {
+  return provider === 'gemini' ? PACIFIC_FMT.format(now) : new Date(now).toISOString().slice(0, 10);
+}
+// Ms hasta la próxima medianoche del Pacífico (en los dos días de cambio de hora se desvía como mucho 1 h)
+function msUntilPacificMidnight(now = Date.now()) {
+  const [h, m, s] = PACIFIC_CLOCK_FMT.format(now).split(':').map(Number);
+  return 86400000 - ((h * 60 + m) * 60 + s) * 1000 - (now % 1000);
+}
+
+const AI_MINUTE_MS = 60 * 1000;
+const aiMinute = new Map(); // clave → [{ at, tokens }] de los últimos 60 s
+const aiDay = new Map();    // clave → { day, requests, prompt, completion }
+const aiStream = new Map(); // clave → { requests, prompt, completion }
+
+// Se llama al enviar la petición (los intentos fallidos también gastan RPD); estTokens se afina con finishAiRequest
+function startAiRequest(provider, model, estTokens = 0, now = Date.now()) {
+  const key = `${provider}:${model}`;
+  const window = aiMinute.get(key) || [];
+  aiMinute.set(key, window);
+  while (window.length && now - window[0].at > AI_MINUTE_MS) window.shift();
+  const entry = { at: now, tokens: estTokens };
+  window.push(entry);
+  const dayKey = aiDayKey(provider, now);
+  let day = aiDay.get(key);
+  if (!day || day.day !== dayKey) { day = { day: dayKey, requests: 0, prompt: 0, completion: 0 }; aiDay.set(key, day); }
+  day.requests++;
+  const stream = aiStream.get(key) || { requests: 0, prompt: 0, completion: 0 };
+  stream.requests++;
+  aiStream.set(key, stream);
+  return { key, entry, day, stream };
+}
+function finishAiRequest(handle, usage) {
+  const prompt = Number(usage?.prompt_tokens) || 0;
+  const completion = Number(usage?.completion_tokens) || 0;
+  if (prompt + completion > 0) handle.entry.tokens = prompt + completion;
+  handle.day.prompt += prompt; handle.day.completion += completion;
+  handle.stream.prompt += prompt; handle.stream.completion += completion;
+}
+function getAiMinuteUsage(key, now = Date.now()) {
+  const window = (aiMinute.get(key) || []).filter(e => now - e.at <= AI_MINUTE_MS);
+  return { requests: window.length, tokens: window.reduce((sum, e) => sum + e.tokens, 0) };
+}
+function getAiDayUsage(key, now = Date.now()) {
+  const day = aiDay.get(key);
+  const [provider] = key.split(':');
+  return day && day.day === aiDayKey(provider, now) ? { requests: day.requests, tokens: day.prompt + day.completion } : { requests: 0, tokens: 0 };
+}
+function getAiUsage(now = Date.now()) {
+  const out = {};
+  for (const key of new Set([...aiStream.keys(), ...aiDay.keys()])) {
+    const st = aiStream.get(key) || { requests: 0, prompt: 0, completion: 0 };
+    out[key] = { stream: { requests: st.requests, tokens: st.prompt + st.completion }, day: getAiDayUsage(key, now) };
+  }
+  return out;
+}
+function resetAiStreamUsage() { aiStream.clear(); }
+function resetAiUsage() { aiStream.clear(); aiMinute.clear(); aiDay.clear(); }
+
+// Nicks vistos en el chat (para seudonimizarlos en los prompts que salen a Gemini)
+const CHATTER_TTL_MS = 3 * 60 * 60 * 1000;
+const CHATTER_MAX = 400;
+const chatters = new Map();
+function noteChatter(username, now = Date.now()) {
+  const name = String(username || '').replace(/^@/, '').trim();
+  if (!name) return;
+  chatters.delete(name);
+  chatters.set(name, now);
+  if (chatters.size > CHATTER_MAX) chatters.delete(chatters.keys().next().value);
+}
+function getChatterNames(now = Date.now()) {
+  return [...chatters].filter(([, at]) => now - at < CHATTER_TTL_MS).map(([name]) => name);
+}
+function resetChatters() { chatters.clear(); }
+setInterval(() => { const now = Date.now(); for (const [n, at] of chatters) if (now - at >= CHATTER_TTL_MS) chatters.delete(n); }, 30 * 60 * 1000).unref();
+
 // --- Descartes del cohost en el stream (motivo → nº), para el resumen de fin de stream ---
 const cohostDiscards = new Map();
 function recordCohostDiscard(reason) { cohostDiscards.set(reason, (cohostDiscards.get(reason) || 0) + 1); }
@@ -359,6 +445,9 @@ module.exports = {
   pushChatLog, takeChatLog, requeueChatLog, getChatLogSize,
   recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
   recordGroqTokens, getGroqTokenUse, resetGroqTokenUse,
+  blockAi, aiBlockedUntil, isAiBlocked, resetAiBlocks, aiDayKey, msUntilPacificMidnight,
+  startAiRequest, finishAiRequest, getAiMinuteUsage, getAiDayUsage, getAiUsage, resetAiStreamUsage, resetAiUsage,
+  noteChatter, getChatterNames, resetChatters,
   recordCohostDiscard, getCohostDiscards, resetCohostDiscards,
   recordCohostAttempt, recordCohostSent, recordGroq429, getCohostStats, resetCohostStats,
   addLoreSample, getLoreSample, resetLoreSample,

@@ -9,7 +9,7 @@ const loreConfig = require('../../config/lore.json');
 const { getLoreRows, upsertLoreRows, updateLoreStatus, getCurrentSessionId } = require('../utils/supabase');
 const { getLoreSample } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
-const { groqWithRetry, GROQ_MODEL_FAST } = require('../utils/groq-utils');
+const { aiChat } = require('../utils/ai-router');
 const { classifyGameMatch, tokenize } = require('../utils/game-match');
 const logger = require('../utils/logger');
 
@@ -219,8 +219,7 @@ Propón como máximo ${MAX_NEW_PER_STREAM} candidatos. El "term" debe aparecer T
 NO propongas risas ni onomatopeyas (jajaja, xd, yiyiyi), ni nombres de videojuegos (ni los que se juegan ni los que solo se mencionan), ni nombres de pila o usuarios sueltos. Clasifica cada candidato en "category": "lore" | "juego" | "persona" | "risa".
 Responde SOLO con un JSON array: [{"term":"...","kind":"meme|frase|apodo|chiste|enemigo","about_person":false,"category":"lore"}]`;
 
-  const response = await groqWithRetry({
-    model: GROQ_MODEL_FAST,
+  const response = await aiChat('endstream', {
     max_tokens: 500,
     messages: [{ role: 'user', content: prompt }]
   });

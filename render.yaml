@@ -52,6 +52,9 @@ services:
         sync: false
       - key: RAWG_API_KEY
         sync: false
+      # Router de IA: sin GEMINI_API_KEY todo va por Groq. Con ella, cohost/timer/hooks/alertas/fin de stream usan Gemini Flash Lite
+      - key: GEMINI_API_KEY
+        sync: false
 
       # PUBLIC_URL no hace falta: si no está, EventSub usa RENDER_EXTERNAL_URL
       # (inyectada por Render). Definirla solo si se usa un dominio propio.

@@ -171,3 +171,17 @@ describe('cohost: ambiente del chat', () => {
     assert.equal(q.validateCohost('Pizza con piña es un crimen contra la humanidad.').ok, true);
   });
 });
+
+describe('esquivar no es una mecánica del juego', () => {
+  const q = require('../src/ai/quality');
+  test('una reacción a una esquiva de Manu pasa las reglas del cohost', () => {
+    const t = 'Esa esquiva ha sido limpia, se nota que Manu ya conoce el patrón del jefe.';
+    assert.equal(q.mentionsMechanics(t), false);
+    assert.equal(q.validateCohost(t).ok, true);
+  });
+  test('las mecánicas de verdad siguen vetadas', () => {
+    for (const t of ['Ese parry tiene una ventana mínima', 'El combo de espada hace más daño en la fase 4', 'Sube la barra de resistencia']) {
+      assert.equal(q.validateCohost(t).ok, false, t);
+    }
+  });
+});

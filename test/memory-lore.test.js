@@ -28,9 +28,8 @@ stub('src/utils/supabase.js', {
   },
   getCurrentSessionId: () => db.sessionId
 });
-stub('src/utils/groq-utils.js', {
-  GROQ_MODEL_FAST: 'fast',
-  groqWithRetry: async () => {
+stub('src/utils/ai-router.js', {
+  aiChat: async () => {
     groq.calls++;
     if (groq.error) throw groq.error;
     return { choices: [{ message: { content: groq.reply } }] };

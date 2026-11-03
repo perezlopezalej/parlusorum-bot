@@ -24,7 +24,7 @@ const DEATH_WORDS_RE = /\b(muert[eoa]s?|muri[oó]|morir|mori|ca[ií]das?|ca[ey]�
 
 // --- Datos del juego: los mensajes automáticos no hablan de mecánicas ni critican el juego ---
 // Mecánicas, armas, zonas y consejos del directo del 29-10 (cohost, hook y timer_ia se las inventaban)
-const MECHANICS_RE = /\b(armas?|espad[oó]n|espadas?|combos?|parr(?:y|ies)|esquiv\w*|fase \d+|zonas?|mec[aá]nicas?|habilidad(?:es)?|dificultad|barra|ventana|resistencia|cadencia|recarga|build|ataques? (?:rojo|amarillo|especial)|torre|cuartel\w*)\b/i;
+const MECHANICS_RE = /\b(armas?|espad[oó]n|espadas?|combos?|parr(?:y|ies)|fase \d+|zonas?|mec[aá]nicas?|habilidad(?:es)?|dificultad|barra|ventana|resistencia|cadencia|recarga|build|ataques? (?:rojo|amarillo|especial)|torre|cuartel\w*)\b/i;
 // La nota de RAWG no se cita en el chat
 const RAWG_NOTE_RE = /\brawg\b|\b\d(?:[.,]\d+)?\s*\/\s*5\b/i;
 // Bromas cariñosas sí, desprecio al juego de los streamers no

@@ -1,7 +1,7 @@
 // Comprobación SÍ/NO con el modelo rápido: ¿el mensaje afirma algo concreto del juego que no está en los datos?
 // Solo se comprueba lo que habla del juego; si es de eso y hay duda o fallo, se descarta. Lo que no habla del juego se envía sin comprobar.
 
-const { groqWithRetry, GROQ_MODEL, GROQ_MODEL_FAST } = require('../utils/groq-utils');
+const { aiChat } = require('../utils/ai-router');
 const { canMakeAuxRequest } = require('../utils/ratelimit');
 const { mentionsGame } = require('./quality');
 const logger = require('../utils/logger');
@@ -62,8 +62,7 @@ async function evaluateReview(text, data, { game, checkData: forced } = {}) {
   const checkData = typeof forced === 'boolean' ? forced : mentionsGame(text, game ?? gameFromData(data));
   if (!canMakeAuxRequest()) { recordFactcheckFailure('ratelimit'); return { discard: checkData, claim: '', nonsense: false }; }
   try {
-    const response = await groqWithRetry({
-      model: GROQ_MODEL,
+    const response = await aiChat('review', {
       max_tokens: 24,
       temperature: 0,
       messages: [
@@ -86,8 +85,7 @@ async function evaluate(text, data, { source = 'stream', game, sense = false, ch
   if (source === 'stream' && !mentionsGame(text, game ?? gameFromData(data))) return { discard: false, claim: '' };
   if (!canMakeAuxRequest()) { recordFactcheckFailure('ratelimit'); return { discard: true, claim: '' }; }
   try {
-    const response = await groqWithRetry({
-      model: GROQ_MODEL_FAST,
+    const response = await aiChat('review', {
       max_tokens: source === 'rawg' ? 60 : 8,
       temperature: 0,
       messages: [

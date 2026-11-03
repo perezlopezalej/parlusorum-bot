@@ -8,7 +8,8 @@ const { handleShoutout, invalidateContextCache } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');
 const { sanitizeForAI } = require('../utils/filter');
-const { groqWithRetry, truncate } = require('../utils/groq-utils');
+const { truncate } = require('../utils/groq-utils');
+const { aiChat } = require('../utils/ai-router');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
@@ -115,7 +116,7 @@ async function handleLurk(client, channel, tags) {
   try {
     const gameInfo = await getCurrentGame().catch(() => null);
     const game = gameInfo?.game ? ` Están streameando "${gameInfo.game}".` : '';
-    const response = await groqWithRetry({
+    const response = await aiChat('command', {
       max_tokens: 60,
       messages: [
         {

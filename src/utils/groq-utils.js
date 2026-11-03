@@ -1,8 +1,5 @@
 const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
-const logger = require('./logger');
-const { recordGroqFallback, recordGroq429, recordGroqTokens } = require('./state');
-const chatlog = require('./chatlog');
 const { cutAtSentence } = require('../ai/quality');
 
 // Modelos configurables via env var. Groq retira modelos con frecuencia:
@@ -34,10 +31,15 @@ const _emoteAfterRe  = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Modelos de reserva (GROQ_MODEL_FALLBACKS, separados por comas) para cuando el
-// modelo pedido ha sido retirado. Por defecto, el modelo rápido.
+// Modelos de reserva (GROQ_MODEL_FALLBACKS, separados por comas). Por defecto, el modelo rápido.
+// Las cadenas por tipo de llamada y el reparto con Gemini viven en ai-router.js.
 const GROQ_MODEL_FALLBACKS = (process.env.GROQ_MODEL_FALLBACKS || GROQ_MODEL_FAST)
   .split(',').map(m => m.trim()).filter(Boolean);
+
+// Petición única al SDK: los reintentos y el salto de modelo los decide el router, no el SDK
+function groqCreate(params, { timeoutMs = 20000 } = {}) {
+  return groq.chat.completions.create(params, { timeout: timeoutMs, maxRetries: 0 });
+}
 
 // 404 model_not_found / model_decommissioned: el modelo ya no existe en Groq
 function isModelGone(err) {
@@ -45,39 +47,14 @@ function isModelGone(err) {
   return err?.status === 404 || /model_not_found|model_decommissioned|decommissioned/i.test(text);
 }
 
-function buildModelChain(model, fallbacks = GROQ_MODEL_FALLBACKS) {
-  return [...new Set([model, ...fallbacks])];
-}
-
-// 429 = cupo agotado (por minuto o diario). Cada modelo tiene su propio cupo: se pasa al siguiente de la cadena.
-function isRateLimited(err) { return err?.status === 429; }
-
 function retryAfterMs(err) {
   const sec = parseInt(err?.headers?.['retry-after'] || '0', 10);
   return sec > 0 ? sec * 1000 : 0;
 }
 
-// Cupo diario (tokens/peticiones por día) en vez del de por minuto: el mensaje de Groq lo dice, o la espera pedida es larga
+// Cupo diario (tokens/peticiones por día) en vez del de por minuto: el mensaje del proveedor lo dice, o la espera pedida es larga
 function isDailyQuota(err) {
-  return /per day|\bTPD\b|\bRPD\b/i.test(`${err?.message || ''} ${err?.error?.error?.message || ''}`) || retryAfterMs(err) > 120000;
-}
-
-// Modelos con el cupo agotado → instante hasta el que no se prueban primero (solo se intentan si no queda otro)
-const BLOCK_DEFAULT_MINUTE_MS = 60 * 1000;
-const BLOCK_DEFAULT_DAILY_MS = 10 * 60 * 1000;
-const BLOCK_MAX_MS = 30 * 60 * 1000; // pasado esto se vuelve a sondear aunque el cupo siga agotado
-const modelBlockedUntil = new Map();
-
-function blockModel(model, err, now = Date.now()) {
-  const wait = retryAfterMs(err) || (isDailyQuota(err) ? BLOCK_DEFAULT_DAILY_MS : BLOCK_DEFAULT_MINUTE_MS);
-  modelBlockedUntil.set(model, now + Math.min(wait, BLOCK_MAX_MS));
-}
-function isBlocked(model, now = Date.now()) { return (modelBlockedUntil.get(model) || 0) > now; }
-function resetModelBlocks() { modelBlockedUntil.clear(); }
-
-// Primero los modelos con cupo; los bloqueados al final como último recurso
-function orderChain(chain, now = Date.now()) {
-  return [...chain.filter(m => !isBlocked(m, now)), ...chain.filter(m => isBlocked(m, now))];
+  return /per ?day|TPD|RPD/i.test(`${err?.message || ''} ${err?.error?.error?.message || ''}`) || retryAfterMs(err) > 120000;
 }
 
 // Modelos con razonamiento visible (qwen...) devuelven <think>…</think> dentro del contenido: fuera del chat
@@ -90,67 +67,6 @@ function stripThinking(result) {
   return result;
 }
 
-// maxDelayMs: si la espera pedida por un 429 la supera, se falla al momento (llamadas con tiempo límite, p. ej. menciones)
-async function requestWithRetry(create, params, maxRetries, maxDelayMs = Infinity) {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try { return await create(params); }
-    catch (err) {
-      if (err.status === 429) recordGroq429();
-      if ((err.status === 429 || err.message?.includes('rate')) && attempt < maxRetries) {
-        const retryAfterSec = parseInt(err.headers?.['retry-after'] || '0');
-        const delay = retryAfterSec > 0
-          ? retryAfterSec * 1000
-          : 2 ** attempt * 1000 + Math.random() * 500;
-        if (delay > maxDelayMs) throw err;
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-      throw err;
-    }
-  }
-}
-
-async function runWithFallback(create, params, maxRetries = 2, fallbacks = GROQ_MODEL_FALLBACKS, maxDelayMs = Infinity) {
-  const requested = params.model || GROQ_MODEL;
-  const chain = orderChain(buildModelChain(requested, fallbacks));
-  let lastErr;
-  for (let i = 0; i < chain.length; i++) {
-    const hasNext = i < chain.length - 1;
-    const model = chain[i];
-    const p = { ...params, model };
-    // Los parámetros de razonamiento dependen del modelo, no se arrastran al de reserva
-    if (isReasoningModel(model)) {
-      p.reasoning_effort = params.reasoning_effort || 'low';
-      if (params.max_tokens) p.max_tokens = params.max_tokens + REASONING_HEADROOM;
-    } else if (model !== requested) {
-      delete p.reasoning_effort;
-    }
-    try {
-      const t0 = Date.now();
-      // Con otro modelo disponible, un 429 no espera: se pasa al siguiente (cada modelo tiene su cupo)
-      const result = await requestWithRetry(create, p, hasNext ? 0 : maxRetries, maxDelayMs);
-      chatlog.noteAiCall(result?.model || model, Date.now() - t0);
-      recordGroqTokens(result?.model || model, result?.usage);
-      if (model !== requested) recordGroqFallback(requested, model);
-      return stripThinking(result);
-    } catch (err) {
-      if (!hasNext) throw err;
-      if (isModelGone(err)) {
-        logger.warn(`⚠️ Groq: modelo ${model} retirado (${err.status || 'sin status'}), probando ${chain[i + 1]}. Actualiza GROQ_MODEL*.`);
-      } else if (isRateLimited(err)) {
-        blockModel(model, err);
-        logger.warn(`⚠️ Groq: cupo ${isDailyQuota(err) ? 'diario' : 'por minuto'} agotado en ${model}, probando ${chain[i + 1]}.`);
-      } else throw err;
-      lastErr = err;
-    }
-  }
-  throw lastErr;
-}
-
-function groqWithRetry(params, maxRetries = 2, { maxDelayMs = Infinity } = {}) {
-  return runWithFallback(p => groq.chat.completions.create(p), params, maxRetries, GROQ_MODEL_FALLBACKS, maxDelayMs);
-}
-
 function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   if (!msg) return '';
   let clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
@@ -160,4 +76,4 @@ function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   return cutAtSentence(clean, limit);
 }
 
-module.exports = { groqWithRetry, runWithFallback, isModelGone, isRateLimited, isDailyQuota, blockModel, isBlocked, resetModelBlocks, orderChain, stripThinking, buildModelChain, truncate, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND };
+module.exports = { groqCreate, isModelGone, isDailyQuota, retryAfterMs, stripThinking, truncate, isReasoningModel, REASONING_HEADROOM, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND, GROQ_MODEL_FALLBACKS };
