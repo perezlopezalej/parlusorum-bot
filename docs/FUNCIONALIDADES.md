@@ -30,7 +30,7 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 |---|:-:|:-:|:-:|:-:|:-:|:-:|---|
 | !lurk (despedida IA) | 8 | 5 | 6 | 6.5 | **6.5** | B | Sin cambios. Fallback fijo si Groq falla. _Importancia: Detalle simpático; lo cubre cualquier bot._ |
 | !uptime | 8 | 4 | 2 | 5.0 | **5.0** | B | Sin cambios. |
-| !juego (RAWG) | 8 | 5 | 5 | 6.2 | **6.2** | B | Sin cambios. |
+| !juego (IGDB) | 8 | 5 | 5 | 6.2 | **6.2** | B | Sin cambios. |
 | !estadisticas | 7 | 4 | 3 | 4.9 | **4.9** | B | Sin cambios. |
 | !muertes (+1/reset) | 8 | 6 | 3 | 5.9 | **5.9** | I | ▲ Ya se persiste en stream_sessions.death_count (guardado con retardo de 3 s) y se recupera si el bot arranca con el stream en directo; test de pickOpenSession. Límites: se pierde si no hay sesión abierta y no se restaura fuera de directo. _Importancia: Alimenta !quemeperdi y !score; el streamer lo usa a menudo._ |
 | !boss / !score | 6 | 6 | 4 | 5.1 | **5.4** ▲ | I | ▲ (V) !boss ya alimenta la narrativa y dispara el modo victoria. Con las mismas funciones que !muertes: `!boss` muestra los jefes del stream (todos), `!boss +N` / `-N` / `reset` (mods, sin bajar de 0) y `!boss <juego>` suma los jefes de ese juego en todos los streams desde que se lleva la cuenta (migración 008, `stream_sessions.boss_count`). El contador se guarda en la sesión con retardo de 3 s y se recupera tras un despliegue a mitad de directo. Sigue sin atomicidad y con total_losses huérfano. |
@@ -191,7 +191,7 @@ Hecha de memoria sobre Nightbot, StreamElements, Fossabot y Streamer.bot, sin co
 | Área | Veredicto | Detalle |
 |---|:-:|---|
 | Comandos básicos (`!uptime`, `!estadisticas`, `!muertes`, `!boss`, `!brb`, `!silencio`, `!clip`, `!marker`, `!chiste`, `!comandos`, `!ayuda`) | Y | Los otros los traen y los hacen editables desde chat/panel; aquí la configuración es JSON y requiere redeploy. |
-| `!lurk`, `!juego` (RAWG), `!so`, `!dios_fua` | D | Respuesta generada por IA / con datos extra, frente a plantillas. |
+| `!lurk`, `!juego` (IGDB), `!so`, `!dios_fua` | D | Respuesta generada por IA / con datos extra, frente a plantillas. |
 | Trivia por juego, dificultad adaptativa, ranking | X | No existe de serie en los otros. |
 | Respuesta natural, cohost, hooks, comentario del juego, modos, warmup, resumen de fin de stream | X | Presencia proactiva y personalidad dinámica. |
 | Memoria entre streams, hechos por usuario, conversación por usuario, narrativa, lore | X | Ningún competidor la trae de serie (`?` Streamer.bot con scripting propio). |

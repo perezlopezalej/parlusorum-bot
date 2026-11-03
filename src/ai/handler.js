@@ -9,7 +9,7 @@ const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudge
 const { translateGenres } = require('../utils/genres');
 const quality = require('./quality');
 const { sanitizeForAI } = require('../utils/filter');
-const { classifyGameMatch } = require('../utils/game-match');
+const { classifyGameMatch, recoverTruncatedName } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
@@ -997,7 +997,7 @@ const BUSCAR_JUEGO_TOOL = {
   type: 'function',
   function: {
     name: 'buscar_juego',
-    description: 'SOLO para videojuegos (nunca para cultura general): busca datos reales de un videojuego en RAWG: fecha de salida, desarrolladora, géneros y descripción corta',
+    description: 'SOLO para videojuegos (nunca para cultura general): busca datos reales de un videojuego: fecha de salida, desarrolladora, editora, país de la desarrolladora (si consta), géneros y descripción corta',
     parameters: {
       type: 'object',
       properties: { nombre: { type: 'string', description: 'Nombre del videojuego' } },
@@ -1007,12 +1007,15 @@ const BUSCAR_JUEGO_TOOL = {
 };
 
 // { text, info }: text es lo que ve la IA; info solo viene con coincidencia exacta (para la plantilla de reserva)
-async function buscarJuegoLookup(nombre) {
-  const clean = sanitizeForAI(nombre || '');
+async function buscarJuegoLookup(nombre, question = '') {
+  const recovered = recoverTruncatedName(nombre, question);
+  if (recovered.truncated || recovered.recovered) logger.info(`!dios_fua buscar_juego: nombre truncado "${nombre}" → "${recovered.name}"${recovered.truncated ? ' (sin recuperar)' : ''}`);
+  const clean = sanitizeForAI(recovered.name || '');
   if (!clean) return { text: 'SIN DATOS: no se indicó ningún juego.', info: null };
   const { info, error } = await lookupGameInfo(clean.slice(0, 80), { detail: true }).catch(() => ({ info: null, error: true }));
-  if (error) { logger.warn(`!dios_fua buscar_juego: RAWG no disponible para "${clean.slice(0, 80)}"`); return { info: null, unavailable: true, text: 'SIN DATOS: no se puede consultar ahora.' }; }
-  const match = info ? classifyGameMatch(clean, info.name) : 'none';
+  if (error) { logger.warn(`!dios_fua buscar_juego: fuentes no disponibles para "${clean.slice(0, 80)}"`); return { info: null, unavailable: true, text: 'SIN DATOS: no se puede consultar ahora.' }; }
+  let match = info ? classifyGameMatch(clean, info.name) : 'none';
+  if (match === 'match' && recovered.truncated) match = 'maybe'; // nombre cortado y sin recuperar: nunca coincidencia segura
   logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? `${info.name} (${match})` : 'sin datos'}`);
   if (match === 'none') return { info: null, text: `SIN DATOS: no hay información de "${clean}". Si es un videojuego no inventes nada y dilo con humor sin hablar de datos ni de fuentes; si no es un videojuego, responde con lo que sepas.` };
   if (match === 'maybe') return { info: null, text: `SIN DATOS, quizá se refiera a ${info.name}. Sin hablar de datos ni de fuentes: no presentes ese juego como el pedido ni uses sus datos; pregunta si se refiere a ese.` };
@@ -1020,6 +1023,9 @@ async function buscarJuegoLookup(nombre) {
     `Nombre: ${info.name}`,
     `Salida: ${info.released || 'desconocida'}`,
     `Desarrolladora: ${info.developers || 'desconocida'}`,
+    // El país solo se da si la fuente lo trae (IGDB); sin él, el filtro de atributos impide afirmarlo
+    ...(info.country ? [`País de la desarrolladora: ${info.country}`] : []),
+    ...(info.publishers ? [`Editora: ${info.publishers}`] : []),
     `Géneros: ${info.genres || 'desconocidos'}`,
     `Descripción (puede estar en inglés): ${info.description || 'sin descripción'}`
   ].join('\n');
@@ -1096,7 +1102,7 @@ async function handleQuestion(client, channel, tags, args) {
           let nombre = '';
           try { nombre = String(JSON.parse(call.function.arguments || '{}').nombre || ''); } catch { /* args inválidos */ }
           chatlog.noteTool('buscar_juego');
-          const lookup = await buscarJuegoLookup(nombre);
+          const lookup = await buscarJuegoLookup(nombre, question);
           result = lookup.text;
           rawgInfo = rawgInfo || lookup.info;
           if (lookup.unavailable) rawgDown = true;
@@ -1116,12 +1122,19 @@ async function handleQuestion(client, channel, tags, args) {
       });
     }
     let answer = response.choices[0].message.content;
+    // El canal es de Manu y Pao: si la respuesta se lo atribuye a vlxj97, un reintento con la corrección; si repite, se descarta
+    if (quality.claimsChannelOwner(answer)) {
+      messages.push({ role: 'user', content: 'Error: el canal lo llevan Manu y Pao; vlxj97 solo creó el bot. Responde otra vez sin atribuirle el canal a vlxj97.' });
+      const fix = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
+      answer = fix.choices[0].message.content;
+    }
+    const ownerClaim = quality.claimsChannelOwner(answer);
     const qMaxChars = qModeConfig.max_chars ?? TWITCH_MAX_LENGTH;
     // Datos del juego: solo los que devolvió buscar_juego (RAWG); si afirma algo más, no se envía.
     // Solo si hablan de videojuegos: la cultura general se responde con el conocimiento del modelo.
     const gameTopic = quality.isGameQuestion(question) || quality.talksAboutGames(`${question} ${answer}`)
       || (!!toolCalls?.length && rawgData.length > 0 && !rawgData.startsWith('SIN DATOS'));
-    const techLeak = quality.leaksTech(answer);
+    const techLeak = quality.leaksTech(answer) || ownerClaim;
     let discard = techLeak;
     let claim = '';
     if (!techLeak && gameTopic) ({ discard, claim } = await factcheck.evaluate(answer, rawgData, { source: 'rawg' }));

@@ -3,6 +3,8 @@
 
 const STOPWORDS = new Set(['the', 'of', 'a', 'an', 'and', 'in', 'to', 'de', 'la', 'el', 'los', 'las', 'y']);
 const ROMAN = { ii: '2', iii: '3', iv: '4', v: '5', vi: '6', vii: '7', viii: '8', ix: '9', x: '10' };
+// Números en palabras: "phantom blade zero" = "phantom blade 0", "portal two" = "portal 2"
+const NUMBER_WORDS = { zero: '0', cero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10' };
 
 function tokenize(name) {
   return String(name || '')
@@ -11,7 +13,7 @@ function tokenize(name) {
     .replace(/['’]/g, '')
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
-    .map(t => ROMAN[t] || t);
+    .map(t => ROMAN[t] || NUMBER_WORDS[t] || t);
 }
 
 function editDistanceLe1(a, b) {
@@ -64,9 +66,37 @@ function classifyGameMatch(searched, returned) {
     const cov = hit / qWords.length;
     level = cov >= 1 ? 'match' : cov > 0.5 ? 'maybe' : 'none';
   }
+  // Un título de la fuente que repite la palabra buscada ("Hell" frente a "Hell-Hell") es otro juego
+  if (level === 'match' && qWords.some(w => rWords.filter(r => wordMatches(w, [r])).length > qWords.filter(x => x === w).length)) level = 'maybe';
   // Un número que no coincide (Dark Souls 3 vs Dark Souls) baja un nivel
   if (level === 'match' && qNums.some(n => !rNums.includes(n))) level = 'maybe';
   return level;
 }
 
-module.exports = { classifyGameMatch, tokenize };
+// Algunos modelos pasan el nombre cortado ("Hell ..."). Si la pregunta contiene el principio, se recupera el nombre
+// completo desde ahí hasta el final de la frase; si no, se devuelve lo que haya y truncated=true (nunca vale como "match").
+function recoverTruncatedName(nombre, question = '') {
+  const raw = String(nombre || '');
+  if (!/\.{2,}|…/.test(raw)) return { name: raw, truncated: false };
+  const prefix = raw.split(/\.{2,}|…/)[0].trim();
+  const q = String(question || '');
+  const at = prefix ? q.toLowerCase().indexOf(prefix.toLowerCase()) : -1;
+  if (at >= 0) {
+    const tail = q.slice(at).split(/[?!¿¡,.;:()]|\s+(?:y|e|o|u|pero|que|porque|con|vs)\s/i)[0].trim();
+    const name = tail.split(/\s+/).slice(0, 6).join(' ');
+    if (name.length > prefix.length) return { name, truncated: false, recovered: true };
+  }
+  return { name: prefix || raw.replace(/[.…]+/g, ' ').trim(), truncated: true };
+}
+
+// Parecido del nombre completo (0-1, coeficiente de Dice sobre palabras): para elegir entre varios resultados
+function nameSimilarity(a, b) {
+  const ta = tokenize(a), tb = tokenize(b);
+  if (!ta.length || !tb.length) return 0;
+  const pool = [...tb];
+  let common = 0;
+  for (const t of ta) { const i = pool.indexOf(t); if (i >= 0) { common++; pool.splice(i, 1); } }
+  return 2 * common / (ta.length + tb.length);
+}
+
+module.exports = { classifyGameMatch, tokenize, nameSimilarity, recoverTruncatedName };

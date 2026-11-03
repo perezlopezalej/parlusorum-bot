@@ -170,3 +170,42 @@ describe('variedad en el mismo stream', () => {
     assert.equal(r.rule, 'parecido');
   });
 });
+
+describe('identidad: el canal es de Manu y Pao, vlxj97 solo creó el bot', () => {
+  const quality = require('../src/ai/quality');
+  const { buildLeanBase, buildMicroBase } = require('../src/ai/persona');
+  test('descarta atribuir el canal a vlxj97 (caso real del 120b)', () => {
+    for (const t of [
+      'El canal lo lleva @vlxj97',
+      'vlxj97 lleva el canal con mano de hierro',
+      'Lo dirige vlxj97, claro',
+      'Es el canal de vlxj97',
+      'vlxj97 es el dueño, que lo sepas',
+      'vlxj97 creó el canal hace años',
+    ]) {
+      assert.ok(quality.claimsChannelOwner(t), t);
+      assert.equal(quality.styleProblem(t, { personal: false })?.rule, 'canal', t);
+    }
+  });
+  test('deja pasar lo correcto', () => {
+    for (const t of [
+      'El canal lo llevan Manu y Pao; vlxj97 solo creó el bot.',
+      'Me creó vlxj97, pero el canal es de Manu y Pao.',
+      'Manu y Pao llevan el canal, vlxj97 me programó a mí.',
+    ]) assert.equal(quality.claimsChannelOwner(t), false, t);
+  });
+  test('la personalidad ligera y la micro llevan la identidad', () => {
+    const lean = buildLeanBase({ botName: 'dios_fua', streamer: 'parlusorum', creator: 'vlxj97', emotesLine: 'x' });
+    for (const p of [lean, buildMicroBase({ botName: 'dios_fua', streamer: 'parlusorum' })]) {
+      assert.match(p, /Manu y Pao/);
+      assert.match(p, /vlxj97 creó el bot, NO el canal: ni lo lleva, ni lo dirige/);
+    }
+  });
+  test('eval abejas: acepta respuestas correctas sin "sí"', () => {
+    const cases = require('./eval-cases.json');
+    const any = cases.find(c => c.id === 'abejas').expect.matchAny.map(p => new RegExp(p, 'i'));
+    for (const t of ['Acortan su vida con el trabajo', 'Viven más en invierno, sí o sí', 'Tienen una vida más corta en verano', 'Duran menos en verano'])
+      assert.ok(any.some(re => re.test(t)), t);
+    assert.equal(cases.find(c => c.id === 'g-nomadas-churros').informativo, true);
+  });
+});

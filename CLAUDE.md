@@ -23,7 +23,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 npm start | npm run dev      # producción | --watch
 npm test                     # node --test sobre test/**/*.test.js
 npm run check:eventsub       # lista suscripciones EventSub y marca callbacks obsoletos
-npm run eval                 # batería con la IA REAL (gasta Groq/RAWG; no va en npm test ni en la CI)
+npm run eval                 # batería con la IA REAL (gasta Groq/IGDB/RAWG; no va en npm test ni en la CI)
 npm run backup | chatlog | bot-token
 ```
 
@@ -40,7 +40,8 @@ npm run backup | chatlog | bot-token
 | Timers | `src/timers/handler.js` | Mensajes recurrentes (`config/commands.json` → `timers`), duración, comentario IA |
 | EventSub | `src/eventsub.js` | Webhook HMAC, App Access Token, suscripciones online/offline/follow (+ hype train/predicciones con token del broadcaster) |
 | Auth | `src/auth.js` | OAuth del broadcaster (`/auth/broadcaster` → `/auth/callback`); scopes en `BROADCASTER_SCOPES` |
-| Twitch API | `src/twitch/api.js` | Helix, RAWG, refresh de tokens (broadcaster y bot) |
+| Twitch API | `src/twitch/api.js` | Helix, refresh de tokens (broadcaster y bot) |
+| Datos de juegos | `src/twitch/igdb.js`, `app-token.js` | IGDB primero (app token de Twitch compartido con EventSub, límite 4 req/s, `summary` nunca `storyline`, país de la desarrolladora si consta), RAWG de reserva; `lookupGameInfo` devuelve `error` solo si ninguna fuente contestó. `!juego` cita «Datos: IGDB.com» (texto sin confirmar en los términos de IGDB) |
 | Memory / Lore | `src/memory/`, `src/lore/` | Resúmenes entre streams; lore manual (`config/lore.json`) + aprendido, `!lore` (mods) |
 | Moderación | `src/moderation/bot-detector.js` | Bots vía twitchbots.info |
 | Utils | `src/utils/` | `state`, `storage`, `supabase`, `chatlog`, `ratelimit`, `irc-ratelimit`, `filter`, `groq-utils`, `ai-router`, `ai-gemini`, `ai-pseudonym`, `narrative`, `game-match`, `metrics`, `logger` |

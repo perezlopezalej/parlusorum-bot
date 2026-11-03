@@ -287,7 +287,7 @@ async function runWorker(name) {
     // Texto fijo de config/messages.json (reserva cuando la IA falla o se descarta): no cuenta como respuesta del modelo
     const fromPool = Object.keys(messagesConfig).find(k => pool(k).includes(answer)) || '';
     const template = currentLogs.some(l => /plantilla RAWG/.test(l));
-    const toolLog = currentLogs.map(l => /buscar_juego: "(.*)" → (.*)$/.exec(l) || /buscar_juego: (RAWG no disponible) para "(.*)"$/.exec(l)).find(Boolean);
+    const toolLog = currentLogs.map(l => /buscar_juego: "(.*)" → (.*)$/.exec(l) || /buscar_juego: (fuentes no disponibles) para "(.*)"$/.exec(l)).find(Boolean);
     const discards = currentLogs.filter(l => /descartad|SKIP|Descartad|calla/.test(l)).map(l => l.replace(/^\w+: /, '').slice(0, 200));
     const caseCalls = calls.filter(k => k.case === c.id);
     const main = caseCalls.filter(k => k.role === 'main');

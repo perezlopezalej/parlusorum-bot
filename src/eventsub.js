@@ -7,6 +7,7 @@ const { restoreOpenSession, restoreSessionBosses, restoreSessionNarrative, saveS
 const chatlog = require('./utils/chatlog');
 const quality = require('./ai/quality');
 const { throttleSay } = require('./alerts/handler');
+const { getAppAccessToken } = require('./twitch/app-token');
 const {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive, isSilenced,
@@ -68,10 +69,6 @@ function getPublicBaseUrl() {
   return (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, '');
 }
 
-// --- App Access Token con cache ---
-let appTokenCache = null;
-let appTokenExpiry = 0;
-
 // Resumen del cohost para el log: intentados/enviados por tipo, motivos de descarte y 429 del proveedor
 // Tokens de Groq por modelo: este stream y acumulado del día UTC frente al cupo diario de cada modelo
 const GROQ_DAILY_TOKEN_LIMIT = parseInt(process.env.GROQ_DAILY_TOKEN_LIMIT || '200000', 10);
@@ -102,34 +99,6 @@ function formatCohostStats({ attempts, sent, discards, groq429 }) {
   const reasons = Object.entries(discards).map(([k, n]) => `${k}: ${n}`).join(', ') || 'ninguno';
   const total = attempts.event + attempts.free;
   return `cohost: ${total} comentarios intentados (${attempts.event} eventos, ${attempts.free} libres), ${sent.event + sent.free} enviados (${sent.event} eventos, ${sent.free} libres); descartes: ${reasons}; 429 de Groq: ${groq429}`;
-}
-
-async function getAppAccessToken() {
-  const now = Date.now();
-  if (appTokenCache && now < appTokenExpiry) return appTokenCache;
-
-  try {
-    const res = await fetch('https://id.twitch.tv/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: process.env.CLIENT_ID,
-        client_secret: process.env.CLIENT_SECRET,
-        grant_type: 'client_credentials'
-      })
-    });
-    const data = await res.json();
-    if (data.access_token) {
-      appTokenCache = data.access_token;
-      // Cacha 23 horas (token dura 60 días, renovamos mucho antes)
-      appTokenExpiry = now + 23 * 60 * 60 * 1000;
-      logger.info('✅ App Access Token generado y cacheado');
-    }
-    return appTokenCache || null;
-  } catch (e) {
-    logger.error(`Error obteniendo app token: ${e.message}`);
-    return null;
-  }
 }
 
 // --- Inicializar estado del stream al arrancar ---

@@ -26,7 +26,7 @@ const DEATH_WORDS_RE = /\b(muert[eoa]s?|muri[oó]|morir|mori|ca[ií]das?|ca[ey]�
 // Mecánicas, armas, zonas y consejos del directo del 29-10 (cohost, hook y timer_ia se las inventaban)
 const MECHANICS_RE = /\b(armas?|espad[oó]n|espadas?|combos?|parr(?:y|ies)|fase \d+|zonas?|mec[aá]nicas?|habilidad(?:es)?|dificultad|barra|ventana|resistencia|cadencia|recarga|build|ataques? (?:rojo|amarillo|especial)|torre|cuartel\w*)\b/i;
 // La nota de RAWG no se cita en el chat
-const RAWG_NOTE_RE = /\brawg\b|\b\d(?:[.,]\d+)?\s*\/\s*5\b/i;
+const RAWG_NOTE_RE = /\brawg\b|\bigdb\b|\b\d(?:[.,]\d+)?\s*\/\s*5\b/i;
 // Bromas cariñosas sí, desprecio al juego de los streamers no
 const GAME_DISPARAGE_RE = /\b(cortito|nivel medio|mediocre|aburrid[oa]|basura|chusta|bodrio|sobrevalorad[oa]|p[eé]simo|injugable|decepcion\w*)\b|modo beta|beta etern\w*|tutorial de c[oó]mo|se cree el rey|juego (?:malo|flojo|regular)/i;
 
@@ -59,7 +59,7 @@ function talksAboutGames(text, game = '') {
 }
 
 // Nada técnico en el chat: ni RAWG, ni "datos", ni herramientas
-const TECH_LEAK_RE = /\brawg\b|buscar_juego|herramientas?\b|bases? de datos|\bapi\b|\bmis datos\b|no tengo (?:los |esos )?datos/i;
+const TECH_LEAK_RE = /\brawg\b|\bigdb\b|buscar_juego|herramientas?\b|bases? de datos|\bapi\b|\bmis datos\b|no tengo (?:los |esos )?datos/i;
 function leaksTech(text) { return TECH_LEAK_RE.test(String(text || '')); }
 
 function mentionsGameName(t, game = '') {
@@ -174,6 +174,9 @@ const FUA_GENDER_RE = /\b(?:la|una|esa|esta|mi|tu|su)\s+fua\b/i;
 const MANU_PAO_RE = /\bmanu y pao\b[^.!?]{0,40}\b(?:mueren|muere|caen|cae|juegan|juega|se levantan|renacen|siguen|sigue|brillan|vuelven|vuelvan|firmes?)\b/i;
 // Dios Fua es el bot del canal, no su creador (lo creó vlxj97)
 const CREATOR_CLAIM_RE = /\b(?:soy|somos)\s+(?:el\s+)?(?:creador|due[ñn]o|jefe)\b|\b(?:creador|due[ñn]o) del canal\b/i;
+// El canal es de Manu y Pao; vlxj97 solo creó el bot: nada de atribuirle el canal
+const CHANNEL_OWNER_RE = /\bvlxj97\b[^.!?]{0,25}\b(?:lleva|llevan|dirige|gestiona|maneja)\s+(?:el|este|todo|esto|la)\b|\b(?:lleva|llevan|dirige|dirigen|gestiona|gestionan|maneja|manejan)\b[^.,;:!?]{0,30}\bvlxj97\b|\b(?:canal|stream|directo)\s+(?:de|del)\s+@?vlxj97\b|\bvlxj97\b[^.!?]{0,20}\b(?:es|fue)\s+(?:el\s+)?(?:due[ñn]o|jefe|streamer|creador del canal)|\bvlxj97\b[^.!?]{0,15}\bcre[óo]\s+(?:el|este)\s+canal\b/i;
+function claimsChannelOwner(text) { return CHANNEL_OWNER_RE.test(String(text || '')); }
 // Final colgando ("el stream y.", "cuando la.")
 const DANGLING_RE = /(?:^|\s)(?:y|e|o|u|a|de|del|la|el|los|las|un|una|que|con|por|para|en|se|su|sus|al|como|pero|cuando|mi|tu|ni|sin|sobre)$/i;
 // Consejos y mecánicas que el usuario no ha pedido
@@ -195,6 +198,7 @@ function styleProblem(text, { personal = true } = {}) {
   if (BOT_SELF_RE.test(t) && !/\bsoy\b[^.!?]{0,30}\bbot\b/i.test(t)) return { rule: 'bot', reason: 'habla de sí mismo como "el bot"; habla en primera persona o como el FUA' };
   if (FUA_GENDER_RE.test(t)) return { rule: 'fua', reason: '"el FUA" va siempre en masculino' };
   if (MANU_PAO_RE.test(t)) return { rule: 'manu', reason: 'quien juega es Manu; no pongas a Pao a jugar ni a morir' };
+  if (CHANNEL_OWNER_RE.test(t)) return { rule: 'canal', reason: 'el canal es de Manu y Pao; vlxj97 solo creó el bot, no le atribuyas el canal' };
   if (CREATOR_CLAIM_RE.test(t)) return { rule: 'creador', reason: 'eres el bot del canal, no su creador; te creó vlxj97' };
   if (personal && PERSONAL_RE.test(t)) return { rule: 'personal', reason: 'habla de vida personal (comida, sueño, familia, trabajo, salud, fútbol); habla solo del stream, el juego y el chat sobre la partida' };
   return null;
@@ -345,9 +349,9 @@ function negativeSummary(text) { return NEGATIVE_SUMMARY_RE.test(text); }
 // [qué dice la respuesta, qué debe aparecer en los datos para respaldarlo]
 const COUNTRY_GROUPS = [
   [/\bjapon\w*/, /japan|japon/], [/\bchin[oa]s?\b/, /chin/], [/\bcore(?:ano|ana)s?\b|\bcorea\b/, /korea|corea/],
-  [/\bestadounidens\w*|\bnorteamerican\w*|\beeuu\b|\bamerican[oa]s?\b/, /america|\busa\b|united states|u\.s\./],
+  [/\bestadounidens\w*|\bnorteamerican\w*|\beeuu\b|\bamerican[oa]s?\b/, /america|\busa\b|united states|estados unidos|u\.s\./],
   [/\bfranc(?:es|esa|eses|esas|ia)\b/, /franc/], [/\balem(?:an|ana|anes|anas|ania)\b/, /german|aleman/],
-  [/\bbritanic\w*|\bingles\w*|\binglaterra\b|\breino unido\b/, /brit|engl|united kingdom|\buk\b/],
+  [/\bbritanic\w*|\bingles\w*|\binglaterra\b|\breino unido\b/, /brit|engl|united kingdom|reino unido|\buk\b/],
   [/\brus[oa]s?\b|\brusia\b/, /russia|rusia/], [/\bcanadiens\w*|\bcanada\b/, /canad/], [/\bpolac[oa]s?\b|\bpolonia\b/, /poland|polish|polon/],
   [/\bitalian[oa]s?\b|\bitalia\b/, /ital/], [/\bsuec[oa]s?\b|\bsuecia\b/, /swed|sueci/], [/\btaiwan\w*|\btailand\w*|\bindi[oa]s?\b/, /taiwan|thai|india/],
 ];
@@ -385,7 +389,7 @@ function unsupportedAttributes(text, source = '', { persons = true } = {}) {
   return '';
 }
 
-// Sin datos de RAWG, cualquier desarrolladora o editora que cite la respuesta es inventada
+// Sin datos de la fuente (IGDB/RAWG), cualquier desarrolladora o editora que cite la respuesta es inventada
 const KNOWN_COMPANIES = ['sega', 'nintendo', 'capcom', 'bandai namco', 'namco', 'square enix', 'konami', 'fromsoftware', 'from software', 'ubisoft', 'electronic arts', 'ea games', 'sony', 'playstation studios', 'microsoft', 'xbox game studios', 'activision', 'blizzard', 'valve', 'tencent', 'netease', 'bethesda', 'cd projekt', 'rockstar', 'take-two', 'take two', 'warner', 'warner bros', '2k games', 'epic games', 'devolver', 'annapurna', 's-game', 'sgame', 'kojima productions', 'atlus', 'koei tecmo', 'team ninja', 'platinumgames', 'remedy', 'focus entertainment', 'deep silver', 'embracer', 'paradox', 'thq nordic', 'level-5', 'level 5', 'hoyoverse', 'mihoyo', 'nexon', 'netmarble', 'krafton', 'pearl abyss', 'shift up', 'larian', 'obsidian', 'bioware', 'insomniac', 'naughty dog', 'santa monica', 'cygames', 'arc system works'];
 const COMPANY_NAMED_RE = /(?:estudio|desarrolladora|editora|compa[nñ][ií]a|empresa|publisher|creador\w*|detr[aá]s)(?:\s+(?:que|del|de|es|fue|son|lo|la|el))*\s+(?:es|fue|son|:)?\s*(?:el\s+|la\s+)?([A-ZÁÉÍÓÚÑ][\wáéíóúñ'’-]+)/;
 function inventedCompany(text, source = '') {
@@ -550,7 +554,7 @@ module.exports = {
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
-  vetAuto, styleProblem, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
+  vetAuto, styleProblem, claimsChannelOwner, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,

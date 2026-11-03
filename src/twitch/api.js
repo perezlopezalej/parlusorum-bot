@@ -1,6 +1,7 @@
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 const { classifyGameMatch } = require('../utils/game-match');
+const { searchGame: searchIgdb } = require('./igdb');
 
 function getToken() {
   return (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
@@ -237,8 +238,8 @@ async function getCurrentGame() {
       currentGameCache = { game: channel.game_name || null, title: channel.title || null };
       if (currentGameCache.game) {
         logger.info(`🎮 Juego actual: ${currentGameCache.game}`);
-        // Ficha precalentada (con detalle): si RAWG cae después, el juego actual sigue respondiendo
-        if (process.env.RAWG_API_KEY && !gameInfoCache.has(`${currentGameCache.game}|detail`)) lookupGameInfo(currentGameCache.game, { detail: true }).catch(() => {});
+        // Ficha precalentada (con detalle): si las fuentes caen después, el juego actual sigue respondiendo
+        if (!gameInfoCache.has(`${currentGameCache.game}|detail`)) lookupGameInfo(currentGameCache.game, { detail: true }).catch(() => {});
       }
     }
     lastGameCheck = now;
@@ -289,36 +290,26 @@ async function createClip() {
   }
 }
 
-// --- Info del juego via RAWG ---
-// 24h: los datos de RAWG (géneros, rating) son estables pero pueden actualizarse ocasionalmente
-const RAWG_CACHE_TTL = 24 * 60 * 60 * 1000;
-// La ficha del juego actual del stream dura más: así RAWG caído no deja sin datos al juego que se está jugando
+// --- Info del juego: IGDB primero, RAWG de reserva ---
+// 24h: los datos (géneros, fecha, estudio) son estables pero pueden actualizarse ocasionalmente
+const GAME_INFO_TTL = 24 * 60 * 60 * 1000;
+// La ficha del juego actual del stream dura más: así las fuentes caídas no dejan sin datos al juego que se está jugando
 const CURRENT_GAME_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 const RAWG_TIMEOUT_MS = 8000;
 const gameInfoCache = new Map(); // valores: { data, ts, ttl }
 
 // Purga entradas expiradas cada 6h para evitar memory leak de juegos que ya no se streamean
-const rawgCacheCleanupInterval = setInterval(() => {
+const gameCacheCleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, cached] of gameInfoCache) {
-    if (now - cached.ts > (cached.ttl || RAWG_CACHE_TTL)) gameInfoCache.delete(key);
+    if (now - cached.ts > (cached.ttl || GAME_INFO_TTL)) gameInfoCache.delete(key);
   }
 }, 6 * 60 * 60 * 1000);
-rawgCacheCleanupInterval.unref();
+gameCacheCleanupInterval.unref();
 
-// detail=true hace una 2ª llamada a /games/{id} (el listado no trae descripción
-// ni desarrolladora). Solo la usan !dios_fua y la trivia; el resto sigue rápido.
-// { info, error }: error=true si RAWG falla (5xx, timeout, respuesta ilegible), distinto de "no encontrado" (info null, error false).
-// Si falla, sirve la ficha en caché aunque haya caducado.
-async function lookupGameInfo(gameName, { detail = false } = {}) {
-  if (!gameName) return { info: null, error: false };
-  const cacheKey = detail ? `${gameName}|detail` : gameName;
-  const cached = gameInfoCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts <= (cached.ttl || RAWG_CACHE_TTL)) return { info: cached.data, error: false };
-
+// RAWG (reserva). → info | null (no encontrado); lanza si falla (5xx, timeout, respuesta ilegible)
+async function searchRawg(gameName, detail) {
   const apiKey = process.env.RAWG_API_KEY;
-  if (!apiKey) return { info: null, error: false };
-
   try {
     const query = encodeURIComponent(gameName);
     const res = await fetch(
@@ -328,7 +319,7 @@ async function lookupGameInfo(gameName, { detail = false } = {}) {
     if (!res.ok) throw new Error(`RAWG HTTP ${res.status}`);
     const data = await res.json();
     let game = data.results?.[0];
-    if (!game) return { info: null, error: false };
+    if (!game) return null;
 
     if (detail && game.id) {
       const detRes = await fetch(
@@ -338,26 +329,60 @@ async function lookupGameInfo(gameName, { detail = false } = {}) {
       if (detRes.ok) game = { ...game, ...(await detRes.json()) };
     }
 
-    const info = {
+    return {
       name: game.name,
       description: game.description_raw?.slice(0, detail ? 600 : 300) || null,
       genres: game.genres?.map(g => g.name).join(', ') || null,
       released: game.released || null,
       rating: game.rating || null,
-      developers: game.developers?.map(d => d.name).join(', ') || null
+      developers: game.developers?.map(d => d.name).join(', ') || null,
+      publishers: null,
+      country: null,
+      source: 'rawg',
     };
+  } catch (e) {
+    throw new Error(String(e.message).replace(apiKey, '[REDACTED]'));
+  }
+}
 
+// detail=true recorta la descripción a 600 en vez de 300 (solo !dios_fua y la trivia lo usan).
+// { info, error }: error=true solo si ninguna fuente pudo responder (5xx, timeout, respuesta ilegible);
+// "no encontrado" es info null con error false: basta con que una fuente conteste limpiamente.
+// Si fallan las dos, sirve la ficha en caché aunque haya caducado.
+async function lookupGameInfo(gameName, { detail = false } = {}) {
+  if (!gameName) return { info: null, error: false };
+  const cacheKey = detail ? `${gameName}|detail` : gameName;
+  const cached = gameInfoCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts <= (cached.ttl || GAME_INFO_TTL)) return { info: cached.data, error: false };
+
+  let info = null;
+  let answered = false;
+  try {
+    info = await searchIgdb(gameName, { detail });
+    answered = true;
+  } catch (e) {
+    logger.error(`Error IGDB: ${e.message}`);
+  }
+  if (!info && process.env.RAWG_API_KEY) {
+    try {
+      info = await searchRawg(gameName, detail);
+      answered = true;
+    } catch (e) {
+      logger.error(`Error RAWG: ${e.message}`);
+    }
+  }
+
+  if (info) {
     const current = currentGameName();
     const isCurrent = current && (info.name.toLowerCase() === current.toLowerCase() || gameName.toLowerCase() === current.toLowerCase());
-    gameInfoCache.set(cacheKey, { data: info, ts: Date.now(), ttl: isCurrent ? CURRENT_GAME_CACHE_TTL : RAWG_CACHE_TTL });
+    gameInfoCache.set(cacheKey, { data: info, ts: Date.now(), ttl: isCurrent ? CURRENT_GAME_CACHE_TTL : GAME_INFO_TTL });
     return { info, error: false };
-  } catch (e) {
-    logger.error(`Error RAWG: ${e.message.replace(apiKey, '[REDACTED]')}`);
-    // Caducada o la ficha del juego actual (el nombre buscado puede ser una variante): mejor eso que nada
-    if (cached) return { info: cached.data, error: false };
-    const stale = staleCurrentGame(gameName, detail);
-    return stale ? { info: stale, error: false } : { info: null, error: true };
   }
+  if (answered) return { info: null, error: false };
+  // Caducada o la ficha del juego actual (el nombre buscado puede ser una variante): mejor eso que nada
+  if (cached) return { info: cached.data, error: false };
+  const stale = staleCurrentGame(gameName, detail);
+  return stale ? { info: stale, error: false } : { info: null, error: true };
 }
 
 // Nombre del juego actual del stream según las cachés de Helix (sin llamar a la API)

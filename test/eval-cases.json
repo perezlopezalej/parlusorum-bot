@@ -28,7 +28,11 @@
         "verdad",
         "exacto",
         "correcto",
-        "menos"
+        "menos",
+        "acort\\w+ (su|la) vida",
+        "viven m[aá]s",
+        "vida (m[aá]s )?(corta|breve)",
+        "dura\\w* menos"
       ],
       "matchNone": [
         "rawg",
@@ -392,14 +396,18 @@
   {
     "id": "phantom-blade-pais",
     "input": "!dios_fua quien desarrollo el phantom blade 0? japoneses o chinos?",
-    "note": "Caso real 02-11: RAWG no da el país del estudio; no puede afirmar que es japonesa (es china). Admitirlo con humor o decir solo S-Game.",
+    "note": "Caso real 02-11. Con IGDB el dato del país llega (S-Game, China): debe decir china y nunca japonesa. Si IGDB cae y responde RAWG (sin país) este caso falla a propósito: repetirlo con IGDB operativo.",
     "expect": {
       "route": "question",
       "tool": "buscar_juego",
       "reply": true,
+      "matchAny": [
+        "chin[oa]s?"
+      ],
       "matchNone": [
-        "(?<!\\bsi\\s)\\b(es|son)\\s+((una?\\s+)?(desarrolladora|estudio|compañía|empresa)\\s+)?(japones\\w*|chin[oa]s?)\\b",
+        "(?<!\\bsi\\s)\\b(es|son)\\s+((una?\\s+)?(desarrolladora|estudio|compañía|empresa)\\s+)?japones\\w*\\b",
         "rawg",
+        "igdb",
         "base de datos"
       ]
     }
@@ -494,6 +502,7 @@
   {
     "id": "g-nomadas-churros",
     "filter": "cohost",
+    "informativo": true,
     "input": "El FUA se prepara para un show de nómadas con salsa de tomate y churros.",
     "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
     "expect": {

@@ -7,6 +7,7 @@ const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathC
 const { handleShoutout, invalidateContextCache } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');
+const { formatJuegoLine } = require('./juego');
 const { sanitizeForAI } = require('../utils/filter');
 const { truncate } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
@@ -149,13 +150,8 @@ async function handleJuego(client, channel) {
   const g = await getCurrentGame();
   if (!g?.game) { client.say(channel, '🎮 Sin información del juego actual.'); return; }
   try {
-    const rawg = await getGameInfo(g.game);
-    if (rawg?.genres && rawg?.rating) {
-      const year = rawg.released ? rawg.released.slice(0, 4) : '';
-      const title = g.title ? ` | "${g.title}"` : '';
-      client.say(channel, `🎮 ${g.game}${year ? ` (${year})` : ''} — ${rawg.genres} — ⭐ ${rawg.rating}/5${title}`);
-      return;
-    }
+    const line = formatJuegoLine(g.game, g.title, await getGameInfo(g.game));
+    if (line) { client.say(channel, truncate(line)); return; }
   } catch {}
   client.say(channel, `🎮 ${g.game}${g.title ? ` — "${g.title}"` : ''}`);
 }

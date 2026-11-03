@@ -8,7 +8,7 @@ Chatbot de Twitch con IA para el canal "parlusorum": responde preguntas, recuerd
 
 ## Funcionalidades principales
 
-- **Asistente con IA (`!dios_fua`)**: responde preguntas a través de Groq, mantiene una conversación corta por usuario y puede consultar datos de videojuegos en RAWG mediante una herramienta (*tool calling*).
+- **Asistente con IA (`!dios_fua`)**: responde preguntas a través de Groq, mantiene una conversación corta por usuario y puede consultar datos de videojuegos en IGDB (con RAWG de reserva) mediante una herramienta (*tool calling*).
 - **Memoria entre streams**: al terminar el directo, la IA resume lo ocurrido y lo guarda en Supabase; los últimos resúmenes se inyectan en el contexto de las respuestas siguientes. También guarda hechos por usuario y un "lore" del canal (chistes internos, temas a evitar) que se aprende y se puede aprobar o borrar con `!lore`.
 - **Presencia proactiva**: un co-host que comenta de forma espontánea (con probabilidad, cooldown y tope por hora), mensajes cuando el chat lleva rato en silencio, respuestas a menciones o frases naturales, y un tono que cambia según lo que pasa en el stream (racha de muertes, raid, victoria, BRB).
 - **Reacción al chat**: detecta picos de palabras clave, spam de emotes y mayúsculas colectivas; en el primer caso crea un marker en el VOD y narra el momento.
@@ -23,7 +23,7 @@ Chatbot de Twitch con IA para el canal "parlusorum": responde preguntas, recuerd
 - Twitch Helix API y EventSub (webhooks)
 - [Groq](https://groq.com) (`groq-sdk`) con modelos `openai/gpt-oss`
 - Supabase (PostgreSQL) con `@supabase/supabase-js`; npoint.io como almacenamiento alternativo
-- RAWG API para datos de videojuegos
+- IGDB API (datos de videojuegos, propiedad de Twitch; atribución «Datos: IGDB.com» en `!juego`) y RAWG API como reserva
 - `node:test` para los tests
 - Render (plan gratuito) para el despliegue
 
@@ -41,7 +41,7 @@ Chatbot de Twitch con IA para el canal "parlusorum": responde preguntas, recuerd
 
 ## Instalación y ejecución en local
 
-Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicación registrada en la consola de desarrolladores de Twitch y una clave de Groq. Supabase y RAWG son opcionales.
+Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicación registrada en la consola de desarrolladores de Twitch y una clave de Groq. Supabase y RAWG (reserva de IGDB) son opcionales; IGDB usa el mismo CLIENT_ID y secret de Twitch.
 
 1. Clona el repositorio e instala las dependencias:
    ```bash
@@ -77,7 +77,7 @@ Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicac
 
 **Evitar que la IA se invente cosas.** Al principio, el bot respondía con datos falsos sobre
 videojuegos (fechas, estudios, títulos que no existían). Lo resolví dándole a la IA una
-herramienta, `buscar_juego`, que consulta la API de RAWG, y añadiendo una comprobación de
+herramienta, `buscar_juego`, que consulta IGDB (o RAWG si IGDB falla o no encuentra el juego), y añadiendo una comprobación de
 similitud para descartar coincidencias falsas. Aprendí que con un LLM no basta con mejorar el
 prompt: hay que darle fuentes de datos reales.
 

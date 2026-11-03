@@ -86,7 +86,7 @@ describe('comprobación SÍ/NO', () => {
     assert.equal(parseVerdict(undefined), null);
   });
   test('prompt de RAWG y de stream', () => {
-    assert.match(buildCheckPrompt('x', 'Género: acción', 'rawg'), /resultado de RAWG/);
+    assert.match(buildCheckPrompt('x', 'Género: acción', 'rawg'), /resultado de la consulta/);
     assert.match(buildCheckPrompt('x', '', 'stream'), /\(ninguno\)/);
   });
 });
