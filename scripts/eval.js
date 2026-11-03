@@ -99,7 +99,7 @@ const stripMention = s => String(s || '').replace(/^@\S+\s*/, '');
 async function runFilterCase(c) {
   const deaths = c.deaths ?? 5;
   const game = c.game || 'Phantom Blade Zero';
-  const ctx = { deathCount: deaths, recent: [], named: new Map(), currentGame: game, channelGames: [] };
+  const ctx = { deathCount: deaths, recent: [], named: new Map(), currentGame: game, channelGames: [], usedStructures: new Set(c.usedStructures || []) };
   const rules = {
     cohost: t => quality.validateCohost(t, ctx),
     timer_ia: t => quality.validateTimerIA(t, ctx),

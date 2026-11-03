@@ -139,7 +139,7 @@ describe('revisión de sentido en la misma llamada', () => {
 
 describe('!boss -N', () => {
   test('parseBossArgs', () => {
-    assert.deepEqual(parseBossArgs(['boss']), { type: 'add' });
+    assert.deepEqual(parseBossArgs(['boss']), { type: 'show' });
     assert.deepEqual(parseBossArgs(['boss', '-1']), { type: 'sub', n: 1 });
     assert.equal(parseBossArgs(['boss', '-0']).type, 'bad_format');
     assert.equal(parseBossArgs(['boss', '-abc']).type, 'bad_format');

@@ -182,6 +182,57 @@ function saveSessionDeaths(count) {
   _deathsTimer.unref?.();
 }
 
+// Jefes de la sesión: columna stream_sessions.boss_count (migración 008), mismo guardado diferido
+let _bossTimer = null;
+let _bossWarned = false;
+
+function saveSessionBosses(count) {
+  clearTimeout(_bossTimer);
+  _bossTimer = setTimeout(async () => {
+    const db = getClient();
+    if (!db || !currentSessionId) return;
+    try {
+      const { error } = await db.from('stream_sessions').update({ boss_count: count }).eq('id', currentSessionId);
+      if (error) throw error;
+    } catch (e) {
+      if (!_bossWarned) { _bossWarned = true; logger.warn(`Jefes no persistidos (¿falta la migración 008?): ${e.message}`); }
+    }
+  }, DEATHS_SAVE_DELAY_MS);
+  _bossTimer.unref?.();
+}
+
+// Tras restoreOpenSession(): jefes de la sesión recuperada (0 si no hay)
+async function restoreSessionBosses() {
+  const db = getClient();
+  if (!db || !currentSessionId) return 0;
+  try {
+    const { data, error } = await db.from('stream_sessions').select('boss_count').eq('id', currentSessionId).single();
+    if (error) throw error;
+    return data?.boss_count || 0;
+  } catch (e) {
+    logger.warn(`Jefes no recuperados: ${e.message}`);
+    return 0;
+  }
+}
+
+// Juego y jefes de las sesiones con jefes anotados (base de !boss <juego>)
+async function getSessionsBossesByGame() {
+  const db = getClient();
+  if (!db) return [];
+  try {
+    const { data, error } = await db.from('stream_sessions')
+      .select('id, game, boss_count')
+      .not('game', 'is', null)
+      .gt('boss_count', 0)
+      .limit(1000);
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    logger.error(`Error obteniendo jefes por juego: ${e.message}`);
+    return [];
+  }
+}
+
 // Sesión abierta (sin ended_at) más reciente que empezó con el stream en curso
 function pickOpenSession(rows, streamStartedAtMs) {
   if (!Number.isFinite(streamStartedAtMs)) return null;
@@ -729,6 +780,9 @@ module.exports = {
   endStreamSession,
   getCurrentSessionId,
   saveSessionDeaths,
+  saveSessionBosses,
+  restoreSessionBosses,
+  getSessionsBossesByGame,
   restoreOpenSession,
   saveSessionNarrative,
   restoreSessionNarrative,

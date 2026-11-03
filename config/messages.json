@@ -53,7 +53,7 @@
     "offline": "@{username} no hay stream en directo ahora mismo 😴",
     "cooldown": "@{username} espera {seconds}s para otro resumen.",
     "nothing_yet": "@{username} el stream acaba de arrancar, aún no hay nada que contar 👀 ¡FUA!",
-    "fallback": "📜 Llevamos {minutes} min de {game} con {deaths} muertes. El FUA sigue vivo, el streamer no tanto 💀"
+    "fallback": "📜 Llevamos {minutes} min de {game} con {deaths}. El FUA sigue vivo, el streamer no tanto 💀"
   },
   "muertes": {
     "total": "💀 Muertes en {game}: {total} en {streams} stream(s) (incluye el de hoy)",
@@ -61,6 +61,17 @@
     "added": "💀 +{n} muertes: {total} en este stream 😅",
     "bad_format": "💀 Uso: !muertes +N (N de 1 a {max}) | !muertes reset | !muertes <juego> para el total de un juego",
     "mods_only": "@{username} solo mods pueden sumar muertes. Mira el total de un juego con !muertes <juego>"
+  },
+  "boss": {
+    "show": "👹 Llevamos {total} en este stream",
+    "added": "👹 +{n} jefes: {total} en este stream 💀",
+    "corrected": "💀 Marcador corregido: {total} en este stream",
+    "none_to_remove": "💀 No hay jefes que restar: el marcador está en 0",
+    "reset": "👹 Contador de jefes a 0.",
+    "total": "👹 Jefes en {game}: {total} en {streams} stream(s), desde que llevo la cuenta (incluye el de hoy)",
+    "total_none": "👹 De \"{game}\" no tengo jefes anotados todavía; solo cuento los de los streams desde que llevo la cuenta",
+    "bad_format": "👹 Uso: !boss (ver) | !boss +N / -N (N de 1 a {max}, mods) | !boss reset (mods) | !boss <juego> para el total de un juego",
+    "mods_only": "@{username} solo mods pueden sumar o restar jefes. Mira el total de un juego con !boss <juego>"
   },
   "tiempo": {
     "self": "⏳ @{username}, te tengo fichado desde hace {since} (desde tu primer mensaje que registré, no desde el follow)",
@@ -119,13 +130,27 @@
     "Pregunta de juego detectada. Llévala a !dios_fua y te la contesto bien."
   ],
   "mention_deaths": {
+    "one": "Llevamos 1 muerte en este stream 💀",
     "some": "Llevamos {n} muertes en este stream 💀",
     "none": "El contador está a 0 muertes, o nadie las ha apuntado todavía 💀"
+  },
+  "mention_current_game": {
+    "some": [
+      "Estamos con {game} 🎮",
+      "Hoy toca {game}, ¡a darle FUA!",
+      "El juego de hoy es {game} 🎮"
+    ],
+    "none": "Ahora mismo no sé qué juego es, ni el FUA lo ve claro 🤔"
   },
   "dios_fua_no_data": [
     "de eso no pondría la mano en el fuego y prefiero no soltar un bulo. Prueba a preguntarme con el nombre exacto del juego 🤔",
     "ahí me pillas, ni el FUA lo sabe a ciencia cierta. Mejor no inventarme nada 😅",
     "me suena, pero no me fío ni de mí mismo, así que callo antes que mentir 🤔"
+  ],
+  "dios_fua_rawg_down": [
+    "ahora mismo no puedo consultar la ficha de ese juego, se me ha caído la biblioteca y ni el FUA la levanta. Pregúntame en un rato 😅",
+    "mi enciclopedia de juegos está de siesta ahora mismo, así que no te suelto nada por no mentir. Inténtalo luego 💤",
+    "se me ha ido la conexión con mi libreta de juegos, no es que no lo conozca. Dame un ratito y repite la pregunta 🔧"
   ],
   "dios_fua_unknown_game": [
     "ese juego no lo conozco ni de oídas, y mira que el FUA ha visto cosas. ¿Seguro que no te lo has inventado? 🤔",

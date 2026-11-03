@@ -1,5 +1,6 @@
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
+const { classifyGameMatch } = require('../utils/game-match');
 
 function getToken() {
   return (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
@@ -234,7 +235,11 @@ async function getCurrentGame() {
 
     if (channel) {
       currentGameCache = { game: channel.game_name || null, title: channel.title || null };
-      if (currentGameCache.game) logger.info(`🎮 Juego actual: ${currentGameCache.game}`);
+      if (currentGameCache.game) {
+        logger.info(`🎮 Juego actual: ${currentGameCache.game}`);
+        // Ficha precalentada (con detalle): si RAWG cae después, el juego actual sigue respondiendo
+        if (process.env.RAWG_API_KEY && !gameInfoCache.has(`${currentGameCache.game}|detail`)) lookupGameInfo(currentGameCache.game, { detail: true }).catch(() => {});
+      }
     }
     lastGameCheck = now;
     return currentGameCache;
@@ -287,45 +292,48 @@ async function createClip() {
 // --- Info del juego via RAWG ---
 // 24h: los datos de RAWG (géneros, rating) son estables pero pueden actualizarse ocasionalmente
 const RAWG_CACHE_TTL = 24 * 60 * 60 * 1000;
-const gameInfoCache = new Map(); // valores: { data, ts }
+// La ficha del juego actual del stream dura más: así RAWG caído no deja sin datos al juego que se está jugando
+const CURRENT_GAME_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+const RAWG_TIMEOUT_MS = 8000;
+const gameInfoCache = new Map(); // valores: { data, ts, ttl }
 
 // Purga entradas expiradas cada 6h para evitar memory leak de juegos que ya no se streamean
 const rawgCacheCleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, cached] of gameInfoCache) {
-    if (now - cached.ts > RAWG_CACHE_TTL) gameInfoCache.delete(key);
+    if (now - cached.ts > (cached.ttl || RAWG_CACHE_TTL)) gameInfoCache.delete(key);
   }
 }, 6 * 60 * 60 * 1000);
 rawgCacheCleanupInterval.unref();
 
 // detail=true hace una 2ª llamada a /games/{id} (el listado no trae descripción
 // ni desarrolladora). Solo la usan !dios_fua y la trivia; el resto sigue rápido.
-async function getGameInfo(gameName, { detail = false } = {}) {
-  if (!gameName) return null;
+// { info, error }: error=true si RAWG falla (5xx, timeout, respuesta ilegible), distinto de "no encontrado" (info null, error false).
+// Si falla, sirve la ficha en caché aunque haya caducado.
+async function lookupGameInfo(gameName, { detail = false } = {}) {
+  if (!gameName) return { info: null, error: false };
   const cacheKey = detail ? `${gameName}|detail` : gameName;
-  if (gameInfoCache.has(cacheKey)) {
-    const cached = gameInfoCache.get(cacheKey);
-    if (Date.now() - cached.ts <= RAWG_CACHE_TTL) return cached.data;
-    gameInfoCache.delete(cacheKey);
-  }
+  const cached = gameInfoCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts <= (cached.ttl || RAWG_CACHE_TTL)) return { info: cached.data, error: false };
 
   const apiKey = process.env.RAWG_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { info: null, error: false };
 
   try {
     const query = encodeURIComponent(gameName);
     const res = await fetch(
       `https://api.rawg.io/api/games?key=${apiKey}&search=${query}&search_precise=true&page_size=1`,
-      { headers: { 'Accept': 'application/json' } }
+      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(RAWG_TIMEOUT_MS) }
     );
+    if (!res.ok) throw new Error(`RAWG HTTP ${res.status}`);
     const data = await res.json();
     let game = data.results?.[0];
-    if (!game) return null;
+    if (!game) return { info: null, error: false };
 
     if (detail && game.id) {
       const detRes = await fetch(
         `https://api.rawg.io/api/games/${game.id}?key=${apiKey}`,
-        { headers: { 'Accept': 'application/json' } }
+        { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(RAWG_TIMEOUT_MS) }
       );
       if (detRes.ok) game = { ...game, ...(await detRes.json()) };
     }
@@ -339,12 +347,33 @@ async function getGameInfo(gameName, { detail = false } = {}) {
       developers: game.developers?.map(d => d.name).join(', ') || null
     };
 
-    gameInfoCache.set(cacheKey, { data: info, ts: Date.now() });
-    return info;
+    const current = currentGameName();
+    const isCurrent = current && (info.name.toLowerCase() === current.toLowerCase() || gameName.toLowerCase() === current.toLowerCase());
+    gameInfoCache.set(cacheKey, { data: info, ts: Date.now(), ttl: isCurrent ? CURRENT_GAME_CACHE_TTL : RAWG_CACHE_TTL });
+    return { info, error: false };
   } catch (e) {
     logger.error(`Error RAWG: ${e.message.replace(apiKey, '[REDACTED]')}`);
-    return null;
+    // Caducada o la ficha del juego actual (el nombre buscado puede ser una variante): mejor eso que nada
+    if (cached) return { info: cached.data, error: false };
+    const stale = staleCurrentGame(gameName, detail);
+    return stale ? { info: stale, error: false } : { info: null, error: true };
   }
+}
+
+// Nombre del juego actual del stream según las cachés de Helix (sin llamar a la API)
+function currentGameName() {
+  return (streamCache?.live && streamCache?.game) || currentGameCache?.game || null;
+}
+
+// Ficha en caché del juego actual si el nombre buscado es ese juego (p. ej. "phantom blade 0")
+function staleCurrentGame(query, detail) {
+  const current = currentGameName();
+  if (!current || classifyGameMatch(query, current) !== 'match') return null;
+  return (gameInfoCache.get(detail ? `${current}|detail` : current) || gameInfoCache.get(`${current}|detail`))?.data || null;
+}
+
+async function getGameInfo(gameName, opts) {
+  return (await lookupGameInfo(gameName, opts)).info;
 }
 
 // --- Seguidores ---
@@ -413,7 +442,7 @@ async function createStreamMarker(description = 'Momento epico') {
 
 module.exports = {
   getStreamInfo, isStreamLive, getCurrentGame, getRecentGames,
-  createClip, createStreamMarker, getGameInfo, getFollowerCount, getChannelInfo,
+  createClip, createStreamMarker, getGameInfo, lookupGameInfo, getFollowerCount, getChannelInfo,
   refreshBroadcasterToken, loadBroadcasterTokens,
   validateBotToken, refreshBotToken, ensureBotToken, refreshBotTokenIfNeeded,
 };

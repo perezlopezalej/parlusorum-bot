@@ -33,7 +33,7 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 | !juego (RAWG) | 8 | 5 | 5 | 6.2 | **6.2** | B | Sin cambios. |
 | !estadisticas | 7 | 4 | 3 | 4.9 | **4.9** | B | Sin cambios. |
 | !muertes (+1/reset) | 8 | 6 | 3 | 5.9 | **5.9** | I | ▲ Ya se persiste en stream_sessions.death_count (guardado con retardo de 3 s) y se recupera si el bot arranca con el stream en directo; test de pickOpenSession. Límites: se pierde si no hay sesión abierta y no se restaura fuera de directo. _Importancia: Alimenta !quemeperdi y !score; el streamer lo usa a menudo._ |
-| !boss / !score | 6 | 6 | 4 | 5.1 | **5.4** ▲ | I | ▲ (V) !boss ya alimenta la narrativa y dispara el modo victoria. Sigue sin atomicidad y con total_losses huérfano. |
+| !boss / !score | 6 | 6 | 4 | 5.1 | **5.4** ▲ | I | ▲ (V) !boss ya alimenta la narrativa y dispara el modo victoria. Con las mismas funciones que !muertes: `!boss` muestra los jefes del stream (todos), `!boss +N` / `-N` / `reset` (mods, sin bajar de 0) y `!boss <juego>` suma los jefes de ese juego en todos los streams desde que se lleva la cuenta (migración 008, `stream_sessions.boss_count`). El contador se guarda en la sesión con retardo de 3 s y se recupera tras un despliegue a mitad de directo. Sigue sin atomicidad y con total_losses huérfano. |
 | !brb | 7 | 5 | 3 | 5.2 | **5.2** | I | Sin cambios. no se apaga al acabar el stream (no re-verificado). _Importancia: Comando de stream._ |
 | !silencio | 7 | 6 | 3 | 5.5 | **5.5** | I | Sin cambios. _Importancia: Interruptor de seguridad de los mods; protege el funcionamiento._ |
 | !so (shoutout IA) | 7 | 6 | 6 | 6.4 | **6.4** | I | Sin cambios. _Importancia: Comando de stream, uso a menudo._ |

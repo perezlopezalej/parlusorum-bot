@@ -152,6 +152,8 @@ function gameTalkProblem(text) {
   if (mentionsMechanics(text)) return 'habla de mecánicas, armas o zonas del juego; habla solo del stream, el chat y el FUA';
   if (citesRawgScore(text)) return 'cita la nota de RAWG; no la menciones';
   if (disparagesGame(text)) return 'desprecia el juego de los streamers; bromas cariñosas sí, desprecio no';
+  const attr = unsupportedAttributes(text, '', { persons: false });
+  if (attr) return `afirma "${attr}" (país, cifra o presupuesto) que no está en los datos; no lo digas`;
   return null;
 }
 
@@ -222,7 +224,7 @@ function validateAuto(text) {
 // Validación del cohost. ctx: { deathCount, recent: string[], sameKind: string[], named: Map, now, nameWindowMs }
 // Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
 // se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
-function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
+function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set() } = {}) {
   if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
   if (hasLatam(text)) return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
@@ -233,6 +235,8 @@ function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], name
   if (game) return { ok: false, rule: 'juego', reason: game };
   const names = recentlyNamedIn(text, named, now, nameWindowMs);
   if (names.length) return { ok: false, soft: true, rule: 'nombre', reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas` };
+  const structure = structureKey(text);
+  if (structure && usedStructures.has(structure)) return { ok: false, soft: true, rule: 'estructura', reason: 'repite la estructura "Manu lleva N caídas y el FUA…" que ya usaste en este stream; cambia de enfoque y no cites el contador' };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, soft: true, rule: 'formula', reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent)) return { ok: false, soft: true, rule: 'parecido', reason: 'se parece demasiado a un mensaje reciente' };
   if (sameKind.length && tooSimilar(text, sameKind, 0.4)) return { ok: false, soft: true, rule: 'parecido', reason: 'repite una idea de otro comentario de este stream sobre lo mismo; cambia de enfoque' };
@@ -284,6 +288,7 @@ function claimsEnemyKills(text) { return KILLS_CLAIM_RE.test(String(text || ''))
 
 // !quemeperdi: validación del resumen; devuelve el motivo de rechazo o null
 function validateQueMePerdi(text, { deathCount = 0, bosses = 0 } = {}) {
+  if (achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
   if (!text || text.length < 8) return 'vacío o demasiado corto';
   if (claimsEnemyKills(text)) return 'habla de enemigos derribados; no hay ese dato (las muertes son caídas del streamer)';
   if (hasLatam(text)) return 'usa expresiones latinoamericanas; escribe español de España';
@@ -302,12 +307,14 @@ function repeatsYear(text, recent) {
 
 // Comentario IA del timer: misma validación que el hook, sin nota de RAWG y sin repetir ideas del stream
 // ctx.currentGame/channelGames: sin nombrar otros juegos; ctx.named: usuarios nombrados hace poco (no repetirlos)
-function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000 } = {}) {
+function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set() } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  const structure = structureKey(text);
+  if (structure && usedStructures.has(structure)) return { ok: false, reason: 'repite la estructura "Manu lleva N caídas y el FUA…" de este stream; no cites el contador y cambia de enfoque' };
   if (citesRawgScore(text)) return { ok: false, reason: 'cita la nota de RAWG; no la menciones' };
   if (/@\w/.test(text)) return { ok: false, reason: 'no etiquetes a nadie con @' };
   const style = styleProblem(text);
@@ -333,6 +340,124 @@ function genderedParlusorum(text) {
 // Resumen de fin de stream: siempre en positivo y con lo que pasó
 const NEGATIVE_SUMMARY_RE = /\b(poca acci[oó]n|sin acci[oó]n|falta de acci[oó]n|aburrid[oa]s?|flojo|floja|mon[oó]tono|mon[oó]tona|decepcion\w*|desastre|pobre|vac[ií][oa]|muerto|lento|lenta|sin nada|nada (?:que|de) (?:contar|destacar))\b/i;
 function negativeSummary(text) { return NEGATIVE_SUMMARY_RE.test(text); }
+
+// ─── Atributos inventados: país/nacionalidad, personas y cifras que no están en los datos ───
+// [qué dice la respuesta, qué debe aparecer en los datos para respaldarlo]
+const COUNTRY_GROUPS = [
+  [/\bjapon\w*/, /japan|japon/], [/\bchin[oa]s?\b/, /chin/], [/\bcore(?:ano|ana)s?\b|\bcorea\b/, /korea|corea/],
+  [/\bestadounidens\w*|\bnorteamerican\w*|\beeuu\b|\bamerican[oa]s?\b/, /america|\busa\b|united states|u\.s\./],
+  [/\bfranc(?:es|esa|eses|esas|ia)\b/, /franc/], [/\balem(?:an|ana|anes|anas|ania)\b/, /german|aleman/],
+  [/\bbritanic\w*|\bingles\w*|\binglaterra\b|\breino unido\b/, /brit|engl|united kingdom|\buk\b/],
+  [/\brus[oa]s?\b|\brusia\b/, /russia|rusia/], [/\bcanadiens\w*|\bcanada\b/, /canad/], [/\bpolac[oa]s?\b|\bpolonia\b/, /poland|polish|polon/],
+  [/\bitalian[oa]s?\b|\bitalia\b/, /ital/], [/\bsuec[oa]s?\b|\bsuecia\b/, /swed|sueci/], [/\btaiwan\w*|\btailand\w*|\bindi[oa]s?\b/, /taiwan|thai|india/],
+];
+const STUDIO_CTX_RE = /desarroll|estudio|creador|creadora|compania|equipo|publica|studio|juego|titulo|proyecto|saga/;
+const FIGURE_CTX_RE = /presupuesto|vend|ventas|copias|jugadores|cuesta|precio|millones|dolares|euros|€|\$/;
+const PERSON_RE = /(?:dirigid[oa]|creado|creada|dise[nñ]ad[oa]|liderad[oa]|desarrollad[oa]|producid[oa]|fundad[oa]) por ((?:[A-ZÁÉÍÓÚÑ][\wáéíóúñ'’-]+)(?: (?:[A-ZÁÉÍÓÚÑ][\wáéíóúñ'’-]+))*)/;
+
+// Primer atributo de la respuesta que los datos no respaldan ('' si todo está respaldado).
+// persons=false: no comprueba nombres de personas (mensajes sin datos de origen)
+function unsupportedAttributes(text, source = '', { persons = true } = {}) {
+  const src = norm(source);
+  const sentences = String(text || '').split(/(?<=[.!?…])\s+/);
+  for (const sentence of sentences) {
+    const n = norm(sentence);
+    if (STUDIO_CTX_RE.test(n)) {
+      for (const [said, backed] of COUNTRY_GROUPS) {
+        const m = said.exec(n);
+        if (m && !backed.test(src)) return m[0];
+      }
+    }
+    if (FIGURE_CTX_RE.test(n)) {
+      if (/presupuesto/.test(n) && !/presupuesto|budget/.test(src)) return 'presupuesto';
+      const srcDigits = new Set((src.match(/\d[\d.,]*/g) || []).map(d => d.replace(/[.,]/g, '')));
+      for (const d of n.match(/\d[\d.,]*/g) || []) {
+        const digits = d.replace(/[.,]/g, '');
+        if (/^(19|20)\d\d$/.test(digits) || digits.length === 0) continue;
+        if (!srcDigits.has(digits)) return d;
+      }
+    }
+    if (persons) {
+      const p = PERSON_RE.exec(sentence.charAt(0).toLowerCase() + sentence.slice(1));
+      if (p && !src.includes(norm(p[1]))) return p[1];
+    }
+  }
+  return '';
+}
+
+// Sin datos de RAWG, cualquier desarrolladora o editora que cite la respuesta es inventada
+const KNOWN_COMPANIES = ['sega', 'nintendo', 'capcom', 'bandai namco', 'namco', 'square enix', 'konami', 'fromsoftware', 'from software', 'ubisoft', 'electronic arts', 'ea games', 'sony', 'playstation studios', 'microsoft', 'xbox game studios', 'activision', 'blizzard', 'valve', 'tencent', 'netease', 'bethesda', 'cd projekt', 'rockstar', 'take-two', 'take two', 'warner', 'warner bros', '2k games', 'epic games', 'devolver', 'annapurna', 's-game', 'sgame', 'kojima productions', 'atlus', 'koei tecmo', 'team ninja', 'platinumgames', 'remedy', 'focus entertainment', 'deep silver', 'embracer', 'paradox', 'thq nordic', 'level-5', 'level 5', 'hoyoverse', 'mihoyo', 'nexon', 'netmarble', 'krafton', 'pearl abyss', 'shift up', 'larian', 'obsidian', 'bioware', 'insomniac', 'naughty dog', 'santa monica', 'cygames', 'arc system works'];
+const COMPANY_NAMED_RE = /(?:estudio|desarrolladora|editora|compa[nñ][ií]a|empresa|publisher|creador\w*|detr[aá]s)(?:\s+(?:que|del|de|es|fue|son|lo|la|el))*\s+(?:es|fue|son|:)?\s*(?:el\s+|la\s+)?([A-ZÁÉÍÓÚÑ][\wáéíóúñ'’-]+)/;
+function inventedCompany(text, source = '') {
+  const src = norm(source);
+  const n = ' ' + norm(text).replace(/[^a-z0-9 -]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  for (const c of KNOWN_COMPANIES) {
+    if (n.includes(' ' + c + ' ') && !src.includes(c)) return c;
+  }
+  const sentences = String(text || '').split(/(?<=[.!?…])\s+/);
+  for (const sentence of sentences) {
+    const m = COMPANY_NAMED_RE.exec(sentence);
+    if (m && !src.includes(norm(m[1])) && !/^(?:No|Ni|Nada|Eso|Ese|Esa|Un|Una|Algo|Quien|Quién)$/.test(m[1])) return m[1];
+  }
+  return unsupportedAttributes(text, source, { persons: false });
+}
+
+// Alguien dice que está mal o de bajón: el cohost libre calla
+const PERSONAL_DISTRESS_RE = /\b(baj[oó]n|bajona|de bajon|estoy mal|me siento mal|me encuentro mal|triste|tristeza|deprimid[oa]|depre|ansiedad|agobiad[oa]|estresad[oa]|llorand[oa]|mal d[ií]a|hecho polvo|no puedo m[aá]s)\b/i;
+function hasPersonalDistress(text) { return PERSONAL_DISTRESS_RE.test(String(text || '')); }
+
+// Estructuras de frase que el cohost/timer no debe repetir en el mismo stream ("Manu lleva 13 caídas y el FUA…")
+const STRUCTURES = [
+  ['lleva-caidas', /\blleva\s+\d+\s+(?:ca[ií]das?|muertes?)\b/i],
+  ['contador-y-fua', /\b\d+\s+(?:ca[ií]das?|muertes?)\s+y\s+el\s+fua\b/i],
+];
+function structureKey(text) {
+  const t = String(text || '');
+  const hit = STRUCTURES.find(([, re]) => re.test(t));
+  return hit ? hit[0] : null;
+}
+
+// "Qué juego es?" / "a qué juego juegan": se responde con el juego actual, sin IA
+const CURRENT_GAME_RE = /^(?:y\s+)?(?:(?:a\s+)?(?:que|cual)\s+juego\s+(?:es|esta[ns]?|estais|juega[ns]?|jugais|es\s+este|es\s+el\s+de\s+hoy|toca)(?:\s+(?:jugando|hoy|ahora|este))?|(?:que|cual)\s+es\s+(?:el|este)\s+juego(?:\s+(?:de\s+hoy|que\s+juega[ns]?|que\s+estais\s+jugando))?|a\s+que\s+(?:juegas?|jugais|jugamos|estais\s+jugando))$/;
+function isCurrentGameQuestion(text) {
+  const t = norm(text).replace(/@\S+/g, '').replace(/\b(?:dios\s*fua|dios_fua|fua|bot)\b/g, '').replace(/[¿?!¡,.]/g, ' ').replace(/\s+/g, ' ').trim();
+  return CURRENT_GAME_RE.test(t);
+}
+
+// Los nombres de usuario los pone el código: cualquier @nombre del texto que no sea uno de `names` se corrige al más parecido
+// (distancia ≤ 3) o se quita. names: logins/displays reales; el resultado usa su grafía exacta
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  }
+  return dp[a.length][b.length];
+}
+function fixMentions(text, names = []) {
+  const known = names.map(n => String(n || '').replace(/^@/, '')).filter(Boolean);
+  return String(text || '').replace(/@(\w+)/g, (all, tag) => {
+    const exact = known.find(n => n.toLowerCase() === tag.toLowerCase());
+    if (exact) return `@${exact}`;
+    const close = known.map(n => [n, editDistance(n.toLowerCase(), tag.toLowerCase())]).sort((a, b) => a[1] - b[1])[0];
+    return close && close[1] <= 3 ? `@${close[0]}` : '';
+  }).replace(/\s{2,}/g, ' ').replace(/\s+([,.!?])/g, '$1').trim();
+}
+
+// Bienvenida: la IA escribe {usuario} donde quiere nombrar al recién llegado; el nombre lo inserta siempre el código
+function insertUsername(text, username) {
+  const clean = String(text || '').replace(/@\w+/g, '').replace(/\s{2,}/g, ' ').trim();
+  if (/\{usuario\}/i.test(clean)) return clean.replace(/\{usuario\}/gi, `@${username}`);
+  return `@${username} ${clean}`;
+}
+
+// "1 muerte" / "16 muertes", "1 bit" / "100 bits"
+function countDeaths(n) { return `${n} ${Number(n) === 1 ? 'muerte' : 'muertes'}`; }
+function countBits(n) { return `${n} ${Number(n) === 1 ? 'bit' : 'bits'}`; }
+
+// "logrando 16 muertes": las muertes son caídas del streamer, no un logro
+const ACHIEVED_DEATHS_RE = /\b(?:logr[\wáéíóú]*|consigu[\wáéíóú]*|alcanz[\wáéíóú]*|cosech[\wáéíóú]*|acumul[\wáéíóú]*|sum[\wáéíóú]*|anot[\wáéíóú]*|firm[\wáéíóú]*)\s+(?:un total de\s+|nada menos que\s+|hasta\s+)?\d+\s+(?:muertes?|ca[ií]das?)\b/i;
+function achievesDeaths(text) { return ACHIEVED_DEATHS_RE.test(String(text || '')); }
 
 // Resumen de reserva sin IA: datos reales (muertes, juego) y en positivo
 function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
@@ -391,5 +516,6 @@ module.exports = {
   vetAuto, styleProblem, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
+  unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
   mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

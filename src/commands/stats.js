@@ -18,25 +18,31 @@ function parseMuertesArgs(args) {
   return { type: 'game', game: rest.join(' ') };
 }
 
-// Total de muertes de un juego sumando sesiones. rows: [{ id, game, death_count }].
+// Total de muertes (o de otro contador con `field`, p. ej. 'boss_count') de un juego sumando sesiones. rows: [{ id, game, death_count }].
 // liveSession: { id, deaths } para usar el contador en directo en vez del último guardado.
-// !boss → suma 1; !boss -N → resta N (sin bajar de 0); un "-" mal escrito es formato incorrecto
+// !boss → muestra; +N suma, -N resta (mods), reset (mods), <juego> → total del juego
+// → { type: 'show' | 'add' | 'sub' | 'reset' | 'game' | 'bad_format', n?, game? }
 function parseBossArgs(args) {
   const rest = args.slice(1).map(a => String(a).trim()).filter(Boolean);
-  if (!rest.length || !rest[0].startsWith('-')) return { type: 'add' };
-  const m = rest.length === 1 && /^-(\d+)$/.exec(rest[0]);
-  const n = m ? parseInt(m[1], 10) : 0;
-  return n >= 1 && n <= MAX_DEATHS_ADD ? { type: 'sub', n } : { type: 'bad_format' };
+  if (!rest.length) return { type: 'show' };
+  const first = rest[0].toLowerCase();
+  if (first === 'reset' && rest.length === 1) return { type: 'reset' };
+  if (/^[+-]/.test(first) || /^\d+$/.test(first)) {
+    const m = rest.length === 1 && /^([+-])(\d+)$/.exec(first);
+    const n = m ? parseInt(m[2], 10) : 0;
+    return n >= 1 && n <= MAX_DEATHS_ADD ? { type: m[1] === '+' ? 'add' : 'sub', n } : { type: 'bad_format' };
+  }
+  return { type: 'game', game: rest.join(' ') };
 }
 
-// Boss de la sesión tras aplicar el comando; sin bajar de 0. Devuelve { wins, removed }
+// Jefes de la sesión tras aplicar add/sub; sin bajar de 0. Devuelve { wins, removed }
 function applyBossDelta(wins, cmd) {
-  if (cmd.type === 'add') return { wins: wins + 1, removed: 0 };
+  if (cmd.type === 'add') return { wins: wins + (cmd.n || 1), removed: 0 };
   const next = Math.max(0, wins - cmd.n);
   return { wins: next, removed: wins - next };
 }
 
-function sumGameDeaths(query, rows, liveSession = null) {
+function sumGameDeaths(query, rows, liveSession = null, field = 'death_count') {
   const counts = new Map();
   let total = 0;
   let streams = 0;
@@ -45,7 +51,7 @@ function sumGameDeaths(query, rows, liveSession = null) {
     if (!r.game || classifyGameMatch(query, r.game) !== 'match') continue;
     const live = liveSession && r.id === liveSession.id;
     if (live) seenLive = true;
-    const deaths = live ? liveSession.deaths : (r.death_count || 0);
+    const deaths = live ? liveSession.deaths : (r[field] || 0);
     if (deaths <= 0) continue;
     total += deaths;
     streams++;

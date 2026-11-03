@@ -14,7 +14,7 @@ Chatbot de Twitch con IA para el canal "parlusorum": responde preguntas, recuerd
 - **Reacción al chat**: detecta picos de palabras clave, spam de emotes y mayúsculas colectivas; en el primer caso crea un marker en el VOD y narra el momento.
 - **Trivia**: preguntas generadas por IA según el juego actual, con pistas, coincidencia difusa de respuestas, dificultad adaptativa y ranking. Si Groq falla, usa un banco estático.
 - **Alertas en tiempo real vía EventSub**: subs, bits, raids, follows, hype train, predicciones, encuestas y canjes, con mensajes generados por IA.
-- **Comandos de stream**: `!muertes`, `!boss`, `!score`, `!clip`, `!marker`, `!so`, `!brb`, `!silencio`, `!quemeperdi`, `!juego`, `!uptime`, etc. (lista completa en [docs/FUNCIONALIDADES.md](docs/FUNCIONALIDADES.md)).
+- **Comandos de stream**: `!muertes`, `!boss` (ver / `+N` / `-N` / `reset` / `<juego>`), `!score`, `!clip`, `!marker`, `!so`, `!brb`, `!silencio`, `!quemeperdi`, `!juego`, `!uptime`, etc. (lista completa en [docs/FUNCIONALIDADES.md](docs/FUNCIONALIDADES.md)).
 
 ## Tecnologías utilizadas
 

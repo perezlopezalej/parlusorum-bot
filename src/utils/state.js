@@ -145,7 +145,12 @@ function addBotMessage(msg) {
 }
 
 function getBotHistory() { return [...botMessageHistory]; }
-function resetBotHistory() { botMessageHistory = []; cohostTextsByKind.clear(); }
+function resetBotHistory() { botMessageHistory = []; cohostTextsByKind.clear(); usedStructures.clear(); }
+
+// Estructuras de frase (quality.structureKey) ya usadas por el cohost/timer en este stream
+const usedStructures = new Set();
+function markStructure(key) { if (key) usedStructures.add(key); }
+function getUsedStructures() { return new Set(usedStructures); }
 
 // Textos del cohost de este stream por tipo de momento ('boss', 'first_death', 'free'...): para que un jefe no se comente dos veces igual
 const MAX_TEXTS_PER_KIND = 12;
@@ -221,6 +226,12 @@ function getDeathCount() { return deathCount; }
 function incrementDeathCount() { deathCount++; return deathCount; }
 function resetDeathCount() { deathCount = 0; }
 function setDeathCount(n) { deathCount = Math.max(0, Math.floor(n) || 0); }
+
+// --- Contador de jefes de la sesión (se persiste igual que las muertes) ---
+let bossCount = 0;
+function getBossCount() { return bossCount; }
+function setBossCount(n) { bossCount = Math.max(0, Math.floor(n) || 0); return bossCount; }
+function resetBossCount() { bossCount = 0; }
 
 // --- Predicción activa ---
 let activePrediction = null;
@@ -368,6 +379,7 @@ module.exports = {
   setStreamIsLive, getStreamIsLive,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, incrementDeathCount, resetDeathCount, setDeathCount,
+  getBossCount, setBossCount, resetBossCount, markStructure, getUsedStructures,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getTriviaStats, registrarAcierto, registrarFallo, resetTriviaStats,
   bumpTriviaStreak, getTriviaTopCache, setTriviaTopCache, invalidateTriviaTopCache,

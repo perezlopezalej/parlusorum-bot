@@ -388,5 +388,160 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "phantom-blade-pais",
+    "input": "!dios_fua quien desarrollo el phantom blade 0? japoneses o chinos?",
+    "note": "Caso real 02-11: RAWG no da el país del estudio; no puede afirmar que es japonesa (es china). Admitirlo con humor o decir solo S-Game.",
+    "expect": {
+      "route": "question",
+      "tool": "buscar_juego",
+      "reply": true,
+      "matchNone": [
+        "(?<!\\bsi\\s)\\b(es|son)\\s+((una?\\s+)?(desarrolladora|estudio|compañía|empresa)\\s+)?(japones\\w*|chin[oa]s?)\\b",
+        "rawg",
+        "base de datos"
+      ]
+    }
+  },
+  {
+    "id": "mencion-que-juego",
+    "input": "dios fua que juego es?",
+    "note": "Caso real 02-11: debe decir el juego actual del stream, no 'no tengo idea' ni redirigir a !dios_fua.",
+    "expect": {
+      "route": "direct",
+      "reply": true,
+      "matchAny": [
+        "estamos con",
+        "toca",
+        "juego de hoy",
+        "no s[eé] qu[eé] juego"
+      ],
+      "matchNone": [
+        "no tengo (ni )?idea",
+        "!dios_fua"
+      ],
+      "notFromPool": [
+        "mention_game_redirect"
+      ]
+    }
+  },
+  {
+    "id": "mencion-opinion-muertes",
+    "input": "Dios fua cuantas crees que habrá?",
+    "note": "Caso real 02-11: opinión/predicción sobre las muertes; se responde con personalidad, sin redirigir a !dios_fua.",
+    "deaths": 1,
+    "expect": {
+      "route": "direct",
+      "reply": true,
+      "matchNone": [
+        "!dios_fua"
+      ],
+      "notFromPool": [
+        "mention_game_redirect"
+      ],
+      "maxChars": 200
+    }
+  },
+  {
+    "id": "mencion-1-muerte",
+    "input": "dios fua cuántas muertes llevamos?",
+    "note": "Singular: '1 muerte', no '1 muertes'.",
+    "deaths": 1,
+    "expect": {
+      "route": "direct",
+      "reply": true,
+      "matchAll": [
+        "\\b1 muerte\\b"
+      ],
+      "matchNone": [
+        "muertes"
+      ]
+    }
+  },
+  {
+    "id": "f-phantom-japonesa",
+    "filter": "cohost",
+    "input": "S-Game, una desarrolladora japonesa, sabe cómo hacer sufrir a Manu con cada espadazo.",
+    "note": "Caso real 02-11: país del estudio inventado (es china y RAWG no lo da).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-manu-lleva-caidas-repetida",
+    "filter": "cohost",
+    "deaths": 16,
+    "usedStructures": [
+      "lleva-caidas"
+    ],
+    "input": "Manu lleva 16 caídas y el FUA ya se está preparando para la próxima, ¡a ver si sube de nivel!",
+    "note": "Caso real 02-11: la fórmula 'Manu lleva X caídas y el FUA…' se repitió 6 veces; ya usada en este stream.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "g-detective-muerte",
+    "filter": "cohost",
+    "input": "El FUA es un detective de la muerte, no un delator.",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "g-nomadas-churros",
+    "filter": "cohost",
+    "input": "El FUA se prepara para un show de nómadas con salsa de tomate y churros.",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "g-olla-fuga",
+    "filter": "cohost",
+    "input": "Deja al chat con la olla a la fuga.",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "g-2003-tiempo",
+    "filter": "cohost",
+    "input": "2003, tío, parece que el tiempo está retrocediendo.",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "g-revientalos-panico",
+    "filter": "cohost",
+    "input": "Revientalos suena como un ataque de pánico.",
+    "note": "Generalización: frase mala real que NO está en el prompt del revisor de sentido (factcheck.js).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "g-control-esquiva",
+    "filter": "cohost",
+    "input": "Esa esquiva ha sido limpia, se nota que Manu ya conoce el patrón del jefe.",
+    "note": "Control: frase buena que debe pasar.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "g-control-tension",
+    "filter": "cohost",
+    "input": "Qué manera de aguantar la tensión, el chat ni respira.",
+    "note": "Control: frase buena que debe pasar.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

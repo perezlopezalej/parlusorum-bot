@@ -111,18 +111,17 @@ async function checkFirstMessage(client, channel, tags) {
       try {
         const gameInfo = await getCurrentGame().catch(() => null);
         const game = gameInfo?.game ? ` Estan jugando a "${gameInfo.game}".` : '';
-        const safeUsername = sanitizeForAI(username) || 'usuario';
         const response = await groqWithRetry({
           max_tokens: 60,
           messages: [
             {
               role: 'system',
-              content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Canal: ${channelConfig.vibe}. Emotes (máx 1-2): ${(channelConfig.channel_emotes || []).join(', ')}.${game} @${safeUsername} acaba de escribir su PRIMER mensaje en el canal. Dale la bienvenida de forma unica, calida y con personalidad.${game ? ' Menciona el juego de forma natural si encaja.' : ''} Sin presentarte. SIEMPRE en espanol. Max 1 frase corta.`
+              content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Canal: ${channelConfig.vibe}. Emotes (máx 1-2): ${(channelConfig.channel_emotes || []).join(', ')}.${game} Alguien acaba de escribir su PRIMER mensaje en el canal. Para nombrarle escribe exactamente {usuario} (el sistema pondrá el nombre); no escribas ningún nombre ni @. Dale la bienvenida de forma unica, calida y con personalidad.${game ? ' Menciona el juego de forma natural si encaja.' : ''} Sin presentarte. SIEMPRE en espanol. Max 1 frase corta.`
             },
-            { role: 'user', content: `Bienvenida para @${safeUsername}` }
+            { role: 'user', content: 'Bienvenida para el nuevo' }
           ]
         });
-        throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
+        throttleSay(client, channel, truncate(quality.insertUsername(quality.vetAuto(response.choices[0].message.content), username)));
       } catch {
         throttleSay(client, channel, pick(welcomeMessages).replace('{username}', username));
       }
@@ -275,7 +274,7 @@ async function announceSub(client, channel, kind, vars, userMessage) {
         { role: 'user', content: `${facts}${known ? ` ${known}` : ''}${safeMsg ? ` Mensaje del usuario: "${safeMsg}"` : ''}` }
       ]
     });
-    const text = truncate(quality.vetAuto(response.choices[0].message.content), SUB_AI_MAX_CHARS);
+    const text = truncate(quality.fixMentions(quality.vetAuto(response.choices[0].message.content), [clean.username, clean.gifter, clean.recipient].filter(n => n && n !== 'alguien')), SUB_AI_MAX_CHARS);
     throttleSay(client, channel, text || fixed, opts);
   } catch (err) {
     logger.error(`Error en sub IA: ${err.message}`);
@@ -318,10 +317,10 @@ function onGiftUpgrade(client, channel, username, gifter) {
 }
 
 function onBits(client, channel, username, bits) {
-  if (bits >= 500) narrate('sub', `${who(username)} donó ${Number(bits)} bits`);
-  if (bits >= 1000) throttleSay(client, channel, `💎 ¡WOW! ¡@${username} acaba de donar ${bits} bits! ¡INCREÍBLE! 🔥🔥🔥`);
-  else if (bits >= 100) throttleSay(client, channel, `💜 ¡@${username} ha donado ${bits} bits! ¡Muchas gracias! 🎉`);
-  else throttleSay(client, channel, `✨ ¡Gracias @${username} por los ${bits} bits! 💜`);
+  if (bits >= 500) narrate('sub', `${who(username)} donó ${quality.countBits(Number(bits))}`);
+  if (bits >= 1000) throttleSay(client, channel, `💎 ¡WOW! ¡@${username} acaba de donar ${quality.countBits(bits)}! ¡INCREÍBLE! 🔥🔥🔥`);
+  else if (bits >= 100) throttleSay(client, channel, `💜 ¡@${username} ha donado ${quality.countBits(bits)}! ¡Muchas gracias! 🎉`);
+  else throttleSay(client, channel, `✨ ¡Gracias @${username} por ${bits === 1 ? 'el' : 'los'} ${quality.countBits(bits)}! 💜`);
 }
 
 async function onRaid(client, channel, username, viewers) {
@@ -340,7 +339,7 @@ async function onRaid(client, channel, username, viewers) {
         { role: 'user', content: `@${username} ha hecho raid con ${viewers} viewers. ${context} Genera un mensaje de bienvenida personalizado y gracioso. Maximo 1-2 frases.` }
       ]
     });
-    const extra = quality.vetAuto(response.choices[0].message.content);
+    const extra = quality.fixMentions(quality.vetAuto(response.choices[0].message.content), [username]);
     if (extra && !isSilenced()) client.say(channel, truncate(extra));
   } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
 

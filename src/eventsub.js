@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { groqWithRetry, truncate, GROQ_MODEL_FAST } = require('./utils/groq-utils');
-const { restoreOpenSession, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
+const { restoreOpenSession, restoreSessionBosses, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
 const quality = require('./ai/quality');
 const { throttleSay } = require('./alerts/handler');
@@ -10,7 +10,7 @@ const {
   setStreamStartedAt, getStreamStartedAt,
   setStreamIsLive, getStreamIsLive, isSilenced,
   setSessionStarting, getSessionStarting, clearSessionStarting,
-  getDeathCount, setDeathCount,
+  getDeathCount, setDeathCount, setBossCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getCohostStats, resetCohostStats,
@@ -144,6 +144,8 @@ async function initStreamState() {
       const deaths = await restoreOpenSession(getStreamStartedAt());
       if (deaths) { setDeathCount(deaths); logger.info(`💀 Muertes recuperadas: ${deaths}`); }
       if (deaths !== null) {
+        const bosses = await restoreSessionBosses();
+        if (bosses) { setBossCount(bosses); logger.info(`👹 Jefes recuperados: ${bosses}`); }
         setStreamNarrative(await restoreSessionNarrative());
         logger.info(`📖 Narrativa recuperada: ${getStreamNarrative().length} eventos`);
       }

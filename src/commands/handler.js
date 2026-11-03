@@ -1,9 +1,9 @@
 const { canMakeRequest } = require('../utils/ratelimit');
-const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths, getSessionsDeathsByGame, getCurrentSessionId } = require('../utils/supabase');
+const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths, saveSessionBosses, getSessionsDeathsByGame, getSessionsBossesByGame, getCurrentSessionId } = require('../utils/supabase');
 const { loadUsers } = require('../utils/storage');
 const { MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
-const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
+const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
 const { handleShoutout, invalidateContextCache } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');
@@ -15,13 +15,11 @@ const channelConfig = require('../../config/channel.json');
 const allMsgs = require('../../config/messages.json');
 const loreMsgs = allMsgs.lore;
 const muertesMsgs = allMsgs.muertes;
+const bossMsgs = allMsgs.boss;
 const tiempoMsgs = allMsgs.tiempo;
 const logger = require('../utils/logger');
 
-function resetSessionCounters() { resetDeathCount(); sessionWins = 0; resetStreamMetrics(); resetTriviaStats(); }
-
-// --- Contador win/loss ---
-let sessionWins = 0;
+function resetSessionCounters() { resetDeathCount(); resetBossCount(); resetStreamMetrics(); resetTriviaStats(); }
 
 // --- Cooldowns ---
 const cooldowns = new Map();
@@ -56,9 +54,7 @@ async function handle(client, channel, tags, command, args, config) {
     case 'estadisticas': return await handleEstadisticas(client, channel);
     case 'muertes': return await handleMuertes(client, channel, args, isMod, username);
     case 'tiempo': return await handleTiempo(client, channel, username, userId, args[1]);
-    case 'boss':
-      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
-      return await handleBoss(client, channel, args);
+    case 'boss': return await handleBoss(client, channel, args, isMod, username);
     case 'score': return await handleScore(client, channel);
     case 'brb':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
@@ -190,26 +186,50 @@ async function handleEstadisticas(client, channel) {
   }
 }
 
-async function handleBoss(client, channel, args = []) {
+const bossPlural = n => `${n} ${n === 1 ? 'jefe' : 'jefes'}`;
+
+async function handleBoss(client, channel, args = [], isMod = false, username = '') {
   const cmd = parseBossArgs(args);
-  if (cmd.type === 'bad_format') { client.say(channel, truncate(`Uso: !boss (suma uno) | !boss -N (resta N, de 1 a ${MAX_DEATHS_ADD})`)); return; }
-  const { wins, removed } = applyBossDelta(sessionWins, cmd);
-  if (cmd.type === 'sub') {
-    if (removed === 0) { client.say(channel, '💀 No hay bosses que restar: el marcador está en 0'); return; }
-    sessionWins = wins;
-    incrementChannelStat('total_wins', -removed).catch(() => {});
-    client.say(channel, `💀 Marcador corregido: ${sessionWins} boss${sessionWins !== 1 ? 'es' : ''} este stream`);
+  if (['add', 'sub', 'reset'].includes(cmd.type) && !isMod) {
+    client.say(channel, truncate(bossMsgs.mods_only.replace('{username}', username)));
     return;
   }
-  sessionWins = wins;
-  incrementChannelStat('total_wins').catch(() => {});
-  addNarrativeEvent('boss', `Boss derrotado (#${sessionWins} de este stream)`);
-  client.say(channel, `¡Boss eliminado! 💀 ${sessionWins} boss${sessionWins !== 1 ? 'es' : ''} este stream`);
+  const current = getBossCount();
+  if (cmd.type === 'bad_format') { client.say(channel, truncate(bossMsgs.bad_format.replace('{max}', MAX_DEATHS_ADD))); return; }
+  if (cmd.type === 'show') { client.say(channel, truncate(bossMsgs.show.replace('{total}', bossPlural(current)))); return; }
+  if (cmd.type === 'game') {
+    const rows = await getSessionsBossesByGame();
+    const sid = getCurrentSessionId();
+    const res = sumGameDeaths(cmd.game, rows, sid != null ? { id: sid, deaths: current } : null, 'boss_count');
+    const game = sanitizeForAI(res.game) || cmd.game;
+    client.say(channel, truncate(res.total > 0
+      ? bossMsgs.total.replace('{game}', game).replace('{total}', bossPlural(res.total)).replace('{streams}', res.streams)
+      : bossMsgs.total_none.replace('{game}', game)));
+    return;
+  }
+  if (cmd.type === 'reset') {
+    resetBossCount(); saveSessionBosses(0);
+    if (current > 0) incrementChannelStat('total_wins', -current).catch(() => {});
+    client.say(channel, bossMsgs.reset);
+    return;
+  }
+  const { wins, removed } = applyBossDelta(current, cmd);
+  if (cmd.type === 'sub') {
+    if (removed === 0) { client.say(channel, bossMsgs.none_to_remove); return; }
+    setBossCount(wins); saveSessionBosses(wins);
+    incrementChannelStat('total_wins', -removed).catch(() => {});
+    client.say(channel, truncate(bossMsgs.corrected.replace('{total}', bossPlural(wins))));
+    return;
+  }
+  setBossCount(wins); saveSessionBosses(wins);
+  incrementChannelStat('total_wins', cmd.n).catch(() => {});
+  addNarrativeEvent('boss', cmd.n === 1 ? `Jefe derrotado (#${wins} de este stream)` : `${cmd.n} jefes más derrotados (${wins} en este stream)`, cmd.n);
+  client.say(channel, cmd.n === 1 ? `¡Boss eliminado! 💀 ${bossPlural(wins)} este stream` : truncate(bossMsgs.added.replace('{n}', cmd.n).replace('{total}', bossPlural(wins))));
 }
 
 async function handleScore(client, channel) {
   const stats = await getChannelStats().catch(() => null);
-  const session = `💀 Bosses: ${sessionWins} | Muertes: ${getDeathCount()}`;
+  const session = `💀 Bosses: ${getBossCount()} | Muertes: ${getDeathCount()}`;
   if (stats) {
     client.say(channel, `${session} | All-time: ${stats.total_wins} bosses`);
   } else {

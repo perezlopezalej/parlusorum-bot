@@ -1,7 +1,7 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
-const { getCurrentGame, getGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
+const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { buildRawgTemplate } = require('./rawg-template');
@@ -476,6 +476,8 @@ async function runCohost(client, channel, moment = null) {
   }
   const recentContext = moment ? getRecentHistory(5) : publicChatContext(5);
   if (!moment && !recentContext) return 'dropped';
+  // Alguien dice que está mal o de bajón: el cohost libre no bromea con eso (calla)
+  if (!moment && quality.hasPersonalDistress(recentContext)) { logger.info('Co-host libre: calla (alguien comenta que está mal)'); return 'dropped'; }
   if (!moment && isPrivateExchange(now)) { recordCohostAttempt(kind); recordCohostDiscard('privado'); return 'dropped'; }
 
   recordCohostAttempt(kind);
@@ -521,7 +523,7 @@ async function runCohost(client, channel, moment = null) {
       : '';
     const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
 
-    const validateCtx = { deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW };
+    const validateCtx = { deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures() };
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
     const reviewText = async text => {
       const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense: true });
@@ -596,6 +598,7 @@ async function runCohost(client, channel, moment = null) {
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     addCohostText(kindKey, reply);
+    markStructure(quality.structureKey(reply));
     markNamed(quality.namesIn(reply, chatHistory.slice(-60).map(m => m.username)));
     recordCohost();
     recordCohostSent(kind);
@@ -794,12 +797,12 @@ async function handleQueMePerdi(client, channel, tags) {
   const deaths = getDeathCount();
 
   if (!canMakeRequest() || !canUserMakeRequest(userId, getUserType(username, tags))) {
-    client.say(channel, truncate(msgs.fallback.replace('{minutes}', minutes).replace('{game}', game || 'directo').replace('{deaths}', deaths)));
+    client.say(channel, truncate(msgs.fallback.replace('{minutes}', minutes).replace('{game}', game || 'directo').replace('{deaths}', quality.countDeaths(deaths))));
     return;
   }
   try {
     const story = buildStoryBlock(narrative);
-    const bosses = narrative.filter(e => e.type === 'boss').length;
+    const bosses = getBossCount();
     const facts = `Minutos de stream: ${minutes}. Muertes del streamer (veces que ha caído): ${deaths}. Jefes derrotados: ${bosses}.`;
     let text = '';
     let feedback = '';
@@ -828,7 +831,7 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
   } catch (err) {
     logger.warn(`!quemeperdi: ${err.message}`);
     queMePerdiCooldowns.delete(userId);
-    client.say(channel, truncate(msgs.fallback.replace('{minutes}', minutes).replace('{game}', game || 'directo').replace('{deaths}', deaths)));
+    client.say(channel, truncate(msgs.fallback.replace('{minutes}', minutes).replace('{game}', game || 'directo').replace('{deaths}', quality.countDeaths(deaths))));
   }
 }
 
@@ -1004,7 +1007,8 @@ const BUSCAR_JUEGO_TOOL = {
 async function buscarJuegoLookup(nombre) {
   const clean = sanitizeForAI(nombre || '');
   if (!clean) return { text: 'SIN DATOS: no se indicó ningún juego.', info: null };
-  const info = await getGameInfo(clean.slice(0, 80), { detail: true }).catch(() => null);
+  const { info, error } = await lookupGameInfo(clean.slice(0, 80), { detail: true }).catch(() => ({ info: null, error: true }));
+  if (error) { logger.warn(`!dios_fua buscar_juego: RAWG no disponible para "${clean.slice(0, 80)}"`); return { info: null, unavailable: true, text: 'SIN DATOS: no se puede consultar ahora.' }; }
   const match = info ? classifyGameMatch(clean, info.name) : 'none';
   logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? `${info.name} (${match})` : 'sin datos'}`);
   if (match === 'none') return { info: null, text: `SIN DATOS: no hay información de "${clean}". Si es un videojuego no inventes nada y dilo con humor sin hablar de datos ni de fuentes; si no es un videojuego, responde con lo que sepas.` };
@@ -1081,6 +1085,7 @@ async function handleQuestion(client, channel, tags, args) {
     const toolCalls = response.choices[0]?.message?.tool_calls;
     let rawgData = '';
     let rawgInfo = null;
+    let rawgDown = false;
     if (toolCalls?.length) {
       messages.push(response.choices[0].message);
       for (const call of toolCalls.slice(0, 2)) {
@@ -1092,9 +1097,16 @@ async function handleQuestion(client, channel, tags, args) {
           const lookup = await buscarJuegoLookup(nombre);
           result = lookup.text;
           rawgInfo = rawgInfo || lookup.info;
+          if (lookup.unavailable) rawgDown = true;
           rawgData += `${result}\n`;
         }
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
+      }
+      // RAWG caído (no es "juego no encontrado"): se dice con humor, sin pedirle nada más a la IA
+      if (rawgDown && !rawgInfo) {
+        client.say(channel, truncate(`@${username} ${pickRandom(messagesConfig.dios_fua_rawg_down)}`));
+        questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
+        return;
       }
       response = await groqWithRetry({
         model: GROQ_MODEL_COMPOUND,
@@ -1112,13 +1124,20 @@ async function handleQuestion(client, channel, tags, args) {
     let discard = techLeak;
     let claim = '';
     if (!techLeak && gameTopic) ({ discard, claim } = await factcheck.evaluate(answer, rawgData, { source: 'rawg' }));
+    // País, nacionalidad, personas y cifras solo valen si están en los datos de RAWG (el verificador de IA a veces los deja pasar)
+    // Sin datos de buscar_juego (no encontrado), ni estudio ni editora ni nacionalidad: todo sería inventado
+    const noRawgData = !!toolCalls?.length && !/^Nombre: /m.test(rawgData);
+    const inventedAttr = !techLeak && (gameTopic || noRawgData)
+      ? (noRawgData ? quality.inventedCompany(answer, rawgData) : quality.unsupportedAttributes(answer, rawgData))
+      : '';
+    if (inventedAttr && !discard) { discard = true; claim = inventedAttr; }
     // Con datos reales de RAWG, un único reintento diciéndole qué frase no estaba respaldada
     if (discard && !techLeak && /^Nombre: /m.test(rawgData)) {
       const what = claim ? `Esto no estaba en los datos: "${claim}". No lo digas;` : 'Tu respuesta añadía datos que no están en la información del juego;';
-      messages.push({ role: 'user', content: `${what} cíñete a los datos (fecha, estudio, géneros, descripción) y a opiniones sin inventar mecánicas, armas, zonas ni tramas. Responde otra vez.` });
+      messages.push({ role: 'user', content: `${what} cíñete a los datos (fecha, estudio, géneros, descripción) y a opiniones sin inventar mecánicas, armas, zonas ni tramas. Si te preguntan algo que los datos no dicen (país o nacionalidad del estudio, personas, cifras, presupuestos), admítelo con humor ("de eso no tengo ni idea") sin hablar de datos ni de fuentes. Responde otra vez.` });
       const retry = await groqWithRetry({ model: GROQ_MODEL_COMPOUND, max_tokens: qMaxTokens, messages });
       const retryAnswer = retry.choices[0].message.content;
-      if (retryAnswer && !quality.leaksTech(retryAnswer) && !await factcheck.shouldDiscard(retryAnswer, rawgData, { source: 'rawg' })) { answer = retryAnswer; discard = false; }
+      if (retryAnswer && !quality.leaksTech(retryAnswer) && !quality.unsupportedAttributes(retryAnswer, rawgData) && !await factcheck.shouldDiscard(retryAnswer, rawgData, { source: 'rawg' })) { answer = retryAnswer; discard = false; }
     }
     // Sigue fallando pero RAWG sí tiene el juego: plantilla solo con datos de RAWG en vez de la frase de reserva
     if (discard && !techLeak && rawgInfo) {
@@ -1476,10 +1495,16 @@ async function checkPatternMatch(client, channel, tags, message) {
 
     if (isProvocation) {
       answer = await generateProvocationReply(username, question, maxChars);
+    } else if (quality.isCurrentGameQuestion(question)) {
+      // "¿Qué juego es?": el juego actual del stream, sin IA
+      const current = await getCurrentGame().catch(() => null);
+      answer = current?.game
+        ? pickRandom(messagesConfig.mention_current_game.some).replace('{game}', current.game)
+        : messagesConfig.mention_current_game.none;
     } else if (quality.isDeathQuestion(question)) {
       // Por las muertes: el contador real, sin IA
       const n = getDeathCount();
-      answer = n > 0 ? messagesConfig.mention_deaths.some.replace('{n}', n) : messagesConfig.mention_deaths.none;
+      answer = n === 0 ? messagesConfig.mention_deaths.none : n === 1 ? messagesConfig.mention_deaths.one : messagesConfig.mention_deaths.some.replace('{n}', n);
     } else if (quality.isGameQuestion(question)) {
       // Preguntas concretas del juego: a !dios_fua, que consulta RAWG
       answer = pickRandom(messagesConfig.mention_game_redirect);
@@ -1503,13 +1528,17 @@ async function checkPatternMatch(client, channel, tags, message) {
       const emoteNote = allowEmote ? ' Como mucho 1 emote, solo si encaja.' : ' NO uses emotes en este mensaje.';
 
       let feedback = '';
+      const currentGame = await getCurrentGame().catch(() => null);
+      const gameNote = currentGame?.game ? ` El juego que se está jugando ahora en el stream es "${currentGame.game}"; si preguntan cuál es, dilo.` : '';
+      const deathsNow = getDeathCount();
+      const deathsNote = deathsNow === 0 ? ' Muertes anotadas hoy: ninguna.' : ` Muertes anotadas hoy del streamer: ${deathsNow}.`;
       for (let attempt = 0; attempt < 2 && !answer; attempt++) {
         const response = await groqWithRetry({
           model: GROQ_MODEL,
           max_tokens: modeConfig.max_tokens ?? 120,
           temperature: GENERAL_TEMPERATURE,
           messages: [
-            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. No des datos de videojuegos ni consejos: solo si te los piden, sugiere usar !dios_fua. Responde a lo que dice el usuario y no saques temas que no ha mencionado. ${STYLE_RULES} Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. Los datos concretos de videojuegos (fecha, desarrolladora, armas, mecánicas, jefes) y los consejos no los des: sugiere !dios_fua. Pero las opiniones y predicciones sobre el stream (cuántas muertes habrá, si Manu ganará, cómo irá la partida) SÍ las respondes tú, con una postura o una cifra graciosa y tu personalidad, sin redirigir.${gameNote}${deathsNote} Responde a lo que dice el usuario y no saques temas que no ha mencionado. ${STYLE_RULES} Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
             ...userConv,
             { role: 'user', content: `${username}: ${question}` }
           ]
@@ -1522,6 +1551,8 @@ async function checkPatternMatch(client, channel, tags, message) {
         // Solo se vigila lo que habla de videojuegos; "resistencia" o "zona" en una pregunta de cultura general no cuentan
         const gameTalk = quality.talksAboutGames(`${question} ${raw}`, mentionGame?.game);
         if (gameTalk && quality.mentionsMechanics(raw)) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
+        const invented = gameTalk ? quality.unsupportedAttributes(raw, `Juego: ${mentionGame?.game || ''}`) : '';
+        if (invented) { feedback = `dices "${invented}" y no lo sabes (país, personas, cifras); no lo afirmes`; continue; }
         // Una sola llamada: datos del juego (solo si habla de videojuegos) y sentido/redacción
         const review = await factcheck.evaluate(raw, `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`, { game: mentionGame?.game, sense: true, checkData: gameTalk });
         if (review.discard) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
@@ -1578,7 +1609,8 @@ async function generateProvocationReply(username, question, maxChars) {
     }, 1, { maxDelayMs: PROVOCATION_MAX_RETRY_DELAY_MS });
     const choice = response.choices[0];
     const text = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
-    if (quality.validateMention(text).ok && text.length <= maxChars) return text;
+    // Revisión de sentido (sin datos de juego): si no se entiende, va la de reserva
+    if (quality.validateMention(text).ok && text.length <= maxChars && !(await factcheck.evaluate(text, '', { sense: true, checkData: false })).nonsense) return text;
   } catch (err) {
     logger.warn(`Réplica a provocación: ${err.message}`);
   }

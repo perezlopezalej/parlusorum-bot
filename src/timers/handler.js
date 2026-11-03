@@ -1,9 +1,11 @@
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
-const { isSilenced, getDeathCount } = require('../utils/state');
+const { isSilenced, getDeathCount, getStreamStartedAt, markStructure, getUsedStructures } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
+
+const MIN_UPTIME_MS = 5 * 60 * 1000;
 const { withOrigin } = require('../utils/chatlog');
 const { getBotPersonality } = require('../ai/handler');
 const { translateGenres } = require('../utils/genres');
@@ -82,7 +84,9 @@ function start(client, config) {
     if (!isLiveViaEventSub() || isSilenced()) return;
 
     const uptime = getStreamUptime();
-    if (!uptime) return;
+    const startedAt = getStreamStartedAt();
+    // Sin tiempo real de directo (p. ej. justo tras un despliegue) no hay nada que contar
+    if (!uptime || !startedAt || Date.now() - startedAt < MIN_UPTIME_MS) return;
 
     enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`)));
   }), 40 * 60 * 1000);
@@ -130,7 +134,7 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
           ]
         });
         const out = truncate((response.choices[0].message.content || '').trim());
-        const check = quality.validateTimerIA(out, { deathCount, recent: recentTimerIA, currentGame: game, channelGames: channelConfig.games_played || [] });
+        const check = quality.validateTimerIA(out, { deathCount, recent: recentTimerIA, currentGame: game, channelGames: channelConfig.games_played || [], usedStructures: getUsedStructures() });
         if (!check.ok) { feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
         const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: true });
         if (review.discard) {
@@ -142,6 +146,7 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
       }
       if (msg) {
         lastTimerTopic = topic.id;
+        markStructure(quality.structureKey(msg));
         recentTimerIA.push(msg);
         if (recentTimerIA.length > MAX_RECENT_TIMER_IA) recentTimerIA.shift();
         enqueueTimerMessage(withOrigin('timer_ia', () => client.say(`#${process.env.CHANNEL}`, msg)));
