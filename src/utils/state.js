@@ -144,6 +144,11 @@ function addBotMessage(msg) {
   if (botMessageHistory.length > MAX_BOT_HISTORY) botMessageHistory.shift();
 }
 
+// ¿Llevaron "Lusorums" (quality.limitLusorums) los últimos 3 mensajes enviados por el bot, de cualquier tipo?
+const lusorumsHistory = [];
+function noteLusorums(had) { lusorumsHistory.push(!!had); if (lusorumsHistory.length > 3) lusorumsHistory.shift(); }
+function getLusorumsHistory() { return [...lusorumsHistory]; }
+
 function getBotHistory() { return [...botMessageHistory]; }
 function resetBotHistory() { botMessageHistory = []; cohostTextsByKind.clear(); usedStructures.clear(); }
 
@@ -459,7 +464,7 @@ module.exports = {
   setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt,
   addNarrativeEvent, onNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
   recordCohost, getLastCohostTime, getCohostTimes, claimHookPause,
-  addBotMessage, getBotHistory, resetBotHistory, addCohostText, getCohostTexts, markNamed, getNamedUsers, resetNamedUsers,
+  addBotMessage, noteLusorums, getLusorumsHistory, getBotHistory, resetBotHistory, addCohostText, getCohostTexts, markNamed, getNamedUsers, resetNamedUsers,
   getLastCohostContextHash, setLastCohostContextHash,
   tickReinforce, resetReinforceCounter,
   setGameContextFailed, getGameContextFailed,

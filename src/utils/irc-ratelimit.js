@@ -1,5 +1,7 @@
 const logger = require('./logger');
 const chatlog = require('./chatlog');
+const state = require('./state');
+const { limitFillers, limitLusorums } = require('../ai/quality');
 
 const BOT_NAME = process.env.BOT_USERNAME || 'bot';
 
@@ -37,7 +39,7 @@ function _waitMs(now) {
 
 // Envía el primer mensaje de la cola (asume que _waitMs() ya dio 0)
 async function _sendNext() {
-  const { sayFn, channel, msg, client, meta, expiresAt } = _queue.shift();
+  const { sayFn, channel, msg: rawMsg, client, meta, expiresAt } = _queue.shift();
   if (expiresAt && Date.now() > expiresAt) {
     logger.info(`IRC: mensaje caducado en cola, descartado: "${String(msg).slice(0, 60)}"`);
     return;
@@ -46,6 +48,9 @@ async function _sendNext() {
     logger.warn('IRC: mensaje descartado — cliente no conectado');
     return;
   }
+  const lusorums = limitLusorums(limitFillers(rawMsg), state.getLusorumsHistory());
+  const msg = lusorums.text;
+  state.noteLusorums(lusorums.had);
   _window.push(Date.now());
   try {
     await sayFn(channel, msg);

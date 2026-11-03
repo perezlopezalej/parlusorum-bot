@@ -509,7 +509,44 @@ function dropTrailingFragment(text) {
   return end > 0 ? t.slice(0, end).trim() : '';
 }
 
+// Muletillas de trato ("tío", "tía", "colega", "bro", "chaval") usadas como apelativo: se quitan siempre, con su
+// coma, sin descartar el mensaje. Como sustantivo ("ese tío", "mi colega", "menudo tío") se respetan.
+const FILLER_RE = /(,\s*)?(?<![\p{L}\p{N}_@])(?:t[ií][oa]|colega|bro|chaval)(?![\p{L}\p{N}_])(\s*,)?/giu;
+const NOUN_CONTEXT_RE = /(?:^|[\s¡¿])(?:el|la|un|una|ese|esa|este|esta|aquel|mi|tu|su|otro|otra|del|al|buen[oa]?|gran|menud[oa]|vaya|qu[eé]|pobre|ning[uú]n|cada|como|ni)\s+$/i;
+
+function stripFillers(text, re = FILLER_RE) {
+  return String(text)
+    .replace(re, (m, before, after, off, full) => {
+      if (before && after) return ',';
+      if (before) return '';
+      if (NOUN_CONTEXT_RE.test(full.slice(0, off))) return m;
+      if (off === 0 || /[.!?¡¿]\s*$/.test(full.slice(0, off))) return '\0';
+      return after ? ',' : ' ';
+    })
+    .replace(/\0\s*(\p{L})/gu, (_, c) => c.toUpperCase())
+    .replace(/\0/g, '')
+    .replace(/,\s*([.!?…])/g, '$1')
+    .replace(/\s+([,.;:!?…])(?![\p{L}\p{N}_])/gu, '$1')
+    .replace(/¡\s+/g, '¡')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+}
+
+const limitFillers = text => (typeof text === 'string' ? stripFillers(text) : text);
+
+// "Lusorums" (la comunidad): solo al chat en general, en 1 de cada 4 mensajes del bot (como el emote, por
+// ventana de los últimos 3) y nunca en un mensaje dirigido a una persona (empieza por @usuario).
+const LUSORUMS_RE = /(,\s*)?(?<![\p{L}\p{N}_@])lusorums?(?![\p{L}\p{N}_])(\s*,)?/giu;
+const hasLusorums = text => { LUSORUMS_RE.lastIndex = 0; return LUSORUMS_RE.test(String(text || '')); };
+
+function limitLusorums(text, recentFlags = []) {
+  if (typeof text !== 'string' || !hasLusorums(text)) return { text, had: false };
+  if (!/^\s*@/.test(text) && !recentFlags.slice(-3).some(Boolean)) return { text, had: true };
+  return { text: stripFillers(text, LUSORUMS_RE), had: false };
+}
+
 module.exports = {
+  stripFillers, limitFillers, hasLusorums, limitLusorums,
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
