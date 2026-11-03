@@ -58,6 +58,11 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 
 - **Dieta de prompts (cupo Groq)**: perfiles `full`/`lean`/`micro` (`src/ai/persona.js`). Menciones y cohost usan `lean`, provocaciones `micro`, `!dios_fua` sigue en `full` (sin repetir LORE_RULE/SPAIN_RULE). `lore.json → lean`, memoria reducida a 2 streams y `getBotPersonality` sin duplicar lore. Estimado por llamada (tokens de entrada): mención ~3,5k → ~1,1k; provocación ~3,3k → ~0,8k; cohost ~3,8k → ~1,5k; `!dios_fua` ~3,6k → ~3,5k; timers/alertas/EventSub ~1,7k → ~0,9k.
 - **429 por cupo → siguiente modelo**: `runWithFallback` salta de modelo sin esperar, bloquea el agotado (1 min por minuto, 10 min por diario, tope 30 min) y lo deja como último recurso; limpia `<think>` de modelos como qwen. Cadena en Render: gpt-oss-120b, gpt-oss-20b, qwen/qwen3.8-27b (comprobados con `GET /openai/v1/models`).
+- **Investigación de modelos gratuitos (3-11)**: informe en `logs/investigacion-ia.md`; respuestas lado a lado en `logs/comparativa-modelos.md`. Nuevo `scripts/compare-models.js`: pasa los casos de `eval-cases.json` y 5 cohost con chat real por los handlers reales, con cada candidato como generador (Groq 120b/20b/qwen, Gemini Flash/Flash Lite/Gemma) o como revisor (`--filters`). Gasta cupo: no va en `npm test`. Conclusiones:
+  - Todo en Groq no cabe en 2 streams cargados al día (~640K de 600K tokens) y el límite real es el de 8K tokens por minuto por modelo.
+  - Reparto propuesto, que sí cabe: menciones y `!dios_fua` en gpt-oss-120b, cohost/timer/hooks/alertas/fin de stream en Gemini 3.5 Flash Lite y revisiones en gpt-oss-20b.
+  - Gemma 4 (20-200 s, 50 % de 5xx) y Gemini Flash (503 sostenido, 20 peticiones al día) no sirven en tiempo real. La búsqueda de Google no está en el nivel gratuito.
+  - Groq no aplicó caché de prompt. Los cuatro revisores aciertan casi lo mismo (23-25/30). No se ha cambiado el código del bot.
 - **Tokens por modelo en el fin de stream**: `recordGroqTokens` suma `usage`; el log muestra tokens del stream y del día UTC con % de `GROQ_DAILY_TOKEN_LIMIT`. Tests en `test/groq-cupo.test.js`. Eval (3 casos: hell-is-us, cielo-azul, provocacion) 3/3, informe en `logs/eval-persona-lean.txt`.
 
 ## Pendiente de probar en directo
@@ -86,12 +91,21 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea.
 - Muertes por juego.
 
 - Vigilar en el primer stream el tono con `lean` (humor y FUA) y los tokens por modelo del log; si el humor baja, subir `LEAN_EXAMPLES` a 4–5 en `persona.js`.
-- Probar qwen/qwen3.8-27b como reserva real (formato de respuesta, <think>, tool calls de `buscar_juego`); no se ha llamado todavía.
+- Probar qwen/qwen3.8-27b como reserva real en directo. En la comparación del 3-11 respondió sin `<think>` (no razona por defecto), llamó a `buscar_juego` y dio 0 errores; inventó "FUA = Fuerza Universal Aplicada" una vez.
+- Repetir `node scripts/compare-models.js --models gemini-flash` (cupo de 20 al día, se reinicia a las 09:00) y los casos de RAWG (`--only hell-is-us,phantom-blade-pais,juego-inexistente`) cuando Gemini Flash y RAWG respondan: el 3-11 ambos estaban caídos (503 y 522).
+- Mirar en el resumen de fin de stream de Render los intentos y descartes reales del cohost y los 429 por modelo, para confirmar los multiplicadores estimados en `logs/investigacion-ia.md` (sección 2.2).
 - Poner `GROQ_MODEL_FALLBACKS` también en el panel de Render si el valor del `render.yaml` no se sincroniza (las variables ya existentes no se pisan).
 
 ## Ideas futuras
 
 - Que el bot oiga y vea el directo.
 - Aprender de las reacciones del chat: fases F1-F5 de `logs/plan-vida-aprendizaje.md` (carácter, seguir el juego, chistes internos y `regulars`, ejemplos aprendidos con `!estilo`, intervalo adaptable). Chistes aprobados para el borrador: profecía que siempre falla, Pao con "¡Joooosuaaa!", Monster y caramelos de gangar79, su "back-trakin" y rivalidad cariñosa (pendiente de que gangar79 acepte). Descartados: "el retraso de Manu" y expresiones con etnias.
+- **Router de IA multi-proveedor** (`logs/investigacion-ia.md`, sección 8):
+  - Groq y Gemini por la capa compatible con OpenAI, con cadenas de modelos por tipo de llamada configurables por entorno.
+  - Bloqueo también ante 500/503 y timeouts, y contadores propios de peticiones y tokens por modelo (TPM de Groq, RPD de Gemini que se reinicia a las 09:00).
+  - Revisor en otro proveedor que el generador.
+  - Seudonimizar nicks en los prompts que vayan a Gemini.
+- La regla de `quality.js` descarta la frase buena `g-control-esquiva` ("…ya conoce el patrón del jefe") antes de la IA: revisar si "patrón" debe contar como mecánica.
+- `timer_ia` no guarda el modelo en `chat_log` (`enqueueTimerMessage` abre un contexto de origen nuevo al enviar).
 - Detector de bots usando la lista de conectados.
 - Tiempo en el canal por usuario.
