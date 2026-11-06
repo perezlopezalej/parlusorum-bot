@@ -15,8 +15,8 @@ const REAL = {
   cohostTorre: 'La torre sigue dándole reto, pero con un poco de atención al detalle todo se puede sortear.',
   cohostMuerte: 'Muerte #1 del streamer a 11 minutos, parece que el combo de enemigos está más agresivo de lo esperado.',
   timerCombo: 'Curioso que el combo espada‑disparo tenga recarga tan corta, perfecto para lanzar FUAs sin pausa.',
-  timerRawg: 'Phantom Blade Zero se cree el rey del hack‑and‑slash, pero a veces parece más un tutorial de cómo tropezar con los enemigos ‒ ¡FUA y a seguir cortando!',
-  timerNota: 'Phantom Blade Zero parece que se quedó atrapado en modo “beta eternamente”, pero con cada golpe te sientes como dios fua en su trono de espadas. 3.33/5 en RAWG, ¡así que a darle FUA a esos jefes!',
+  timerFicha: 'Phantom Blade Zero se cree el rey del hack‑and‑slash, pero a veces parece más un tutorial de cómo tropezar con los enemigos ‒ ¡FUA y a seguir cortando!',
+  timerNota: 'Phantom Blade Zero parece que se quedó atrapado en modo “beta eternamente”, pero con cada golpe te sientes como dios fua en su trono de espadas. 3.33/5 en la ficha, ¡así que a darle FUA a esos jefes!',
   timerCorto: 'Phantom Blade Zero se cree el rey del hack‑n‑slash y termina siendo un “cortito de nivel medio” 3.33/5… ¡pero al menos nos da buen rollo para lanzar el FUA!',
   timerOk: '¡Otra hora de directo y el FUA sigue sin cansarse, chat!',
   hookOk: 'Cuantas muertes creeis que habra hoy? 💀',
@@ -41,14 +41,14 @@ describe('mecánicas y desprecio del juego en mensajes automáticos', () => {
     assert.equal(q.validateHook(REAL.hookJefe, { deathCount: 15 }).ok, false);
     assert.equal(q.validateHook(REAL.hookOk, { deathCount: 3 }).ok, true);
   });
-  test('timer IA: combos, nota de RAWG y desprecio se rechazan', () => {
-    for (const k of ['timerCombo', 'timerRawg', 'timerNota', 'timerCorto']) {
+  test('timer IA: combos, nota del juego y desprecio se rechazan', () => {
+    for (const k of ['timerCombo', 'timerFicha', 'timerNota', 'timerCorto']) {
       assert.equal(q.validateTimerIA(REAL[k], { deathCount: 12 }).ok, false, k);
     }
     assert.equal(q.validateTimerIA(REAL.timerOk, { deathCount: 0 }).ok, true);
   });
   test('timer IA: cita de la nota y desprecio dan motivos distintos', () => {
-    assert.match(q.validateTimerIA('Un juego con 3.33/5, ojo al dato, FUA.', {}).reason, /RAWG/);
+    assert.match(q.validateTimerIA('Un juego con 3.33/5, ojo al dato, FUA.', {}).reason, /nota o la fuente/);
     assert.match(q.validateTimerIA('Qué juego tan aburrido, pero el FUA manda.', {}).reason, /desprecia/);
   });
   test('timer IA no repite ideas del stream', () => {
@@ -85,8 +85,8 @@ describe('comprobación SÍ/NO', () => {
     assert.equal(parseVerdict('Quizá'), null);
     assert.equal(parseVerdict(undefined), null);
   });
-  test('prompt de RAWG y de stream', () => {
-    assert.match(buildCheckPrompt('x', 'Género: acción', 'rawg'), /resultado de la consulta/);
+  test('prompt de juego y de stream', () => {
+    assert.match(buildCheckPrompt('x', 'Género: acción', 'juego'), /resultado de la consulta/);
     assert.match(buildCheckPrompt('x', '', 'stream'), /\(ninguno\)/);
   });
 });

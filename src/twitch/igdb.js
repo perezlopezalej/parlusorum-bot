@@ -133,7 +133,7 @@ async function searchGame(name, { detail = false } = {}) {
       if (level === LEVEL.match) break;
     }
   }
-  // Un candidato sin relación con lo buscado cuenta como no encontrado (y se prueba RAWG)
+  // Un candidato sin relación con lo buscado cuenta como no encontrado
   if (!best || level === 0) {
     if (best) logger.info(`IGDB: "${query}" sin coincidencia (mejor candidato: ${best.name})`);
     return null;

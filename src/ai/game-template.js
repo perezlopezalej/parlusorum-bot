@@ -1,10 +1,10 @@
-// Respuesta de reserva de !dios_fua cuando RAWG tiene datos del juego pero la IA no logra ceñirse a ellos:
-// solo nombre, género, estudio y año de RAWG, más una frase de personalidad fija.
+// Respuesta de reserva de !dios_fua cuando IGDB tiene datos del juego pero la IA no logra ceñirse a ellos:
+// solo nombre, género, estudio y año de IGDB, más una frase de personalidad fija.
 
 const { translateGenres } = require('../utils/genres');
 
-// info: { name, genres, developers, released } de getGameInfo; quips: frases de config/messages.json (dios_fua_rawg_quips)
-function buildRawgTemplate(info, quips = [], pick = arr => arr[Math.floor(Math.random() * arr.length)]) {
+// info: { name, genres, developers, released } de getGameInfo; quips: frases de config/messages.json (dios_fua_game_quips)
+function buildGameTemplate(info, quips = [], pick = arr => arr[Math.floor(Math.random() * arr.length)]) {
   if (!info?.name) return '';
   const genres = translateGenres(info.genres);
   const year = info.released ? String(info.released).slice(0, 4) : '';
@@ -17,4 +17,4 @@ function buildRawgTemplate(info, quips = [], pick = arr => arr[Math.floor(Math.r
   return `${facts}. ${quip}`.trim();
 }
 
-module.exports = { buildRawgTemplate };
+module.exports = { buildGameTemplate };

@@ -23,7 +23,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 npm start | npm run dev      # producción | --watch
 npm test                     # node --test sobre test/**/*.test.js
 npm run check:eventsub       # lista suscripciones EventSub y marca callbacks obsoletos
-npm run eval                 # batería con la IA REAL (gasta Groq/IGDB/RAWG; no va en npm test ni en la CI)
+npm run eval                 # batería con la IA REAL (gasta Groq/IGDB; no va en npm test ni en la CI)
 npm run backup | chatlog | bot-token
 ```
 
@@ -41,7 +41,7 @@ npm run backup | chatlog | bot-token
 | EventSub | `src/eventsub.js` | Webhook HMAC, App Access Token, suscripciones online/offline/follow (+ hype train/predicciones con token del broadcaster) |
 | Auth | `src/auth.js` | OAuth del broadcaster (`/auth/broadcaster` → `/auth/callback`); scopes en `BROADCASTER_SCOPES` |
 | Twitch API | `src/twitch/api.js` | Helix, refresh de tokens (broadcaster y bot) |
-| Datos de juegos | `src/twitch/igdb.js`, `app-token.js` | IGDB primero (app token de Twitch compartido con EventSub, límite 4 req/s, `summary` nunca `storyline`, país de la desarrolladora si consta), RAWG de reserva; `lookupGameInfo` devuelve `error` solo si ninguna fuente contestó. `!juego` cita «Datos: IGDB.com» (texto sin confirmar en los términos de IGDB) |
+| Datos de juegos | `src/twitch/igdb.js`, `app-token.js` | IGDB única fuente (app token de Twitch compartido con EventSub, límite 4 req/s, `summary` nunca `storyline`, país de la desarrolladora si consta); `lookupGameInfo` devuelve `error` solo si IGDB no contestó (5xx, timeout). `!juego` cita «Datos: IGDB.com» (texto sin confirmar en los términos de IGDB) |
 | Memory / Lore | `src/memory/`, `src/lore/` | Resúmenes entre streams; lore manual (`config/lore.json`) + aprendido, `!lore` (mods) |
 | Moderación | `src/moderation/bot-detector.js` | Bots vía twitchbots.info |
 | Utils | `src/utils/` | `state`, `storage`, `supabase`, `chatlog`, `ratelimit`, `irc-ratelimit`, `filter`, `groq-utils`, `ai-router`, `ai-gemini`, `ai-pseudonym`, `narrative`, `game-match`, `metrics`, `logger` |
@@ -72,7 +72,7 @@ Comandos retirados (responden "ese comando ya no existe"): `!moneda`, `!titulo`,
 
 Obligatorias (validadas en `index.js`): `BOT_USERNAME`, `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `CHANNEL`, `GROQ_API_KEY`, `BROADCASTER_TOKEN`, `EVENTSUB_SECRET` (mín. 10 caracteres).
 
-Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOKEN`, `BOT_REFRESH_TOKEN` (se persisten en Supabase), `PUBLIC_URL` (prevalece sobre `RENDER_EXTERNAL_URL` para callback EventSub), `SUPABASE_URL`/`SUPABASE_KEY` (sin ellas, `NPOINT_BIN_ID` como fallback), `PREFIX`, `PORT`, `RAWG_API_KEY`, `GROQ_MODEL`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPOUND`, `GROQ_MODEL_FALLBACKS`, `AI_MAX_RPM` (+ `_USER`, `_MOD`, `_CREATOR`, `_AUX` para el factcheck), `AI_TIMER_INTERVAL_MS`, `COHOST_*` (`FREE_INTERVAL_MS`, `EVENT_TTL_MS`, `FREE_MAX_PER_HOUR`, `MAX_PER_HOUR`, `NAME_WINDOW_MS`), `PROVOCATION_WINDOW_MS`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `AI_CHAIN_<TIPO>`, `AI_GEMINI_RPD_SOFT` (450), `AI_GROQ_RPM`/`AI_GROQ_TPM`, `AI_*_TIMEOUT_MS`, `AI_BLOCK_ERROR_MS`, `AI_PSEUDONYM_EXCLUDE`, `MENTION_MAX_PER_USER` (3) y `MENTION_WINDOW_MS` (300000; tope de respuestas a menciones por usuario), `QUESTION_COOLDOWN_MS`, `HOOK_INTERVAL_MS`, `HOOK_SILENCE_MS`, `TRIVIA_DURATION_MS`, `LURKER_THRESHOLD_MS`.
+Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOKEN`, `BOT_REFRESH_TOKEN` (se persisten en Supabase), `PUBLIC_URL` (prevalece sobre `RENDER_EXTERNAL_URL` para callback EventSub), `SUPABASE_URL`/`SUPABASE_KEY` (sin ellas, `NPOINT_BIN_ID` como fallback), `PREFIX`, `PORT`, `GROQ_MODEL`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPOUND`, `GROQ_MODEL_FALLBACKS`, `AI_MAX_RPM` (+ `_USER`, `_MOD`, `_CREATOR`, `_AUX` para el factcheck), `AI_TIMER_INTERVAL_MS`, `COHOST_*` (`FREE_INTERVAL_MS`, `EVENT_TTL_MS`, `FREE_MAX_PER_HOUR`, `MAX_PER_HOUR`, `NAME_WINDOW_MS`), `PROVOCATION_WINDOW_MS`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `AI_CHAIN_<TIPO>`, `AI_GEMINI_RPD_SOFT` (450), `AI_GROQ_RPM`/`AI_GROQ_TPM`, `AI_*_TIMEOUT_MS`, `AI_BLOCK_ERROR_MS`, `AI_PSEUDONYM_EXCLUDE`, `MENTION_MAX_PER_USER` (3) y `MENTION_WINDOW_MS` (300000; tope de respuestas a menciones por usuario), `QUESTION_COOLDOWN_MS`, `HOOK_INTERVAL_MS`, `HOOK_SILENCE_MS`, `TRIVIA_DURATION_MS`, `LURKER_THRESHOLD_MS`.
 
 - `GROQ_MODEL_FALLBACKS`: modelos de reserva (coma, por orden de prioridad) si el pedido da 404/decommissioned **o 429 por cupo agotado** (por minuto o diario). Cada modelo tiene su propio cupo en Groq; en Render: `openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b`. Un 429 no espera: salta al siguiente y bloquea el modelo agotado unos minutos (`groq-utils.js`); solo el último de la cadena reintenta con espera. `GROQ_DAILY_TOKEN_LIMIT` (200000) solo sirve para el % del resumen. Las peticiones servidas por uno de reserva se cuentan en `state.js` y salen en el resumen de fin de stream del log (`bot.log`, nunca el chat).
 

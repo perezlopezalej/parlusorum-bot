@@ -290,12 +290,11 @@ async function createClip() {
   }
 }
 
-// --- Info del juego: IGDB primero, RAWG de reserva ---
+// --- Info del juego (IGDB) ---
 // 24h: los datos (géneros, fecha, estudio) son estables pero pueden actualizarse ocasionalmente
 const GAME_INFO_TTL = 24 * 60 * 60 * 1000;
 // La ficha del juego actual del stream dura más: así las fuentes caídas no dejan sin datos al juego que se está jugando
 const CURRENT_GAME_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
-const RAWG_TIMEOUT_MS = 8000;
 const gameInfoCache = new Map(); // valores: { data, ts, ttl }
 
 // Purga entradas expiradas cada 6h para evitar memory leak de juegos que ya no se streamean
@@ -307,50 +306,11 @@ const gameCacheCleanupInterval = setInterval(() => {
 }, 6 * 60 * 60 * 1000);
 gameCacheCleanupInterval.unref();
 
-// RAWG (reserva). → info | null (no encontrado); lanza si falla (5xx, timeout, respuesta ilegible)
-async function searchRawg(gameName, detail) {
-  const apiKey = process.env.RAWG_API_KEY;
-  try {
-    const query = encodeURIComponent(gameName);
-    const res = await fetch(
-      `https://api.rawg.io/api/games?key=${apiKey}&search=${query}&search_precise=true&page_size=1`,
-      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(RAWG_TIMEOUT_MS) }
-    );
-    if (!res.ok) throw new Error(`RAWG HTTP ${res.status}`);
-    const data = await res.json();
-    let game = data.results?.[0];
-    if (!game) return null;
-
-    if (detail && game.id) {
-      const detRes = await fetch(
-        `https://api.rawg.io/api/games/${game.id}?key=${apiKey}`,
-        { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(RAWG_TIMEOUT_MS) }
-      );
-      if (detRes.ok) game = { ...game, ...(await detRes.json()) };
-    }
-
-    return {
-      name: game.name,
-      description: game.description_raw?.slice(0, detail ? 600 : 300) || null,
-      genres: game.genres?.map(g => g.name).join(', ') || null,
-      released: game.released || null,
-      rating: game.rating || null,
-      developers: game.developers?.map(d => d.name).join(', ') || null,
-      publishers: null,
-      country: null,
-      source: 'rawg',
-    };
-  } catch (e) {
-    throw new Error(String(e.message).replace(apiKey, '[REDACTED]'));
-  }
-}
-
 // detail=true recorta la descripción a 600 en vez de 300 (solo !dios_fua y la trivia lo usan).
-// { info, error }: error=true solo si ninguna fuente pudo responder (5xx, timeout, respuesta ilegible);
-// "no encontrado" es info null con error false: basta con que una fuente conteste limpiamente.
-// Si fallan las dos, sirve la ficha en caché aunque haya caducado.
-// rawg=false: solo IGDB, sin la reserva de RAWG (búsquedas masivas de candidatos que no necesitan segunda fuente)
-async function lookupGameInfo(gameName, { detail = false, rawg = true } = {}) {
+// { info, error }: error=true solo si IGDB no pudo responder (5xx, timeout, respuesta ilegible);
+// "no encontrado" es info null con error false.
+// Si IGDB falla, sirve la ficha en caché aunque haya caducado.
+async function lookupGameInfo(gameName, { detail = false } = {}) {
   if (!gameName) return { info: null, error: false };
   const cacheKey = detail ? `${gameName}|detail` : gameName;
   const cached = gameInfoCache.get(cacheKey);
@@ -363,14 +323,6 @@ async function lookupGameInfo(gameName, { detail = false, rawg = true } = {}) {
     answered = true;
   } catch (e) {
     logger.error(`Error IGDB: ${e.message}`);
-  }
-  if (!info && rawg && process.env.RAWG_API_KEY) {
-    try {
-      info = await searchRawg(gameName, detail);
-      answered = true;
-    } catch (e) {
-      logger.error(`Error RAWG: ${e.message}`);
-    }
   }
 
   if (info) {

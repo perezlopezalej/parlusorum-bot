@@ -25,15 +25,15 @@ const DEATH_WORDS_RE = /\b(muert[eoa]s?|muri[oó]|morir|mori|ca[ií]das?|ca[ey]�
 // --- Datos del juego: los mensajes automáticos no hablan de mecánicas ni critican el juego ---
 // Mecánicas, armas, zonas y consejos del directo del 29-10 (cohost, hook y timer_ia se las inventaban)
 const MECHANICS_RE = /\b(armas?|espad[oó]n|espadas?|combos?|parr(?:y|ies)|fase \d+|zonas?|mec[aá]nicas?|habilidad(?:es)?|dificultad|barra|ventana|resistencia|cadencia|recarga|build|ataques? (?:rojo|amarillo|especial)|torre|cuartel\w*)\b/i;
-// La nota de RAWG no se cita en el chat
-const RAWG_NOTE_RE = /\brawg\b|\bigdb\b|\b\d(?:[.,]\d+)?\s*\/\s*5\b/i;
+// La nota numérica (x/5) o la fuente no se citan en el chat
+const SCORE_NOTE_RE = /\bigdb\b|\b\d(?:[.,]\d+)?\s*\/\s*5\b/i;
 // Bromas cariñosas sí, desprecio al juego de los streamers no
 const GAME_DISPARAGE_RE = /\b(cortito|nivel medio|mediocre|aburrid[oa]|basura|chusta|bodrio|sobrevalorad[oa]|p[eé]simo|injugable|decepcion\w*)\b|modo beta|beta etern\w*|tutorial de c[oó]mo|se cree el rey|juego (?:malo|flojo|regular)/i;
 
 // "La dificultad del jefe" es un hecho del stream (el !boss), no una mecánica del juego
 const BOSS_DIFFICULTY_RE = /\bdificultad (?:del?|de este|de ese|de los) (?:jefes?|boss(?:es)?)\b/gi;
 function mentionsMechanics(text) { return MECHANICS_RE.test(String(text || '').replace(BOSS_DIFFICULTY_RE, ' ')); }
-function citesRawgScore(text) { return RAWG_NOTE_RE.test(text); }
+function citesGameScore(text) { return SCORE_NOTE_RE.test(text); }
 function disparagesGame(text) { return GAME_DISPARAGE_RE.test(text); }
 
 // Preguntas concretas del juego (a !dios_fua) y por el contador de muertes (con el número real)
@@ -60,8 +60,8 @@ function talksAboutGames(text, game = '') {
   return GAMING_RE.test(t) || mentionsGameName(t, game);
 }
 
-// Nada técnico en el chat: ni RAWG, ni "datos", ni herramientas
-const TECH_LEAK_RE = /\brawg\b|\bigdb\b|buscar_juego|herramientas?\b|bases? de datos|\bapi\b|\bmis datos\b|no tengo (?:los |esos )?datos/i;
+// Nada técnico en el chat: ni IGDB, ni "datos", ni herramientas
+const TECH_LEAK_RE = /\bigdb\b|buscar_juego|herramientas?\b|bases? de datos|\bapi\b|\bmis datos\b|no tengo (?:los |esos )?datos/i;
 function leaksTech(text) { return TECH_LEAK_RE.test(String(text || '')); }
 
 function mentionsGameName(t, game = '') {
@@ -289,10 +289,10 @@ function repeatsFormula(text, recent) {
   return FORMULAS.some(re => re.test(text) && recent.some(r => re.test(r)));
 }
 
-// Motivo de rechazo si el mensaje automático habla de mecánicas del juego, cita la nota de RAWG o desprecia el juego
+// Motivo de rechazo si el mensaje automático habla de mecánicas del juego, cita la nota del juego o desprecia el juego
 function gameTalkProblem(text) {
   if (mentionsMechanics(text)) return 'habla de mecánicas, armas o zonas del juego; habla solo del stream, el chat y el FUA';
-  if (citesRawgScore(text)) return 'cita la nota de RAWG; no la menciones';
+  if (citesGameScore(text)) return 'cita la nota o la fuente del juego; no la menciones';
   if (disparagesGame(text)) return 'desprecia el juego de los streamers; bromas cariñosas sí, desprecio no';
   const attr = unsupportedAttributes(text, '', { persons: false });
   if (attr) return `afirma "${attr}" (país, cifra o presupuesto) que no está en los datos; no lo digas`;
@@ -458,7 +458,7 @@ function repeatsYear(text, recent) {
   return years.some(y => recent.some(r => String(r).includes(y)));
 }
 
-// Comentario IA del timer: misma validación que el hook, sin nota de RAWG y sin repetir ideas del stream
+// Comentario IA del timer: misma validación que el hook, sin nota del juego y sin repetir ideas del stream
 // ctx.currentGame/channelGames: sin nombrar otros juegos; ctx.named: usuarios nombrados hace poco (no repetirlos)
 function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set(), lastCitedDeaths = false, player = 'manu' } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
@@ -473,7 +473,7 @@ function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', 
   if (sameOpening(text, recent)) return { ok: false, reason: 'empieza igual que un mensaje anterior; cambia la estructura de la frase y no abras con el tiempo o el contador' };
   const structure = structureKey(text);
   if (structure && usedStructures.has(structure)) return { ok: false, reason: 'repite la estructura "Manu lleva N caídas y el FUA…" de este stream; no cites el contador y cambia de enfoque' };
-  if (citesRawgScore(text)) return { ok: false, reason: 'cita la nota de RAWG; no la menciones' };
+  if (citesGameScore(text)) return { ok: false, reason: 'cita la nota o la fuente del juego; no la menciones' };
   if (/@\w/.test(text)) return { ok: false, reason: 'no etiquetes a nadie con @' };
   const style = styleProblem(text, { player });
   if (style) return { ok: false, reason: style.reason };
@@ -552,7 +552,7 @@ function unsupportedAttributes(text, source = '', { persons = true } = {}) {
   return '';
 }
 
-// Sin datos de la fuente (IGDB/RAWG), cualquier desarrolladora o editora que cite la respuesta es inventada
+// Sin datos de la fuente (IGDB), cualquier desarrolladora o editora que cite la respuesta es inventada
 const KNOWN_COMPANIES = ['sega', 'nintendo', 'capcom', 'bandai namco', 'namco', 'square enix', 'konami', 'fromsoftware', 'from software', 'ubisoft', 'electronic arts', 'ea games', 'sony', 'playstation studios', 'microsoft', 'xbox game studios', 'activision', 'blizzard', 'valve', 'tencent', 'netease', 'bethesda', 'cd projekt', 'rockstar', 'take-two', 'take two', 'warner', 'warner bros', '2k games', 'epic games', 'devolver', 'annapurna', 's-game', 'sgame', 'kojima productions', 'atlus', 'koei tecmo', 'team ninja', 'platinumgames', 'remedy', 'focus entertainment', 'deep silver', 'embracer', 'paradox', 'thq nordic', 'level-5', 'level 5', 'hoyoverse', 'mihoyo', 'nexon', 'netmarble', 'krafton', 'pearl abyss', 'shift up', 'larian', 'obsidian', 'bioware', 'insomniac', 'naughty dog', 'santa monica', 'cygames', 'arc system works'];
 const COMPANY_NAMED_RE = /(?:estudio|desarrolladora|editora|compa[nñ][ií]a|empresa|publisher|creador\w*|detr[aá]s)(?:\s+(?:que|del|de|es|fue|son|lo|la|el))*\s+(?:es|fue|son|:)?\s*(?:el\s+|la\s+)?([A-ZÁÉÍÓÚÑ][\wáéíóúñ'’-]+)/;
 function inventedCompany(text, source = '') {
@@ -637,7 +637,7 @@ function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
 // ctx.question: lo que escribió el usuario (los consejos y las mecánicas solo valen si él los sacó)
 function validateMention(text, { question = '', player = 'manu' } = {}) {
   if (!text || text.length < 3) return { ok: false, reason: 'vacío' };
-  if (leaksTech(text)) return { ok: false, reason: 'menciona datos, herramientas o RAWG; habla con personalidad, sin nada técnico' };
+  if (leaksTech(text)) return { ok: false, reason: 'menciona datos, herramientas o IGDB; habla con personalidad, sin nada técnico' };
   if (genderedParlusorum(text)) return { ok: false, reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
@@ -722,5 +722,5 @@ module.exports = {
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   dropPartialEmote, fitWithEmotes, junkProblem, malformedNumber, citesDeathCount, numberWordsEs, mentionsGenre, forcedComparison, selfHelp, openingKey, sameOpening, moveEmotesToEnd,
   unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
-  mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
+  mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesGameScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

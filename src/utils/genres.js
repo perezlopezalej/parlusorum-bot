@@ -1,4 +1,4 @@
-// Géneros de IGDB y RAWG (inglés) a español para los mensajes del chat
+// Géneros de IGDB (inglés) a español para los mensajes del chat
 
 const GENRES_ES = {
   action: 'Acción',

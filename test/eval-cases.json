@@ -17,7 +17,7 @@
     "id": "abejas",
     "informativo": true,
     "input": "!dios_fua es cierto que las abejas en verano viven menos que en invierno?",
-    "note": "Cultura general: responde (sí) sin tocar buscar_juego ni mencionar RAWG.",
+    "note": "Cultura general: responde (sí) sin tocar buscar_juego ni mencionar la fuente de datos.",
     "expect": {
       "route": "question",
       "tool": "none",
@@ -35,7 +35,6 @@
         "dura\\w* menos"
       ],
       "matchNone": [
-        "rawg",
         "base de datos",
         "herramienta",
         "datos del juego"
@@ -51,7 +50,6 @@
       "reply": true,
       "maxChars": 200,
       "matchNone": [
-        "rawg",
         "base de datos",
         "herramienta"
       ]
@@ -396,7 +394,7 @@
   {
     "id": "phantom-blade-pais",
     "input": "!dios_fua quien desarrollo el phantom blade 0? japoneses o chinos?",
-    "note": "Caso real 02-11. Con IGDB el dato del país llega (S-Game, China): debe decir china y nunca japonesa. Si IGDB cae y responde RAWG (sin país) este caso falla a propósito: repetirlo con IGDB operativo.",
+    "note": "Caso real 02-11. Con IGDB el dato del país llega (S-Game, China): debe decir china y nunca japonesa. Si IGDB cae este caso falla a propósito: repetirlo con IGDB operativo.",
     "expect": {
       "route": "question",
       "tool": "buscar_juego",
@@ -406,7 +404,6 @@
       ],
       "matchNone": [
         "(?<!\\bsi\\s)\\b(es|son)\\s+((una?\\s+)?(desarrolladora|estudio|compañía|empresa)\\s+)?japones\\w*\\b",
-        "rawg",
         "igdb",
         "base de datos"
       ]
@@ -471,7 +468,7 @@
     "id": "f-phantom-japonesa",
     "filter": "cohost",
     "input": "S-Game, una desarrolladora japonesa, sabe cómo hacer sufrir a Manu con cada espadazo.",
-    "note": "Caso real 02-11: país del estudio inventado (es china y RAWG no lo da).",
+    "note": "Caso real 02-11: país del estudio inventado (es china).",
     "expect": {
       "rejected": true
     }

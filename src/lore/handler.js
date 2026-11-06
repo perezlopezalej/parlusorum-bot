@@ -77,13 +77,12 @@ function matchesGameName(term, games) {
   return games.some(g => tokenize(g).length <= n + 2 && classifyGameMatch(term, g) === 'match');
 }
 
-// Juegos de sesiones anteriores + RAWG como segunda opinión (coste: 1 consulta por candidato)
+// Juegos de sesiones anteriores + IGDB como segunda opinión (coste: 1 consulta por candidato)
 async function isGameTerm(term, playedGames) {
   if (matchesGameName(term, playedGames)) return true;
   try {
-    // Solo IGDB: son muchos candidatos al terminar el stream y RAWG (lento, con timeouts) no aporta nada aquí
     const { lookupGameInfo } = require('../twitch/api');
-    const { info } = await lookupGameInfo(term, { rawg: false });
+    const { info } = await lookupGameInfo(term);
     return !!info?.name && matchesGameName(term, [info.name]);
   } catch {
     return false;

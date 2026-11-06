@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRawgTemplate } = require('../src/ai/rawg-template');
+const { buildGameTemplate } = require('../src/ai/game-template');
 
 process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test';
 const factcheck = require('../src/ai/factcheck');
@@ -8,17 +8,17 @@ const factcheck = require('../src/ai/factcheck');
 const info = { name: 'Hell is Us', genres: 'Action, Adventure', developers: 'Rogue Factor', released: '2025-09-03' };
 const first = a => a[0];
 
-describe('plantilla de reserva de RAWG', () => {
+describe('plantilla de reserva de IGDB', () => {
   test('usa nombre, género en español, estudio y año, más la frase', () => {
-    assert.equal(buildRawgTemplate(info, ['Dale FUA.'], first), 'Hell is Us: acción, aventura, de Rogue Factor (2025). Dale FUA.');
+    assert.equal(buildGameTemplate(info, ['Dale FUA.'], first), 'Hell is Us: acción, aventura, de Rogue Factor (2025). Dale FUA.');
   });
-  test('omite lo que RAWG no trae', () => {
-    assert.equal(buildRawgTemplate({ name: 'X', released: '2020-01-01' }, ['FUA.'], first), 'X (2020). FUA.');
-    assert.equal(buildRawgTemplate({ name: 'X' }, [], first), 'X.');
+  test('omite lo que IGDB no trae', () => {
+    assert.equal(buildGameTemplate({ name: 'X', released: '2020-01-01' }, ['FUA.'], first), 'X (2020). FUA.');
+    assert.equal(buildGameTemplate({ name: 'X' }, [], first), 'X.');
   });
   test('sin datos devuelve vacío y no lleva nada inventado', () => {
-    assert.equal(buildRawgTemplate(null, ['FUA.'], first), '');
-    assert.doesNotMatch(buildRawgTemplate(info, ['FUA.'], first), /post|acertij/i);
+    assert.equal(buildGameTemplate(null, ['FUA.'], first), '');
+    assert.doesNotMatch(buildGameTemplate(info, ['FUA.'], first), /post|acertij/i);
   });
 });
 

@@ -67,7 +67,7 @@ describe('2. !quemeperdi', () => {
   });
 });
 
-describe('3. géneros en español, sin nota de RAWG', () => {
+describe('3. géneros en español, sin nota del juego', () => {
   test('Adventure, Action → Aventura, Acción', () => {
     assert.equal(translateGenres('Adventure, Action'), 'Aventura, Acción');
   });

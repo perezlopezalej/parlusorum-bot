@@ -105,7 +105,7 @@ describe('searchGame', () => {
     mock(() => ok([]));
     assert.equal(await igdb.searchGame('zzz qqq'), null);
   });
-  test('candidato sin relación → null (se probará RAWG)', async () => {
+  test('candidato sin relación → null ', async () => {
     mock(() => ok([{ name: 'Totalmente Distinto' }]));
     assert.equal(await igdb.searchGame('Fuaventura Legends'), null);
   });
@@ -155,10 +155,6 @@ describe('formatJuegoLine (!juego)', () => {
     assert.equal(line, '🎮 Phantom Blade Zero (2026) — Rol, Acción — Desarrolladora: S-Game | "Primer directo" · Datos: IGDB.com');
     assert.doesNotMatch(line, /⭐|\/5/);
   });
-  test('con RAWG no lleva atribución de IGDB ni nota', () => {
-    const line = formatJuegoLine('X', null, { ...info, source: 'rawg', rating: 4.5 });
-    assert.doesNotMatch(line, /IGDB|⭐/);
-  });
   test('sin datos útiles → null (línea simple)', () => {
     assert.equal(formatJuegoLine('X', null, null), null);
     assert.equal(formatJuegoLine('X', null, { genres: null, released: null, developers: null }), null);
@@ -183,7 +179,7 @@ describe('país de IGDB en el filtro de atributos', () => {
   });
   test('IGDB cuenta como fuga técnica y como cita de fuente', () => {
     assert.ok(q.leaksTech('según IGDB sale en 2026'));
-    assert.ok(q.citesRawgScore('lo dice IGDB'));
+    assert.ok(q.citesGameScore('lo dice IGDB'));
   });
 });
 

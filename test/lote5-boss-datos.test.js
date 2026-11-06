@@ -7,7 +7,7 @@ const { parseBossArgs, applyBossDelta, sumGameDeaths } = require('../src/command
 const state = require('../src/utils/state');
 
 // Casos reales del directo del 02-11-2026 (logs/chat-2026-11-02.txt)
-const RAWG_PHANTOM = 'Nombre: Phantom Blade Zero\nSalida: 2026-09-09\nDesarrolladora: S-Game\nGéneros: Acción, Aventura\nDescripción: Action game set in a fantasy world.';
+const IGDB_PHANTOM = 'Nombre: Phantom Blade Zero\nSalida: 2026-09-09\nDesarrolladora: S-Game\nGéneros: Acción, Aventura\nDescripción: Action game set in a fantasy world.';
 
 describe('!boss', () => {
   test('parseBossArgs: ver, sumar, restar, reset y juego', () => {
@@ -47,20 +47,20 @@ describe('!boss', () => {
 });
 
 describe('datos inventados', () => {
-  test('país de la desarrolladora que RAWG no da', () => {
-    assert.equal(q.unsupportedAttributes('S-Game, una desarrolladora japonesa', RAWG_PHANTOM), 'japonesa');
-    assert.equal(q.unsupportedAttributes('Lo hace S-Game, un estudio chino, ni sé más', RAWG_PHANTOM), 'chino');
+  test('país de la desarrolladora que IGDB no da', () => {
+    assert.equal(q.unsupportedAttributes('S-Game, una desarrolladora japonesa', IGDB_PHANTOM), 'japonesa');
+    assert.equal(q.unsupportedAttributes('Lo hace S-Game, un estudio chino, ni sé más', IGDB_PHANTOM), 'chino');
   });
   test('respaldado o sin atributos: pasa', () => {
-    assert.equal(q.unsupportedAttributes('Lo hace S-Game y sale en 2026, acción pura.', RAWG_PHANTOM), '');
-    assert.equal(q.unsupportedAttributes('Lo hace un estudio japonés', `${RAWG_PHANTOM}\nStudio based in Japan`), '');
+    assert.equal(q.unsupportedAttributes('Lo hace S-Game y sale en 2026, acción pura.', IGDB_PHANTOM), '');
+    assert.equal(q.unsupportedAttributes('Lo hace un estudio japonés', `${IGDB_PHANTOM}\nStudio based in Japan`), '');
     assert.equal(q.unsupportedAttributes('Los chinos inventaron la pólvora', ''), '');
   });
   test('presupuestos, cifras y personas', () => {
-    assert.equal(q.unsupportedAttributes('Tuvo un presupuesto enorme para el juego', RAWG_PHANTOM), 'presupuesto');
-    assert.ok(q.unsupportedAttributes('Ha vendido 2.000.000 de copias', RAWG_PHANTOM));
-    assert.equal(q.unsupportedAttributes('Dirigido por Wang Li, el estudio S-Game', RAWG_PHANTOM), 'Wang Li');
-    assert.equal(q.unsupportedAttributes('Desarrollado por S-Game', RAWG_PHANTOM), '');
+    assert.equal(q.unsupportedAttributes('Tuvo un presupuesto enorme para el juego', IGDB_PHANTOM), 'presupuesto');
+    assert.ok(q.unsupportedAttributes('Ha vendido 2.000.000 de copias', IGDB_PHANTOM));
+    assert.equal(q.unsupportedAttributes('Dirigido por Wang Li, el estudio S-Game', IGDB_PHANTOM), 'Wang Li');
+    assert.equal(q.unsupportedAttributes('Desarrollado por S-Game', IGDB_PHANTOM), '');
   });
   test('los mensajes automáticos sin datos no afirman país ni presupuesto', () => {
     assert.ok(q.gameTalkProblem('El estudio japonés detrás de este juego sabe lo que hace'));

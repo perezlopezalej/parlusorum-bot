@@ -37,7 +37,7 @@ const TARGETS = {
   'gemini-lite': { provider: 'gemini', model: 'gemini-3.5-flash-lite', reasoning: 'low', headroom: 64, rpm: 15, tpm: 250000, maxRequests: 200 },
   'gemma': { provider: 'gemini', model: 'gemma-4-31b-it', headroom: 700, rpm: 30, tpm: 16000, maxRequests: 200, stripThought: true, retry5xx: 3 },
 };
-// Gemini Flash: 20 peticiones al día → solo 10 casos (sin los que dependen de RAWG ni los que responde el código)
+// Gemini Flash: 20 peticiones al día → solo 10 casos (sin los que dependen de IGDB ni los que responde el código)
 const FLASH_CASES = ['abejas', 'quien-eres-comando', 'cielo-azul', 'signo-zodiaco', 'provocacion', 'quien-eres', 'mencion-opinion-muertes', 'cohost-libre-bosses', 'cohost-libre-motor', 'cohost-muerte'];
 
 // Escenarios de cohost con chat real (logs/chat-2026-11-01.txt y 11-02)
@@ -286,7 +286,7 @@ async function runWorker(name) {
     const answer = reply.replace(/^@\S+\s*/, '');
     // Texto fijo de config/messages.json (reserva cuando la IA falla o se descarta): no cuenta como respuesta del modelo
     const fromPool = Object.keys(messagesConfig).find(k => pool(k).includes(answer)) || '';
-    const template = currentLogs.some(l => /plantilla RAWG/.test(l));
+    const template = currentLogs.some(l => /plantilla de juego/.test(l));
     const toolLog = currentLogs.map(l => /buscar_juego: "(.*)" → (.*)$/.exec(l) || /buscar_juego: (fuentes no disponibles) para "(.*)"$/.exec(l)).find(Boolean);
     const discards = currentLogs.filter(l => /descartad|SKIP|Descartad|calla/.test(l)).map(l => l.replace(/^\w+: /, '').slice(0, 200));
     const caseCalls = calls.filter(k => k.case === c.id);
@@ -310,7 +310,7 @@ async function runWorker(name) {
   }
   const file = path.join(OUT_DIR, `${filters ? 'revisor-' : ''}${name}.json`);
   let merged = { results, calls };
-  // Con --only se sustituyen esos casos en el resultado anterior (p. ej. repetir los de RAWG cuando vuelva)
+  // Con --only se sustituyen esos casos en el resultado anterior (p. ej. repetir los que dependen de IGDB)
   if (only && fs.existsSync(file)) {
     const prev = JSON.parse(fs.readFileSync(file, 'utf8'));
     const ids = new Set(results.map(r => r.id));
@@ -374,7 +374,7 @@ function writeReport() {
       const all = mainAll(g);
       L.push(`| ${g.candidate} | ${g.model} | ${r.length} | ${r.filter(x => x.reply && x.mainCalls && !x.fromPool && !x.template).length} | ${scored.filter(x => !x.failures.length).length}/${scored.length} | ${r.filter(x => x.fromPool || x.template).length} | ${all.length - ok.length}/${all.length} | ${(med(ms) / 1000).toFixed(1)} s / ${(p90(ms) / 1000).toFixed(1)} s / ${((Math.max(0, ...ms)) / 1000).toFixed(1)} s | ${avg(ok.map(c => c.prompt))} / ${avg(ok.map(c => c.completion))} / ${avg(ok.map(c => c.total))} | ${r.reduce((s, x) => s + x.latam.length, 0)} |`);
     }
-    L.push('', '\\* Expectativas automáticas de `test/eval-cases.json` (sin cohost ni casos informativos). Gemini Flash solo corre 10 casos por su cupo de 20 peticiones al día.', '\\*\\* Sin contar textos fijos de `config/messages.json` (reservas), plantillas de RAWG ni lo que responde el código sin IA (muertes, qué juego, dificultad). Los cohost que responden SKIP no tienen respuesta y es correcto.', '');
+    L.push('', '\\* Expectativas automáticas de `test/eval-cases.json` (sin cohost ni casos informativos). Gemini Flash solo corre 10 casos por su cupo de 20 peticiones al día.', '\\*\\* Sin contar textos fijos de `config/messages.json` (reservas), plantillas de juego ni lo que responde el código sin IA (muertes, qué juego, dificultad). Los cohost que responden SKIP no tienen respuesta y es correcto.', '');
     L.push('## Tokens medidos por tipo de llamada (generación, solo llamadas correctas)', '', '| Candidato | Tipo | Llamadas | Entrada media | Salida media | Total medio (con razonamiento) |', '|---|---|---|---|---|---|');
     for (const g of gen) {
       const kindOf = Object.fromEntries(g.results.map(x => [x.id, x.kind.split(' ')[0]]));
@@ -395,7 +395,7 @@ function writeReport() {
         const notes = [
           `${(x.ms / 1000).toFixed(1)} s`, `${x.mainCalls} llam.`,
           x.tool ? `buscar_juego: ${x.tool.slice(0, 60)}` : '',
-          x.fromPool ? `reserva (${x.fromPool})` : '', x.template ? 'plantilla RAWG' : '',
+          x.fromPool ? `reserva (${x.fromPool})` : '', x.template ? 'plantilla de juego' : '',
           x.thought ? 'devolvió <thought>' : '',
           x.latam.length ? `latino: ${x.latam.join(',')}` : '',
           ...x.failures.map(f => `✘ ${f}`),

@@ -1,4 +1,4 @@
-// Compara el nombre buscado con el que devuelve RAWG (que siempre da el "más parecido").
+// Compara el nombre buscado con el que devuelve IGDB (que siempre da el "más parecido").
 // Devuelve 'match' | 'maybe' | 'none'.
 
 const STOPWORDS = new Set(['the', 'of', 'a', 'an', 'and', 'in', 'to', 'de', 'la', 'el', 'los', 'las', 'y']);

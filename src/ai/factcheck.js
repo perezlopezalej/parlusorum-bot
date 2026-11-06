@@ -29,13 +29,13 @@ function stripEmotes(text) {
 function buildCheckPrompt(text, data, source) {
   text = stripEmotes(text);
   const ctx = String(data || '').trim() || '(ninguno)';
-  const question = source === 'rawg'
+  const question = source === 'juego'
     ? '¿El mensaje afirma algún dato concreto y comprobable del juego (fechas, estudio, país o nacionalidad del estudio, personas, cifras, presupuestos, mecánicas, armas, zonas, dificultades, personajes, tramas) que no esté en el resultado de la consulta de arriba (incluida su descripción; el país del estudio solo cuenta si aparece como "País de la desarrolladora")? Las opiniones, valoraciones y descripciones de tono o ambiente ("atmósfera densa", "ideal para flipar"), las bromas y el FUA no se comprueban y no cuentan. Si no hay datos y el mensaje solo dice que no conoce el juego, responde NO. Responde "NO" si todo está respaldado, o "SÍ: " seguido de la frase o dato no respaldado, copiado del mensaje (máx. 15 palabras).'
     : '¿El mensaje afirma algo concreto del juego (mecánicas, armas, zonas, dificultad, jefes, historia, consejos, fechas) que no esté en estos datos? ' + GENERIC_NOT_CLAIM + ' Las bromas, el FUA y los hechos del stream (muertes, chat, eventos) no cuentan.';
-  return `Datos disponibles:\n${ctx}\n\nMensaje:\n${text}\n\n${question} ${source === 'rawg' ? '' : 'Responde SOLO "SÍ" o "NO".'}`;
+  return `Datos disponibles:\n${ctx}\n\nMensaje:\n${text}\n\n${question} ${source === 'juego' ? '' : 'Responde SOLO "SÍ" o "NO".'}`;
 }
 
-// Ficha del juego (IGDB/RAWG, la de lookupGameInfo) como texto de "datos disponibles" para el revisor.
+// Ficha del juego (IGDB, la de lookupGameInfo) como texto de "datos disponibles" para el revisor.
 // Sin ficha devuelve '' y el revisor solo conoce el nombre.
 function gameFactsText(info) {
   if (!info || !info.name) return '';
@@ -76,7 +76,7 @@ function parseReview(raw) {
   return { data: pick('datos'), sense: pick('sentido') };
 }
 
-// Frase no respaldada tras "SÍ:" (solo la pide el prompt de RAWG)
+// Frase no respaldada tras "SÍ:" (solo la pide el prompt del juego)
 function parseClaim(raw) {
   const m = /^\s*s[ií]\s*[:\-–]\s*(.+)$/is.exec(String(raw || ''));
   return m ? m[1].trim().replace(/^["“«]|["”»]$/g, '').slice(0, 120) : '';
@@ -112,10 +112,10 @@ async function evaluate(text, data, { source = 'stream', game, sense = false, ch
   if (!canMakeAuxRequest()) { recordFactcheckFailure('ratelimit'); return { discard: true, claim: '' }; }
   try {
     const response = await aiChat('review', {
-      max_tokens: source === 'rawg' ? 60 : 8,
+      max_tokens: source === 'juego' ? 60 : 8,
       temperature: 0,
       messages: [
-        { role: 'system', content: source === 'rawg' ? 'Eres un verificador estricto. Respondes "NO" o "SÍ: <frase no respaldada>".' : 'Eres un verificador estricto. Respondes únicamente SÍ o NO.' },
+        { role: 'system', content: source === 'juego' ? 'Eres un verificador estricto. Respondes "NO" o "SÍ: <frase no respaldada>".' : 'Eres un verificador estricto. Respondes únicamente SÍ o NO.' },
         { role: 'user', content: buildCheckPrompt(text, data, source) },
       ],
     });
@@ -128,7 +128,7 @@ async function evaluate(text, data, { source = 'stream', game, sense = false, ch
   }
 }
 
-// true = descartar el mensaje. source: 'stream' (mensajes automáticos) | 'rawg' (!dios_fua con buscar_juego)
+// true = descartar el mensaje. source: 'stream' (mensajes automáticos) | 'juego' (!dios_fua con buscar_juego)
 // Los mensajes 'stream' que no hablan del juego no se comprueban (ni gastan petición). Usa su propio cupo (canMakeAuxRequest).
 async function shouldDiscard(text, data, opts) {
   return (await evaluate(text, data, opts)).discard;

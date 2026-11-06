@@ -50,8 +50,6 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
-      - key: RAWG_API_KEY
-        sync: false
       # Router de IA: sin GEMINI_API_KEY todo va por Groq. Con ella, cohost/timer/hooks/alertas/fin de stream usan Gemini Flash Lite
       - key: GEMINI_API_KEY
         sync: false

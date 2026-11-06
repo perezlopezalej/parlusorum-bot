@@ -104,7 +104,7 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 
 | Funcionalidad | S | V | D | v3 | v4 | Imp. | Notas |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|---|
-| Trivia dinámica (Groq + datos RAWG) | 8 | 7 | 8 | 7.7 | **7.7** | N | Sin cambios de código propio; ahora un 25 % de las partidas pasa antes por la pregunta del canal (fila nueva) y esta es la que se usa si no hay datos del canal. |
+| Trivia dinámica (Groq + datos IGDB) | 8 | 7 | 8 | 7.7 | **7.7** | N | Sin cambios de código propio; ahora un 25 % de las partidas pasa antes por la pregunta del canal (fila nueva) y esta es la que se usa si no hay datos del canal. |
 | Banco estático (32 preguntas) | 7 | 4 | 4 | 5.2 | **5.2** | I | Sin cambios. _Importancia: Fallback que mantiene viva la trivia sin Groq._ |
 | Pistas + coincidencia difusa | 9 | 5 | 5 | 6.6 | **6.6** | N | Sin cambios. _Importancia: Sin ella la trivia no se juega bien._ |
 | Dificultad adaptativa | 6 | 4 | 8 | 6.0 | **6.0** | I | Sin cambios. racha en RAM. |
@@ -159,7 +159,7 @@ _Imp.: N = Núcleo (×3), I = Importante (×2), B = Básico (×1)._
 - Respuesta natural (@dios_fua y patrones): 7.7 (v3 7.3)
 - Narrativa del stream (eventos): 7.7 (v3 6.6)
 - Subs (sub, resub, gift, mystery, Prime, upgrade): 7.7 (v3 7.1)
-- Trivia dinámica (Groq + datos RAWG): 7.7 (v3 7.7)
+- Trivia dinámica (Groq + datos IGDB): 7.7 (v3 7.7)
 - Personalidad / modos / tono: 8.0 (v3 7.7)
 - Lore manual (identidad, chistes internos, temas a evitar): 8.0 (v3 8.0)
 - Memoria entre streams: 8.3 (v3 7.9)

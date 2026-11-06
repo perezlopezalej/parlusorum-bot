@@ -228,17 +228,17 @@ async function startTrivia(client, channel) {
           } else if (stats.rachaActual <= -3) {
             dificultadHint = ` El chat lleva ${Math.abs(stats.rachaActual)} fallos seguidos — genera una pregunta más fácil.`;
           }
-          // Solo se genera con datos reales de RAWG; sin ellos, banco estático
-          const rawg = await getGameInfo(game, { detail: true });
-          if (rawg?.description && rawg.description.length >= 80 && (rawg.developers || rawg.released)) {
+          // Solo se genera con datos reales de IGDB; sin ellos, banco estático
+          const gi = await getGameInfo(game, { detail: true });
+          if (gi?.description && gi.description.length >= 80 && (gi.developers || gi.released)) {
             const recientes = recentQuestions.get(game) || [];
             const evitar = recientes.length ? `\nNO repitas ni imites estas preguntas ya hechas:\n- ${recientes.join('\n- ')}` : '';
             const datos = [
-              `Nombre: ${rawg.name}`,
-              rawg.released ? `Fecha de salida: ${rawg.released}` : null,
-              rawg.developers ? `Desarrolladora: ${rawg.developers}` : null,
-              rawg.genres ? `Géneros: ${rawg.genres}` : null,
-              `Descripción (puede estar en inglés): ${rawg.description}`
+              `Nombre: ${gi.name}`,
+              gi.released ? `Fecha de salida: ${gi.released}` : null,
+              gi.developers ? `Desarrolladora: ${gi.developers}` : null,
+              gi.genres ? `Géneros: ${gi.genres}` : null,
+              `Descripción (puede estar en inglés): ${gi.description}`
             ].filter(Boolean).join('\n');
             const response = await aiChat('trivia', {
               max_tokens: 500,

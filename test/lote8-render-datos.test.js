@@ -68,23 +68,6 @@ test('"repartiendo el presupuesto nacional" (chiste) no es un dato inventado; el
   assert.equal(q.unsupportedAttributes('El presupuesto del juego fue de 50 millones', '', { persons: false }), 'presupuesto');
 });
 
-// --- RAWG: el lore solo usa IGDB ---
-test('lookupGameInfo con rawg:false no llama a RAWG', async () => {
-  const api = require('../src/twitch/api');
-  const calls = [];
-  const orig = global.fetch;
-  const prevKey = process.env.RAWG_API_KEY;
-  process.env.RAWG_API_KEY = 'clave-de-pruebas';
-  global.fetch = async url => { calls.push(String(url)); throw new Error('sin red'); };
-  try {
-    const r = await api.lookupGameInfo('Juego Inexistente Para El Test ' + Date.now(), { rawg: false });
-    assert.equal(r.info, null);
-    assert.ok(!calls.some(u => u.includes('rawg.io')), 'no debía llamar a RAWG');
-  } finally {
-    global.fetch = orig;
-    if (prevKey === undefined) delete process.env.RAWG_API_KEY; else process.env.RAWG_API_KEY = prevKey;
-  }
-});
 
 // --- groq-utils: \b no puede ser un retroceso (0x08) ---
 test('isDailyQuota detecta TPD/RPD y "per day", y no confunde el cupo por minuto', () => {

@@ -6,7 +6,7 @@ const q = require('../src/ai/quality');
 const { buildQuestionSystemContent, GENERAL_RULE } = require('../src/ai/prompts');
 const messages = require('../config/messages.json');
 
-// Caso real: "!dios_fua es cierto que las abejas en verano viven menos que en invierno?" respondía "no tengo datos fiables de eso en RAWG"
+// Caso real: "!dios_fua es cierto que las abejas en verano viven menos que en invierno?" respondía "no tengo datos fiables de eso en IGDB"
 const BEES_Q = 'es cierto que las abejas en verano viven menos que en invierno?';
 const BEES_A = 'Sí, las obreras de verano viven unas 6 semanas y las de invierno hasta meses: más resistencia al frío y menos curro. FUA.';
 
@@ -28,9 +28,9 @@ describe('cultura general no pasa por el control de videojuegos', () => {
 });
 
 describe('nada técnico en el chat', () => {
-  test('detecta RAWG, datos y herramientas', () => {
+  test('detecta IGDB, datos y herramientas', () => {
     for (const t of [
-      'no tengo datos fiables de eso en RAWG, así que no me lo invento',
+      'no tengo datos fiables de eso en IGDB, así que no me lo invento',
       'según la herramienta no hay nada',
       'lo busqué en la base de datos y no sale',
       'no tengo datos de eso',
@@ -50,10 +50,10 @@ describe('nada técnico en el chat', () => {
     assert.equal(q.leaksTech('De esto no pondría la mano en el fuego, pero me suena que sí.'), false);
   });
   test('validateMention rechaza respuestas técnicas', () => {
-    assert.equal(q.validateMention('No tengo datos fiables de eso en RAWG.').ok, false);
+    assert.equal(q.validateMention('No tengo datos fiables de eso en IGDB.').ok, false);
     assert.equal(q.validateMention(BEES_A).ok, true);
   });
-  test('los textos de messages.json no mencionan RAWG ni datos', () => {
+  test('los textos de messages.json no mencionan IGDB ni datos', () => {
     const texts = [...messages.dios_fua_no_data, ...messages.mention_game_redirect];
     assert.ok(Array.isArray(messages.dios_fua_no_data) && texts.length > 0);
     for (const t of texts) assert.equal(q.leaksTech(t) || /\bdatos\b/i.test(t), false, t);
@@ -67,7 +67,7 @@ describe('prompt de !dios_fua para cultura general', () => {
     assert.match(GENERAL_RULE, /NO es de videojuegos/);
     assert.match(GENERAL_RULE, /NO llames a buscar_juego/);
     assert.match(GENERAL_RULE, /dilo con humor/);
-    assert.match(GENERAL_RULE, /NUNCA menciones RAWG/);
+    assert.match(GENERAL_RULE, /NUNCA menciones IGDB/);
   });
   test('para juegos sigue obligando a buscar_juego', () => {
     assert.match(p, /llama SIEMPRE a la herramienta buscar_juego/);

@@ -1,5 +1,5 @@
 /**
- * eval.js — Batería de casos con la IA REAL (Groq + RAWG). Gasta llamadas: no forma parte de `npm test` ni de la CI.
+ * eval.js — Batería de casos con la IA REAL (Groq + IGDB). Gasta llamadas: no forma parte de `npm test` ni de la CI.
  *
  * Pasa cada caso de test/eval-cases.json por los handlers reales (checkPatternMatch / handleQuestion):
  * prompts, buscar_juego, filtros de quality y factcheck. Solo cambia el cliente de chat (captura el say())
