@@ -81,8 +81,9 @@ function matchesGameName(term, games) {
 async function isGameTerm(term, playedGames) {
   if (matchesGameName(term, playedGames)) return true;
   try {
-    const { getGameInfo } = require('../twitch/api');
-    const info = await getGameInfo(term);
+    // Solo IGDB: son muchos candidatos al terminar el stream y RAWG (lento, con timeouts) no aporta nada aquí
+    const { lookupGameInfo } = require('../twitch/api');
+    const { info } = await lookupGameInfo(term, { rawg: false });
     return !!info?.name && matchesGameName(term, [info.name]);
   } catch {
     return false;

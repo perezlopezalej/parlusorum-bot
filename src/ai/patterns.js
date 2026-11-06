@@ -87,6 +87,14 @@ function isProvocation(message) {
   return PROVOCATION_RE.test(normalize(message));
 }
 
+// "Dios Fua cállate un rato": una petición de silencio, no un insulto. Se responde breve y amable y se pausa el cohost libre.
+// Si además trae un insulto de verdad ("cállate subnormal") sigue siendo una provocación.
+const SHUTUP_RE = /\b(?:callate|callese|callense|calla|cierra la boca|no hables|deja de hablar|dejad de hablar|silencio|shh+|hazte el mudo|un rato sin hablar|callad[oa]s?)\b/;
+function isShutUpRequest(message) {
+  const text = normalize(message);
+  return SHUTUP_RE.test(text) && !PROVOCATION_RE.test(text.replace(new RegExp(SHUTUP_RE.source, 'g'), ' '));
+}
+
 // Palabras que delatan que se habla CON el bot
 const SECOND_PERSON = new Set(['te', 'tu', 'tus', 'eres', 'tienes', 'puedes', 'sabes', 'estas', 'quieres', 'haces', 'dices', 'contigo', 'dime', 'dinos', 'cuentanos', 'cuentame']);
 // Delante del nombre: se habla DE él ("el dios fua", "con ese dios fua")
@@ -123,6 +131,7 @@ function isAddressedToBot(message, tags = {}, botNames = []) {
 // 'provocation' | 'direct' | 'natural' | null. Hablar DE el bot sin dirigirse a él no dispara nada.
 function classifyMessage(message, tags = {}, { botNames = [] } = {}) {
   if (isDirectMention(message, botNames)) {
+    if (isShutUpRequest(message)) return isAddressedToBot(message, tags, botNames) ? 'shutup' : null;
     if (isProvocation(message)) return 'provocation';
     return isAddressedToBot(message, tags, botNames) ? 'direct' : null;
   }
@@ -161,4 +170,4 @@ function isStale(startedAt, now, maxMs) {
   return now - startedAt > maxMs;
 }
 
-module.exports = { mentionBudget, isStale, COOLDOWNS, editDistance, isDirectMention, isNaturalQuestion, isProvocation, isAddressedToBot, classifyMessage, provocationGate, cooldownMs, cooldownGate };
+module.exports = { mentionBudget, isStale, COOLDOWNS, editDistance, isDirectMention, isNaturalQuestion, isProvocation, isShutUpRequest, isAddressedToBot, classifyMessage, provocationGate, cooldownMs, cooldownGate };

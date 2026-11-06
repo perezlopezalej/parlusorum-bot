@@ -1,8 +1,8 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
-const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR } = require('../utils/narrative');
+const { getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR, streakAllowed, STREAK_COHOST_GAP_MS, hourlyCapReached, pickFreeTopic } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { buildRawgTemplate } = require('./rawg-template');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudget, isStale } = require('./patterns');
@@ -14,7 +14,7 @@ const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
 const { getManualLore, getLoreContext } = require('../lore/handler');
 const { MEMORY_LEAN, normalizeProfile, pickExamples, buildLeanBase, buildMicroBase } = require('./persona');
-const { LORE_RULE, SPAIN_RULE, IDENTITY_RULE, STYLE_RULES, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, buildQuestionSystemContent } = require('./prompts');
+const { LORE_RULE, SPAIN_RULE, IDENTITY_RULE, STYLE_RULES, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, playerRule, buildQuestionSystemContent } = require('./prompts');
 const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
@@ -28,6 +28,7 @@ const { throttleSay } = require('../alerts/handler');
 // NAME_WINDOW = tiempo sin volver a nombrar al mismo usuario. Los silencios los cubre el hook, no el cohost.
 const COHOST_EVENT_TTL = parseInt(process.env.COHOST_EVENT_TTL_MS || String(EVENT_QUEUE_TTL_MS), 10);
 const COHOST_FREE_INTERVAL = parseInt(process.env.COHOST_FREE_INTERVAL_MS || String(FREE_COHOST_INTERVAL_MS), 10);
+const COHOST_STREAK_GAP = parseInt(process.env.COHOST_STREAK_GAP_MS || String(STREAK_COHOST_GAP_MS), 10);
 const COHOST_FREE_MAX_PER_HOUR = parseInt(process.env.COHOST_FREE_MAX_PER_HOUR || String(FREE_COHOST_MAX_PER_HOUR), 10);
 const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || String(EVENT_COHOST_MAX_PER_HOUR), 10);
 const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
@@ -108,7 +109,7 @@ async function getFullContext(profile = 'full') {
         context += ` Juego actual: "${safeGame}".`;
         gameOk = true;
         try {
-          const rawgInfo = await getGameInfo(gameInfo.game);
+          const rawgInfo = await getGameInfo(gameInfo.game, { detail: true });
           if (rawgInfo) {
             if (rawgInfo.genres) context += ` Generos: ${rawgInfo.genres}.`;
             if (rawgInfo.rating) context += ` Nota RAWG: ${rawgInfo.rating}/5.`;
@@ -422,7 +423,11 @@ function detectChatMood(messages) {
 // La respuesta se valida en código: lo grave (inventos del juego, muertes, latam, robot) se descarta tras un reintento; lo leve
 // (nombre repetido, fórmula, parecido, ambiente) se reintenta una vez y si persiste se envía igual. Después, la comprobación
 // SÍ/NO del modelo rápido, solo si el mensaje habla del juego.
-let freeCohostTimes = [];
+let freeCohostTimes = []; // cupo compartido: comentarios libres + rachas de muertes ENVIADOS en la última hora (máx. COHOST_FREE_MAX_PER_HOUR)
+let freeAttemptTimes = []; // intentos de comentario libre (enviados o no): solo freno de seguridad para los reintentos
+const FREE_ATTEMPTS_MAX_PER_HOUR = 8;
+let lastFreeTopic = ''; // id del último tema del cohost libre enviado (rota, no se repite seguido)
+let lastSharedAt = 0;    // último comentario enviado del cupo compartido (libre o racha)
 let deathRecordCache = { at: 0, max: 0 };
 
 // Máximo de muertes de los streams anteriores (para detectar el récord); caché de 30 min
@@ -470,7 +475,15 @@ async function runCohost(client, channel, moment = null) {
   }
   if (cohostRunning) return moment ? 'retry' : 'dropped';
   const now = Date.now();
+  if (!moment && isFreeCohostPaused(now)) return 'dropped';
   if (moment && !eventCohostAllowed({ now, lastAt: getLastCohostTime(), stamps: getCohostTimes(), max: COHOST_MAX_PER_HOUR })) return 'retry';
+  // Las rachas de muertes comparten cupo con los comentarios libres (~4/h como máximo): fuera de cupo se descartan, no esperan en cola
+  const isStreak = moment?.kind === 'streak';
+  if (isStreak && !streakAllowed({ now, lastSharedAt, sharedStamps: freeCohostTimes, gapMs: COHOST_STREAK_GAP, max: COHOST_FREE_MAX_PER_HOUR })) {
+    recordCohostAttempt(kind); recordCohostDiscard('racha_cupo');
+    logger.info('Co-host: racha de muertes sin comentar (cupo compartido con los libres)');
+    return 'dropped';
+  }
   if (!canMakeRequest()) {
     if (moment) return 'retry';
     recordCohostAttempt(kind); recordCohostDiscard('ratelimit');
@@ -483,7 +496,7 @@ async function runCohost(client, channel, moment = null) {
   if (!moment && isPrivateExchange(now)) { recordCohostAttempt(kind); recordCohostDiscard('privado'); return 'dropped'; }
 
   recordCohostAttempt(kind);
-  if (!moment) freeCohostTimes = pruneHourly([...freeCohostTimes, now]);
+  if (!moment) freeAttemptTimes = pruneHourly([...freeAttemptTimes, now]);
   refreshMode();
   const modeConfig = getModeConfig();
   const botHistory = getBotHistory();
@@ -523,9 +536,15 @@ async function runCohost(client, channel, moment = null) {
     const historyNote = botHistory.length > 0
       ? `\nTUS RESPUESTAS ANTERIORES — NO repetir ni parafrasear ninguna, ni sus fórmulas:\n${botHistory.map(e => `- "${e.msg}"`).join('\n')}`
       : '';
-    const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
+    // Ficha del juego actual (caché de IGDB) para que el revisor reconozca como respaldados el año, el estudio o el género
+    const gameFacts = gameInfo?.game ? factcheck.gameFactsText((await lookupGameInfo(gameInfo.game, { detail: true }).catch(() => ({}))).info) : '';
+    const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${gameFacts} ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
 
-    const validateCtx = { deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures() };
+    // El número de muertes no se cita en dos mensajes seguidos del bot (salvo en la primera muerte y el récord, que son el dato)
+    const countIsTheNews = moment && ['first_death', 'record'].includes(moment.kind);
+    const lastCitedDeaths = !countIsTheNews && quality.citesDeathCount(recentBot[recentBot.length - 1] || '', deathCount);
+    const validateCtx = { player: getPlayer(), deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures(), lastCitedDeaths };
+    const deathRepeatNote = lastCitedDeaths ? ' Tu mensaje anterior ya citó el número de muertes: NO cites ninguna cifra de muertes en este.' : '';
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
     // Lo que genera Gemini no pasa por la revisión de sentido por IA (solo reglas de quality.js y factcheck si habla del juego)
     let senseReview = true;
@@ -551,6 +570,9 @@ async function runCohost(client, channel, moment = null) {
     let reply = '';
     let softCandidate = null;
     let feedback = '';
+    // Cohost libre: el código elige el tema (rotando) y el modelo solo hace SKIP si de verdad no puede hablar de él
+    const topicCtx = { minutes: startedAt ? Math.floor((now - startedAt) / 60000) : 0, bosses: getBossCount(), game: gameInfo?.game || '', deathCount, canCiteDeaths: !lastCitedDeaths };
+    let freeTopic = moment ? null : pickFreeTopic({ ...topicCtx, last: lastFreeTopic });
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
       if (attempt > 0 && !canMakeRequest()) { reason = 'ratelimit'; break; }
       const response = await aiChat('cohost', {
@@ -560,17 +582,25 @@ async function runCohost(client, channel, moment = null) {
         messages: [
           {
             role: 'system',
-            content: `${personalityBase} ${game}${streamNote}${raidNote}${nameNote}${emoteNote} ${COHOST_RULES} Sin saludos. Sin presentarte.${moodNote}${historyNote}${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
+            content: `${personalityBase} ${game}${streamNote}${raidNote}${nameNote}${emoteNote} ${COHOST_RULES} ${playerRule(getPlayer())} Sin saludos. Sin presentarte.${deathRepeatNote}${moodNote}${historyNote}${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
           },
           { role: 'user', content: moment
             ? `Acaba de pasar esto en el stream: ${moment.description}.${recentContext ? `\nChat reciente:\n${recentContext}` : ''}\nComenta ESE hecho con humor y la voz de Dios Fua, en una frase sencilla con una sola idea. No hables de mecánicas del juego. Es un suceso importante: comenta siempre, no respondas SKIP.`
-            : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nReacciona con humor a UN tema del stream: la partida, lo que le pasa a Manu, lo que el chat comenta sobre el juego o una broma del canal (no lo describas ni lo resumas). Ignora la vida personal de la gente y las conversaciones entre usuarios. Una sola idea, frase sencilla. Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. Si no hay nada que decir de eso, responde SKIP.` }
+            : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nReacciona con humor a UN tema del stream: la partida, lo que le pasa a Manu, lo que el chat comenta sobre el juego o una broma del canal (no lo describas ni lo resumas). Ignora la vida personal de la gente y las conversaciones entre usuarios. Una sola idea, frase sencilla. Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. TEMA de este comentario: ${freeTopic.note}. Habla de ese tema con tu voz; responde SKIP solo si de verdad no puedes decir nada sobre él sin inventar.` }
         ]
       });
       senseReview = response._ai?.provider !== 'gemini';
       const choice = response.choices[0];
       const raw = (choice.message.content || '').trim();
-      if (!moment && /^SKIP\b/i.test(raw)) { reason = 'skip'; logger.info('Co-host: SKIP (nada concreto que decir)'); break; }
+      if (!moment && /^SKIP\b/i.test(raw)) {
+        recordCohostDiscard('skip'); // cuenta cada SKIP del modelo (sale en el resumen de fin de stream)
+        if (attempt === 0) { // segundo intento con otro tema
+          freeTopic = pickFreeTopic({ ...topicCtx, last: freeTopic.id });
+          logger.info(`Co-host: SKIP, reintento con otro tema (${freeTopic.id})`);
+          continue;
+        }
+        reason = 'sin_tema'; logger.info('Co-host: sin tema tras el reintento'); break;
+      }
       const complete = choice.finish_reason === 'length' ? quality.dropTrailingFragment(raw) : raw;
       let text = quality.applyEmotePolicy(truncate(complete, maxChars), allowEmote, emotes);
       const check = quality.validateCohost(text, validateCtx);
@@ -593,12 +623,13 @@ async function runCohost(client, channel, moment = null) {
       reply = text;
     }
     // El reintento falló en algo grave pero el primer texto solo tenía un fallo leve: se envía ese (si pasa la revisión)
-    if (!reply && softCandidate && reason !== 'ratelimit' && reason !== 'skip') {
+    if (!reply && softCandidate && reason !== 'ratelimit' && reason !== 'sin_tema') {
       const settled = settleSoft(softCandidate.text, softCandidate.rule);
       if (settled && (await reviewText(settled)).ok) reply = settled;
     }
 
     if (!reply) { recordCohostDiscard(reason); return 'dropped'; }
+    if (freeTopic) lastFreeTopic = freeTopic.id;
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     addCohostText(kindKey, reply);
@@ -606,6 +637,10 @@ async function runCohost(client, channel, moment = null) {
     markNamed(quality.namesIn(reply, chatHistory.slice(-60).map(m => m.username)));
     recordCohost();
     recordCohostSent(kind);
+    if (isStreak || !moment) { // cupo compartido: solo cuentan los enviados (un SKIP o un descarte no gasta cupo)
+      lastSharedAt = Date.now(); lastFreeAt = lastSharedAt; // el reloj de los libres vuelve a empezar
+      freeCohostTimes = pruneHourly([...freeCohostTimes, lastSharedAt]);
+    }
     return 'sent';
   } catch (err) {
     logger.error(`Co-host: ${err.message}`);
@@ -672,8 +707,10 @@ async function freeCohostTick(client, channel) {
   const now = Date.now();
   if (!lastFreeAt) { lastFreeAt = now; return; }
   if (cohostRunning || eventQueue.length) return;
+  if (isFreeCohostPaused(now)) return; // alguien pidió silencio: los libres esperan
   const recentMessages = chatHistory.filter(m => m.ts > now - FREE_COHOST_ACTIVITY_WINDOW_MS).length;
-  if (!freeCohostDue({ now, lastFreeAt, intervalMs: COHOST_FREE_INTERVAL, recentMessages, minMessages: FREE_COHOST_MIN_MESSAGES, lastAnyAt: getLastCohostTime(), freeStamps: freeCohostTimes, maxFree: COHOST_FREE_MAX_PER_HOUR })) return;
+  if (hourlyCapReached(freeCohostTimes, COHOST_FREE_MAX_PER_HOUR, now)) return;
+  if (!freeCohostDue({ now, lastFreeAt, intervalMs: COHOST_FREE_INTERVAL, recentMessages, minMessages: FREE_COHOST_MIN_MESSAGES, lastAnyAt: getLastCohostTime(), freeStamps: freeAttemptTimes, maxFree: FREE_ATTEMPTS_MAX_PER_HOUR })) return;
   const outcome = await chatlog.runWithOrigin('cohost', () => runCohost(client, channel, null));
   lastFreeAt = outcome === 'sent' ? Date.now() : Date.now() - COHOST_FREE_INTERVAL + FREE_RETRY_MS;
 }
@@ -824,14 +861,21 @@ Resume en EXACTAMENTE 2 frases lo que ha pasado hasta ahora, con tu personalidad
 TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
         ]
       });
-      const out = (response.choices[0].message.content || '').trim();
+      const choice = response.choices[0];
+      const out = (choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '')).trim();
       const problem = quality.validateQueMePerdi(out, { deathCount: deaths, bosses, minutes });
       if (problem) { feedback = problem; logger.info(`!quemeperdi descartado (${problem}): ${out.slice(0, 80)}`); continue; }
       if (await factcheck.shouldDiscard(out, `Juego: ${game || 'desconocido'}. ${facts}`)) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
       text = out;
     }
     if (!text) throw new Error('sin respuesta válida');
-    client.say(channel, truncate(`@${username} ${text}`));
+    // Emote como en el resto (1 de cada 3, siempre al final) y nunca partido: si el mensaje no cabe, se quita el emote
+    const qEmotes = channelConfig.channel_emotes || [];
+    const qAllow = quality.emoteAllowed(getBotHistory().map(e => e.msg), qEmotes);
+    const qBody = quality.applyEmotePolicy(text, qAllow, qEmotes);
+    const qOut = truncate(quality.fitWithEmotes(`@${username} ${qBody}`, TWITCH_MAX_LENGTH, qEmotes));
+    client.say(channel, qOut);
+    addBotMessage(qOut.replace(/^@\S+\s*/, ''));
   } catch (err) {
     logger.warn(`!quemeperdi: ${err.message}`);
     queMePerdiCooldowns.delete(userId);
@@ -851,6 +895,7 @@ async function checkChatHook(client, channel) {
   if (isSilenced() || isTriviaActive()) return;
   if (!getEventSubLiveStatus()) return;
   const now = Date.now();
+  if (isFreeCohostPaused(now)) return; // alguien pidió silencio: tampoco el hook anti-silencio (los timers fijos siguen)
   const silenceTime = now - lastChatMessageTime;
 
   if (now - lastHookTime < HOOK_INTERVAL) return;
@@ -878,7 +923,8 @@ async function checkChatHook(client, channel) {
   // 50% de probabilidad de comentario espontáneo de IA si hay juego detectado
   if (game && Math.random() < 0.5 && canMakeRequest()) {
     try {
-      const rawg = await getGameInfo(game).catch(() => null);
+      const rawg = await getGameInfo(game, { detail: true }).catch(() => null);
+      const gameFacts = factcheck.gameFactsText(rawg);
       const gameContext = rawg
         ? `${game} (${translateGenres(rawg.genres) || 'sin género'}, ${rawg.released?.slice(0,4) || '?'})`
         : game;
@@ -888,7 +934,7 @@ async function checkChatHook(client, channel) {
       const deathNote = deathCount === 0
         ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
         : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
-      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve, con tu voz y el lore del canal, sobre lo que pasa en el stream o sobre el FUA. ${AUTO_GAME_RULE} ${deathNote} Sin estilo de narrador ni metáforas deportivas. No nombres a ningún usuario. Quien juega es Manu (nunca "Manu y Pao" jugando o muriendo). ${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.`;
+      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve, con tu voz y el lore del canal, sobre lo que pasa en el stream o sobre el FUA. ${AUTO_GAME_RULE} ${deathNote} Sin estilo de narrador ni metáforas deportivas. No nombres a ningún usuario. ${playerRule(getPlayer())} ${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.`;
 
       let text = '';
       let feedback = '';
@@ -903,9 +949,9 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
           ]
         });
         const out = truncate((response.choices[0].message.content || '').trim());
-        const check = quality.validateHook(out, { deathCount, recent: recentHooks });
+        const check = quality.validateHook(out, { deathCount, recent: recentHooks, player: getPlayer(), lastCitedDeaths: quality.citesDeathCount((getBotHistory().slice(-1)[0] || {}).msg || '', deathCount) });
         if (!check.ok) { feedback = check.reason; logger.info(`Hook descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
-        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}.`, { game, sense: response._ai?.provider !== 'gemini' });
+        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}. ${gameFacts}`, { game, sense: response._ai?.provider !== 'gemini' });
         if (review.discard) {
           logger.info(`Hook descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;
@@ -936,7 +982,7 @@ TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
   let gameHooks = [];
   if (game) {
     try {
-      const rawg = await getGameInfo(game);
+      const rawg = await getGameInfo(game, { detail: true }); // misma clave de caché que la ficha precalentada del juego actual
       const genres = translateGenres(rawg?.genres);
       if (genres) {
         const year = rawg.released?.slice(0, 4) || '';
@@ -1449,12 +1495,36 @@ setInterval(() => {
   for (const [k, v] of patternUserCooldowns) if (now > v) patternUserCooldowns.delete(k);
 }, 15 * 60 * 1000);
 
+// Petición de silencio al bot ("Dios Fua, cállate un rato"): respuesta breve y amable, sin IA, y el cohost libre se pausa 10 min.
+// Los eventos (jefe, raid...) y las respuestas directas siguen funcionando. Un aviso por usuario cada 2 min como mucho.
+const FREE_COHOST_PAUSE_MS = parseInt(process.env.COHOST_SHUTUP_PAUSE_MS || String(10 * 60 * 1000), 10);
+const shutUpCooldowns = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of shutUpCooldowns) if (now > v) shutUpCooldowns.delete(k);
+}, 15 * 60 * 1000);
+
+function handleShutUp(client, channel, tags) {
+  const now = Date.now();
+  const userId = tags['user-id'] || tags['username'];
+  pauseFreeCohost(FREE_COHOST_PAUSE_MS, now);
+  if (now < (shutUpCooldowns.get(userId) || 0)) return 'blocked';
+  shutUpCooldowns.set(userId, now + 2 * 60 * 1000);
+  const reply = pickRandom(messagesConfig.shutup_replies);
+  const out = truncate(`@${tags['display-name']} ${reply}`);
+  client.say(channel, out, undefined, { expiresAt: now + MENTION_MAX_AGE_MS });
+  addBotMessage(reply);
+  logger.info(`Silencio pedido por ${tags['display-name']}: cohost libre en pausa ${Math.round(FREE_COHOST_PAUSE_MS / 60000)} min`);
+  return true;
+}
+
 // false = no era para el bot (el cohost puede hablar); 'blocked' = sí lo era pero no se responde (cooldown, límite); true = respondido
 async function checkPatternMatch(client, channel, tags, message) {
   if (isSilenced() || isTriviaActive()) return false;
 
   const kind = classifyMessage(message, tags, { botNames: [process.env.BOT_USERNAME] });
   if (!kind) return false;
+  if (kind === 'shutup') return handleShutUp(client, channel, tags);
 
   const now = Date.now();
   const startedAt = now;
@@ -1549,14 +1619,14 @@ async function checkPatternMatch(client, channel, tags, message) {
           max_tokens: modeConfig.max_tokens ?? 120,
           temperature: GENERAL_TEMPERATURE,
           messages: [
-            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. Los datos concretos de videojuegos (fecha, desarrolladora, armas, mecánicas, jefes) y los consejos no los des: sugiere !dios_fua. Pero las opiniones y predicciones sobre el stream (cuántas muertes habrá, si Manu ganará, cómo irá la partida) SÍ las respondes tú, con una postura o una cifra graciosa y tu personalidad, sin redirigir.${gameNote}${deathsNote} Responde a lo que dice el usuario y no saques temas que no ha mencionado. ${STYLE_RULES} Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. Los datos concretos de videojuegos (fecha, desarrolladora, armas, mecánicas, jefes) y los consejos no los des: sugiere !dios_fua. Pero las opiniones y predicciones sobre el stream (cuántas muertes habrá, si Manu ganará, cómo irá la partida) SÍ las respondes tú, con una postura o una cifra graciosa y tu personalidad, sin redirigir.${gameNote}${deathsNote} Responde a lo que dice el usuario y no saques temas que no ha mencionado. ${playerRule(getPlayer())}${username.toLowerCase() === 'parlusorum' ? ' Quien te escribe es la cuenta ParLusorum: casi seguro Pao (o Manu); no la llames Manu ni le hables en masculino.' : ''} ${STYLE_RULES} Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones RAWG, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
             ...userConv,
             { role: 'user', content: `${username}: ${question}` }
           ]
         }, 2, { maxDelayMs: MENTION_MAX_RETRY_DELAY_MS });
         const choice = response.choices[0];
         const raw = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
-        const check = quality.validateMention(raw, { question });
+        const check = quality.validateMention(raw, { question, player: getPlayer() });
         if (!check.ok) { feedback = check.reason; continue; }
         const mentionGame = await getCurrentGame().catch(() => null);
         // Solo se vigila lo que habla de videojuegos; "resistencia" o "zona" en una pregunta de cultura general no cuentan

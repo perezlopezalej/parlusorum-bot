@@ -408,6 +408,26 @@ function getChatterNames(now = Date.now()) {
 function resetChatters() { chatters.clear(); }
 setInterval(() => { const now = Date.now(); for (const [n, at] of chatters) if (now - at >= CHATTER_TTL_MS) chatters.delete(n); }, 30 * 60 * 1000).unref();
 
+// --- Quién juega ahora: Manu por defecto; un mod lo cambia con !juega pao|manu y vuelve a Manu al empezar cada stream ---
+const PLAYERS = ['manu', 'pao', 'ambos'];
+const PLAYER_ALIASES = { 'los dos': 'ambos', 'ambas': 'ambos', 'los 2': 'ambos' };
+let currentPlayer = 'manu';
+function getPlayer() { return currentPlayer; }
+function setPlayer(name) {
+  const raw = String(name || '').trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ');
+  const p = PLAYER_ALIASES[raw] || raw;
+  if (!PLAYERS.includes(p)) return false;
+  currentPlayer = p;
+  return true;
+}
+function resetPlayer() { currentPlayer = 'manu'; }
+
+// --- Cohost libre en pausa (alguien pide al bot que se calle): hasta esa hora solo hablan los eventos y las menciones ---
+let cohostPausedUntil = 0;
+function pauseFreeCohost(ms, now = Date.now()) { cohostPausedUntil = now + ms; }
+function isFreeCohostPaused(now = Date.now()) { return now < cohostPausedUntil; }
+function resetFreeCohostPause() { cohostPausedUntil = 0; }
+
 // --- Descartes del cohost en el stream (motivo → nº), para el resumen de fin de stream ---
 const cohostDiscards = new Map();
 function recordCohostDiscard(reason) { cohostDiscards.set(reason, (cohostDiscards.get(reason) || 0) + 1); }
@@ -454,6 +474,7 @@ module.exports = {
   startAiRequest, finishAiRequest, getAiMinuteUsage, getAiDayUsage, getAiUsage, resetAiStreamUsage, resetAiUsage,
   noteChatter, getChatterNames, resetChatters,
   recordCohostDiscard, getCohostDiscards, resetCohostDiscards,
+  getPlayer, setPlayer, resetPlayer, pauseFreeCohost, isFreeCohostPaused, resetFreeCohostPause,
   recordCohostAttempt, recordCohostSent, recordGroq429, getCohostStats, resetCohostStats,
   addLoreSample, getLoreSample, resetLoreSample,
   setTriviaActive, isTriviaActive,

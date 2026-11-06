@@ -15,6 +15,7 @@
     { "name": "comandos", "help": "Lista de comandos disponibles." },
     { "name": "ayuda", "help": "Ayuda de un comando. Uso: !ayuda [comando]" },
     { "name": "silencio", "mod": true, "help": "(Mods) Activa/desactiva todos los mensajes automaticos del bot." },
+    { "name": "juega", "mod": true, "help": "(Mods) Indica quién juega ahora. Uso: !juega pao | manu | ambos (también «los dos»; vuelve a Manu al empezar cada stream)." },
     { "name": "brb", "mod": true, "help": "(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min." },
     { "name": "so", "mod": true, "help": "(Mods) Shoutout con IA. Uso: !so @usuario" },
     { "name": "boss", "help": "Jefes derrotados en el stream. Mods: !boss +N (1-10) / !boss -N (sin bajar de 0) / !boss reset. Total de un juego: !boss <juego>" },

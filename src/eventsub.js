@@ -15,7 +15,7 @@ const {
   getDeathCount, setDeathCount, setBossCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter,
   getActivePrediction, setActivePrediction, clearActivePrediction,
-  getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getAiUsage, resetAiStreamUsage, getCohostStats, resetCohostStats,
+  getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getAiUsage, resetAiStreamUsage, getCohostStats, resetCohostStats, resetPlayer, resetFreeCohostPause,
 } = require('./utils/state');
 
 // La narrativa de la sesión se persiste en Supabase en cada cambio (escritura diferida)
@@ -98,7 +98,7 @@ function formatAiUsage(usage, rpd = GEMINI_RPD) {
 function formatCohostStats({ attempts, sent, discards, groq429 }) {
   const reasons = Object.entries(discards).map(([k, n]) => `${k}: ${n}`).join(', ') || 'ninguno';
   const total = attempts.event + attempts.free;
-  return `cohost: ${total} comentarios intentados (${attempts.event} eventos, ${attempts.free} libres), ${sent.event + sent.free} enviados (${sent.event} eventos, ${sent.free} libres); descartes: ${reasons}; 429 de Groq: ${groq429}`;
+  return `cohost: ${total} comentarios intentados (${attempts.event} eventos, ${attempts.free} libres), ${sent.event + sent.free} enviados (${sent.event} eventos, ${sent.free} libres); SKIP del modelo: ${discards.skip || 0}; descartes: ${reasons}; 429 de Groq: ${groq429}`;
 }
 
 // --- Inicializar estado del stream al arrancar ---
@@ -378,7 +378,7 @@ function createEventSubHandler(client, channel, deps) {
         try { resetSessionCounters(); } catch {}
         try { resetStreamChatBuffer(); } catch {}
         try { resetStreamNarrative(); } catch {}
-        try { resetBotHistory(); } catch {}
+        try { resetBotHistory(); resetPlayer(); resetFreeCohostPause(); } catch {}
         try { resetReinforceCounter(); } catch {}
         try { clearUserFactsCache(); } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch

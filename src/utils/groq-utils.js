@@ -54,7 +54,7 @@ function retryAfterMs(err) {
 
 // Cupo diario (tokens/peticiones por día) en vez del de por minuto: el mensaje del proveedor lo dice, o la espera pedida es larga
 function isDailyQuota(err) {
-  return /per ?day|TPD|RPD/i.test(`${err?.message || ''} ${err?.error?.error?.message || ''}`) || retryAfterMs(err) > 120000;
+  return /per ?day|\bTPD\b|\bRPD\b/i.test(`${err?.message || ''} ${err?.error?.error?.message || ''}`) || retryAfterMs(err) > 120000;
 }
 
 // Modelos con razonamiento visible (qwen...) devuelven <think>…</think> dentro del contenido: fuera del chat

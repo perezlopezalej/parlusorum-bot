@@ -30,7 +30,9 @@ const RAWG_NOTE_RE = /\brawg\b|\bigdb\b|\b\d(?:[.,]\d+)?\s*\/\s*5\b/i;
 // Bromas cariñosas sí, desprecio al juego de los streamers no
 const GAME_DISPARAGE_RE = /\b(cortito|nivel medio|mediocre|aburrid[oa]|basura|chusta|bodrio|sobrevalorad[oa]|p[eé]simo|injugable|decepcion\w*)\b|modo beta|beta etern\w*|tutorial de c[oó]mo|se cree el rey|juego (?:malo|flojo|regular)/i;
 
-function mentionsMechanics(text) { return MECHANICS_RE.test(text); }
+// "La dificultad del jefe" es un hecho del stream (el !boss), no una mecánica del juego
+const BOSS_DIFFICULTY_RE = /\bdificultad (?:del?|de este|de ese|de los) (?:jefes?|boss(?:es)?)\b/gi;
+function mentionsMechanics(text) { return MECHANICS_RE.test(String(text || '').replace(BOSS_DIFFICULTY_RE, ' ')); }
 function citesRawgScore(text) { return RAWG_NOTE_RE.test(text); }
 function disparagesGame(text) { return GAME_DISPARAGE_RE.test(text); }
 
@@ -47,7 +49,7 @@ function isDeathQuestion(text) { return DEATH_QUESTION_RE.test(text) && /\?|cu[a
 const GAME_FACT_RE = /\b(niveles?|mapa|personajes?|finales?|secuela|dlc|logros?|trofeos?|lanzamiento|desarrolladora|g[eé]nero|campa[ñn]a|argumento|historia del juego|multijugador|cooperativo|a[ñn]o de salida)\b/i;
 function mentionsGame(text, game = '') {
   const t = String(text || '');
-  if (MECHANICS_RE.test(t) || GAME_FACT_RE.test(t)) return true;
+  if (mentionsMechanics(t) || GAME_FACT_RE.test(t)) return true;
   return mentionsGameName(t, game);
 }
 
@@ -83,6 +85,118 @@ function mentionsUnrecordedDeaths(text, deathCount) {
   if (!deathCount) return true;
   const nums = [...text.matchAll(/(?:#|n[uú]mero |muerte |ca[ií]da )(\d+)|(\d+)\s*(?:muertes?|ca[ií]das?|veces)/gi)].map(m => parseInt(m[1] || m[2], 10));
   return nums.some(n => n !== deathCount);
+}
+
+// --- Números en palabras (0-999): para detectar que se cita el contador de muertes y los mal escritos ("cuarentay siete") ---
+const UNITS_ES = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidos', 'veintitres', 'veinticuatro', 'veinticinco', 'veintiseis', 'veintisiete', 'veintiocho', 'veintinueve'];
+const TENS_ES = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+const HUNDREDS_ES = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+const NUMBER_TOKENS_ES = [...new Set([...UNITS_ES, 'un', 'una', 'cien', ...TENS_ES.filter(Boolean), ...HUNDREDS_ES.filter(Boolean), 'doscientas', 'trescientas'])];
+
+// Formas (sin tildes) con las que se puede escribir n en español: "treinta y una", "treinta y uno", "treinta y un"
+function numberWordsEs(n) {
+  n = Math.trunc(Number(n));
+  if (!Number.isFinite(n) || n < 0 || n > 999) return [];
+  if (n === 100) return ['cien'];
+  const h = Math.floor(n / 100);
+  const rest = n % 100;
+  const head = h ? HUNDREDS_ES[h] : '';
+  let tail = [];
+  if (rest < 30) tail = rest === 0 && h ? [] : [UNITS_ES[rest]];
+  else {
+    const t = TENS_ES[Math.floor(rest / 10)];
+    tail = rest % 10 === 0 ? [t] : [`${t} y ${UNITS_ES[rest % 10]}`];
+  }
+  let forms = tail.map(w => [head, w].filter(Boolean).join(' '));
+  if (!tail.length) forms = [head];
+  const extra = [];
+  for (const f of forms) {
+    if (/uno$/.test(f)) { extra.push(f.replace(/uno$/, 'una')); extra.push(f.replace(/uno$/, 'un')); }
+    if (/veintiuno$/.test(f)) extra.push(f.replace(/veintiuno$/, 'veintiun'));
+  }
+  return [...forms, ...extra];
+}
+
+// Números en palabras mal formados: "cuarentay siete", "treintaydos", "cuarenta siete" (falta la "y")
+const TENS_RE = '(?:treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)';
+const SMALL_UNITS_RE = '(?:uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)';
+const MALFORMED_NUMBER_RE = new RegExp(`\\b${TENS_RE}(?:y|i)\\s*${SMALL_UNITS_RE}\\b|\\b${TENS_RE}\\s+${SMALL_UNITS_RE}\\b|\\b${TENS_RE}(?:y|i)\\b`);
+function malformedNumber(text) {
+  const m = norm(text).match(MALFORMED_NUMBER_RE);
+  return m ? m[0] : null;
+}
+
+// ¿Cita el número de muertes? Cifra o palabra pegada a "muertes/caídas/bajas/derrotas" ("31 caídas", "treinta y una caídas",
+// "tres bajas seguidas") o, con 10+ muertes, el contador exacto suelto ("con treinta y una en el zurrón")
+const NUM_TOKEN_RE = `(?:${NUMBER_TOKENS_ES.join('|')})`;
+const DEATH_NOUN_RE = '(?:muertes?|caidas?|bajas?|derrotas?)';
+const CITES_COUNT_RE = new RegExp(`(?:\\b\\d+|\\b${NUM_TOKEN_RE}(?:\\s+(?:y\\s+)?${NUM_TOKEN_RE})*)\\s+(?:\\p{L}+\\s+){0,1}${DEATH_NOUN_RE}\\b`, 'u');
+function citesDeathCount(text, deathCount = 0) {
+  const t = norm(text);
+  if (CITES_COUNT_RE.test(t)) return true;
+  const n = Number(deathCount);
+  if (n >= 10 && n <= 999) {
+    if (new RegExp(`(?<![\\d#])${n}(?!\\d)`).test(t)) return true;
+    if (numberWordsEs(n).some(w => new RegExp(`\\b${w}\\b`).test(t))) return true;
+  }
+  return false;
+}
+
+// --- Basura: mensajes que no están en español, son demasiado cortos o traen restos del razonamiento del modelo ---
+const ENGLISH_WORDS = new Set(['the', 'and', 'is', 'are', 'was', 'were', 'of', 'to', 'you', 'your', 'with', 'this', 'that', 'something', 'like', 'let', 'okay', 'finding', 'here', 'should', 'would', 'could', 'need', 'maybe', 'wait', 'hmm', 'user', 'thinking', 'we', 'they', 'what', 'for', 'on', 'at', 'be', 'have', 'has', 'not', 'but', 'so', 'just', 'about', 'from', 'my', 'our', 'their', 'how', 'why', 'it', 'its', 'i', 'will', 'can', 'do', 'does', 'message', 'response', 'write', 'writing', 'draft']);
+const SPANISH_WORDS = new Set(['el', 'la', 'los', 'las', 'lo', 'un', 'una', 'unos', 'unas', 'de', 'del', 'al', 'y', 'e', 'o', 'u', 'que', 'en', 'es', 'son', 'se', 'su', 'sus', 'con', 'por', 'para', 'sin', 'sobre', 'como', 'mas', 'pero', 'muy', 'ya', 'no', 'si', 'me', 'te', 'le', 'les', 'nos', 'mi', 'tu', 'a', 'hay', 'ha', 'han', 'era', 'fue', 'esta', 'este', 'esto', 'eso', 'ese', 'ahi', 'aqui', 'cuando', 'donde', 'quien', 'ni', 'tan', 'todo', 'todos', 'toda', 'nada', 'algo', 'ser', 'estar', 'va', 'vamos', 'vas', 'voy', 'hoy', 'cada', 'otro', 'otra', 'solo', 'ahora', 'siempre']);
+const REASONING_LEAK_RE = /\b(?:let me|let's|the user|i need to|i should|i'll|i'm going|okay,|hmm+|wait,|first,? i|they want|we need|must (?:be|produce|write))\b|<\/?think>|\[(?:thinking|analysis)\]|^\s*(?:analysis|draft|output|borrador|reasoning)\s*:|\b(?:el usuario (?:quiere|pide|dice)|borrador del mensaje)\b/i;
+const TRIVIAL_TOKEN_RE = /^\p{L}+\d+\w*$/u; // emotes y nicks con números ("parlus1X", "stewar32")
+
+// Palabras "de verdad" del mensaje: sin emotes (parlus1…), @menciones ni enlaces
+function wordsOf(text) {
+  return String(text || '').replace(/https?:\/\/\S+/gi, ' ').replace(/@\w+/g, ' ').replace(/\bparlus1\w*/gi, ' ')
+    .split(/[^\p{L}\p{N}']+/u).filter(w => w && !TRIVIAL_TOKEN_RE.test(w));
+}
+
+// Devuelve { rule: 'basura', reason } o null. minWords: palabras mínimas (3 por defecto)
+function junkProblem(text, { minWords = 3 } = {}) {
+  const raw = String(text || '');
+  const words = wordsOf(raw);
+  if (words.length < minWords) return { rule: 'basura', reason: 'demasiado corto; escribe una frase completa en español' };
+  if (REASONING_LEAK_RE.test(raw)) return { rule: 'basura', reason: 'incluye restos de razonamiento o texto que no es el mensaje; escribe solo el mensaje final en español' };
+  let en = 0;
+  let es = 0;
+  for (const w of words) {
+    const k = norm(w);
+    if (ENGLISH_WORDS.has(k)) en++;
+    if (SPANISH_WORDS.has(k) || /[ñáéíóúü¡¿]/i.test(w)) es++;
+  }
+  if (/[ñáéíóúü¡¿]/i.test(raw)) es++;
+  if (en >= 2 && en >= es) return { rule: 'basura', reason: 'no está en español; escribe solo en español de España' };
+  if (es === 0 && words.length >= 3) return { rule: 'basura', reason: 'no parece un mensaje en español; escribe una frase completa en español de España' };
+  const num = malformedNumber(raw);
+  if (num) return { rule: 'numero', reason: `número mal escrito ("${num}"); escribe la cifra con dígitos o bien en palabras ("cuarenta y siete")` };
+  return null;
+}
+
+// --- Timer IA: nada de repetir el género, comparaciones forzadas ni autoayuda; cada mensaje empieza distinto ---
+// "en este juego de rol y acción", "un título de aventuras"
+const GENRE_MENTION_RE = /\b(?:juego|t[ií]tulo|aventura|propuesta)\s+de\s+(?:rol|acci[oó]n|aventuras?|plataformas|estrategia|disparos|terror|lucha|mundo abierto|sigilo|puzles?)(?:\s+y\s+(?:rol|acci[oó]n|aventuras?|plataformas|estrategia|disparos|terror|lucha|sigilo))?\b/i;
+function mentionsGenre(text) { return GENRE_MENTION_RE.test(String(text || '')); }
+
+// "igual que un despertador un lunes", "con la misma fuerza que un tren", "como un tren de carga"
+const FORCED_COMPARISON_RE = /\b(?:igual|mismo|misma|mismos|mismas|tan|tanto|tanta)\b[^.!?,;]{0,30}\b(?:que|como)\s+(?:un|una|unos|unas)\s+\p{L}+|\bcomo\s+(?:un|una|unos|unas)\s+(?:tren|despertador|lunes|martes|caf[eé]|bocadillo|domingo|reloj|cohete|rodillo|bulldozer|toro|le[oó]n|volc[aá]n|tormenta|huracan|huracán|ni[ñn]o|abuelo|gato|perro)\w*/iu;
+function forcedComparison(text) { return FORCED_COMPARISON_RE.test(String(text || '')); }
+
+// "¿Qué os da fuerzas cuando el mundo se pone difícil?": frases de autoayuda y preguntas de motivación
+const SELF_HELP_RE = /\b(?:qu[eé] os (?:da|mueve|motiva|anima|inspira|hace seguir)|fuerzas?\s+(?:cuando|para seguir|para levantarse)|cuando el mundo|se pone dif[ií]cil|superar (?:las |la )?(?:adversidades?|dificultades|obst[aá]culos)|nunca te rindas|lo que no te mata|sigue tus sue[ñn]os|cada ca[ií]da (?:es|nos) (?:ense[ñn]a|una lecci[oó]n)|aprend(?:e|emos) de cada)\b/i;
+function selfHelp(text) { return SELF_HELP_RE.test(String(text || '')); }
+
+// Arranque de la frase con los números abstraídos ("Cuatro horas y media…" y "Seis horas y once…" → "n horas"): evita repetir estructura
+function openingKey(text) {
+  const t = norm(text).replace(/\bparlus1\w*/g, ' ').replace(/[^a-z0-9\s]/g, ' ');
+  const abstracted = t.replace(new RegExp(`\\b(?:\\d+|${NUM_TOKEN_RE}(?:\\s+(?:y\\s+)?${NUM_TOKEN_RE})*)\\b`, 'g'), 'n').replace(/\s+/g, ' ').trim();
+  return abstracted.split(' ').slice(0, 2).join(' ');
+}
+function sameOpening(text, recent = []) {
+  const key = openingKey(text);
+  return key.split(' ').length >= 2 && recent.some(r => openingKey(r) === key);
 }
 
 // Usuarios nombrados en `text` (con o sin @) que ya se nombraron hace menos de windowMs. named: Map<login, ts>
@@ -123,12 +237,40 @@ function stripEmotes(text, emotes) {
   return text.replace(emoteRe(emotes), '').replace(SPACE_BEFORE_PUNCT_RE, '$1').replace(/ {2,}/g, ' ').trim();
 }
 
-// Aplica la política: sin permiso se quitan todos; con permiso se deja como mucho el primero
+// El emote va siempre al final del mensaje (nunca en medio ni antes de "?", "!" o "."): se saca de donde esté y se añade tras el texto
+function moveEmotesToEnd(text, emotes) {
+  if (!emotes.length) return text;
+  const found = String(text).match(emoteRe(emotes));
+  if (!found) return text;
+  const body = String(text).replace(emoteRe(emotes), '').replace(/ {2,}/g, ' ').replace(SPACE_BEFORE_PUNCT_RE, '$1').trim();
+  return body ? `${body} ${found[0]}` : found[0];
+}
+
+// Último "palabra" del texto que es un emote a medias ("parlus1PORELPO"): lo corta max_tokens o el límite de caracteres. Se elimina.
+function dropPartialEmote(text, emotes) {
+  const t = String(text || '').trimEnd();
+  const m = t.match(/(\S+)$/);
+  if (!m || !emotes.length) return t;
+  const tail = m[1].replace(/[.,;:!?¡¿…]+$/, '').toLowerCase();
+  if (tail.length < 4) return t;
+  const partial = emotes.some(e => e.toLowerCase().startsWith(tail) && e.toLowerCase() !== tail);
+  return partial ? t.slice(0, m.index).replace(/[\s,;:¡¿-]+$/, '').trimEnd() : t;
+}
+
+// Ajusta un mensaje al límite de Twitch sin partir un emote: si no cabe entero, se quitan los emotes (antes de cortar el texto)
+function fitWithEmotes(text, limit, emotes) {
+  const t = dropPartialEmote(String(text || '').trim(), emotes);
+  if (t.length <= limit || !emotes.length) return t;
+  return stripEmotes(t, emotes);
+}
+
+// Aplica la política: sin permiso se quitan todos; con permiso se deja como mucho el primero, al final del mensaje
 function applyEmotePolicy(text, allowed, emotes) {
   if (!emotes.length) return text;
   if (!allowed) return stripEmotes(text, emotes);
   let seen = false;
-  return text.replace(emoteRe(emotes), m => (seen ? '' : (seen = true, m))).replace(/ {2,}/g, ' ').replace(SPACE_BEFORE_PUNCT_RE, '$1').trim();
+  const single = text.replace(emoteRe(emotes), m => (seen ? '' : (seen = true, m))).replace(/ {2,}/g, ' ').replace(SPACE_BEFORE_PUNCT_RE, '$1').trim();
+  return moveEmotesToEnd(single, emotes);
 }
 
 // --- Repetición: palabras de contenido compartidas con mensajes recientes ---
@@ -191,13 +333,15 @@ function talksPersonalLife(text) { return PERSONAL_RE.test(String(text || '')); 
 function repeatsProfanity(text) { return PROFANITY_RE.test(String(text || '')); }
 
 // Motivo de rechazo por redacción o tema vetado (null si pasa). opts.personal=false deja pasar la vida personal (menciones)
-function styleProblem(text, { personal = true } = {}) {
+function styleProblem(text, { personal = true, minWords = 3, player = 'manu' } = {}) {
   const t = String(text || '');
+  const junk = junkProblem(t, { minWords });
+  if (junk) return junk;
   if (isCutOff(t)) return { rule: 'cortada', reason: 'la frase está cortada o termina a medias; escribe una frase completa y sencilla' };
   if (PROFANITY_RE.test(t)) return { rule: 'grosería', reason: 'repite una grosería o insulto; no los repitas ni los cites' };
   if (BOT_SELF_RE.test(t) && !/\bsoy\b[^.!?]{0,30}\bbot\b/i.test(t)) return { rule: 'bot', reason: 'habla de sí mismo como "el bot"; habla en primera persona o como el FUA' };
   if (FUA_GENDER_RE.test(t)) return { rule: 'fua', reason: '"el FUA" va siempre en masculino' };
-  if (MANU_PAO_RE.test(t)) return { rule: 'manu', reason: 'quien juega es Manu; no pongas a Pao a jugar ni a morir' };
+  if (player !== 'pao' && player !== 'ambos' && MANU_PAO_RE.test(t)) return { rule: 'manu', reason: 'quien juega es Manu; no pongas a Pao a jugar ni a morir' };
   if (CHANNEL_OWNER_RE.test(t)) return { rule: 'canal', reason: 'el canal es de Manu y Pao; vlxj97 solo creó el bot, no le atribuyas el canal' };
   if (CREATOR_CLAIM_RE.test(t)) return { rule: 'creador', reason: 'eres el bot del canal, no su creador; te creó vlxj97' };
   if (personal && PERSONAL_RE.test(t)) return { rule: 'personal', reason: 'habla de vida personal (comida, sueño, familia, trabajo, salud, fútbol); habla solo del stream, el juego y el chat sobre la partida' };
@@ -228,13 +372,14 @@ function validateAuto(text) {
 // Validación del cohost. ctx: { deathCount, recent: string[], sameKind: string[], named: Map, now, nameWindowMs }
 // Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
 // se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
-function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set() } = {}) {
+function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set(), lastCitedDeaths = false, player = 'manu' } = {}) {
   if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
   if (hasLatam(text)) return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, rule: 'muertes', reason: 'menciona muertes que no están en el contador' };
-  const style = styleProblem(text);
+  const style = styleProblem(text, { player });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
+  if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, rule: 'contador', reason: DEATH_REPEAT_REASON };
   const game = gameTalkProblem(text);
   if (game) return { ok: false, rule: 'juego', reason: game };
   const names = recentlyNamedIn(text, named, now, nameWindowMs);
@@ -257,14 +402,16 @@ function vetAuto(text) {
 }
 
 // Hook anti-silencio: voz de Dios Fua, sin deporte, sin muertes inventadas ni repetir los últimos hooks
-function validateHook(text, { deathCount = 0, recent = [] } = {}) {
+const DEATH_REPEAT_REASON = 'el mensaje anterior del bot ya citó el número de muertes; no lo cites ahora, habla de otra cosa';
+function validateHook(text, { deathCount = 0, recent = [], lastCitedDeaths = false, player = 'manu' } = {}) {
+  if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
-  const style = styleProblem(text);
+  const style = styleProblem(text, { player });
   if (style) return { ok: false, reason: style.reason };
   const game = gameTalkProblem(text);
   if (game) return { ok: false, reason: game };
@@ -292,6 +439,8 @@ function claimsEnemyKills(text) { return KILLS_CLAIM_RE.test(String(text || ''))
 
 // !quemeperdi: validación del resumen; devuelve el motivo de rechazo o null
 function validateQueMePerdi(text, { deathCount = 0, bosses = 0 } = {}) {
+  const junk = junkProblem(text);
+  if (junk) return junk.reason;
   if (achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
   if (!text || text.length < 8) return 'vacío o demasiado corto';
   if (claimsEnemyKills(text)) return 'habla de enemigos derribados; no hay ese dato (las muertes son caídas del streamer)';
@@ -311,17 +460,22 @@ function repeatsYear(text, recent) {
 
 // Comentario IA del timer: misma validación que el hook, sin nota de RAWG y sin repetir ideas del stream
 // ctx.currentGame/channelGames: sin nombrar otros juegos; ctx.named: usuarios nombrados hace poco (no repetirlos)
-function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set() } = {}) {
+function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set(), lastCitedDeaths = false, player = 'manu' } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
+  if (mentionsGenre(text) && recent.some(mentionsGenre)) return { ok: false, reason: 'repite el género del juego ("juego de rol y acción"); no lo uses en cada mensaje, habla de otra cosa' };
+  if (forcedComparison(text)) return { ok: false, reason: 'usa una comparación forzada ("igual que un despertador un lunes"); di la idea directa, sin comparar con objetos ni situaciones cotidianas' };
+  if (selfHelp(text)) return { ok: false, reason: 'suena a autoayuda o motivación ("qué os da fuerzas…"); haz un comentario del directo con humor, sin consejos ni preguntas existenciales' };
+  if (sameOpening(text, recent)) return { ok: false, reason: 'empieza igual que un mensaje anterior; cambia la estructura de la frase y no abras con el tiempo o el contador' };
   const structure = structureKey(text);
   if (structure && usedStructures.has(structure)) return { ok: false, reason: 'repite la estructura "Manu lleva N caídas y el FUA…" de este stream; no cites el contador y cambia de enfoque' };
   if (citesRawgScore(text)) return { ok: false, reason: 'cita la nota de RAWG; no la menciones' };
   if (/@\w/.test(text)) return { ok: false, reason: 'no etiquetes a nadie con @' };
-  const style = styleProblem(text);
+  const style = styleProblem(text, { player });
   if (style) return { ok: false, reason: style.reason };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent, 0.5)) return { ok: false, reason: 'repite una idea de un comentario anterior de este stream' };
@@ -344,6 +498,14 @@ function genderedParlusorum(text) {
 // Resumen de fin de stream: siempre en positivo y con lo que pasó
 const NEGATIVE_SUMMARY_RE = /\b(poca acci[oó]n|sin acci[oó]n|falta de acci[oó]n|aburrid[oa]s?|flojo|floja|mon[oó]tono|mon[oó]tona|decepcion\w*|desastre|pobre|vac[ií][oa]|muerto|lento|lenta|sin nada|nada (?:que|de) (?:contar|destacar))\b/i;
 function negativeSummary(text) { return NEGATIVE_SUMMARY_RE.test(text); }
+
+// El resumen de fin de stream (que luego entra en el prompt de los siguientes) solo habla del juego, el stream y el ambiente del chat.
+// Lista ampliada SOLO para el resumen: en directo "el calor del combate" es una frase válida, aquí "calor veraniego" es charla del chat.
+const SUMMARY_PERSONAL_RE = /\b(hamburguesas?|pizzas?|bocadill\w+|merienda\w*|tortilla|helados?|cervezas?|calor|calurosa?|veran(?:o|iego|iega)|invierno|fr[ií]o|lluvi\w+|llov\w+|clima|temperatura|playa|piscina|vacaciones|cumplea[ñn]os|boda|ex[aá]menes?|examen|estudi(?:o|os|ar|ando)|universidad|instituto|clase|jefe del trabajo|resaca|borrach\w+|fiesta)\b/i;
+function summaryPersonalLife(text) {
+  const t = String(text || '');
+  return PERSONAL_RE.test(t) || SUMMARY_PERSONAL_RE.test(t);
+}
 
 // ─── Atributos inventados: país/nacionalidad, personas y cifras que no están en los datos ───
 // [qué dice la respuesta, qué debe aparecer en los datos para respaldarlo]
@@ -373,7 +535,8 @@ function unsupportedAttributes(text, source = '', { persons = true } = {}) {
       }
     }
     if (FIGURE_CTX_RE.test(n)) {
-      if (/presupuesto/.test(n) && !/presupuesto|budget/.test(src)) return 'presupuesto';
+      // "el presupuesto nacional/familiar" es un chiste de cultura general, no el presupuesto del juego
+      if (/presupuesto(?! (?:nacional|publico|general|familiar|domestico|mensual|del estado|de la nacion|del pais))/.test(n) && !/presupuesto|budget/.test(src)) return 'presupuesto';
       const srcDigits = new Set((src.match(/\d[\d.,]*/g) || []).map(d => d.replace(/[.,]/g, '')));
       for (const d of n.match(/\d[\d.,]*/g) || []) {
         const digits = d.replace(/[.,]/g, '');
@@ -472,13 +635,13 @@ function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
 
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 // ctx.question: lo que escribió el usuario (los consejos y las mecánicas solo valen si él los sacó)
-function validateMention(text, { question = '' } = {}) {
+function validateMention(text, { question = '', player = 'manu' } = {}) {
   if (!text || text.length < 3) return { ok: false, reason: 'vacío' };
   if (leaksTech(text)) return { ok: false, reason: 'menciona datos, herramientas o RAWG; habla con personalidad, sin nada técnico' };
   if (genderedParlusorum(text)) return { ok: false, reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
-  const style = styleProblem(text, { personal: false });
+  const style = styleProblem(text, { personal: false, minWords: 2, player });
   if (style) return { ok: false, reason: style.reason };
   if (TIPS_RE.test(text) && !TIPS_RE.test(question)) return { ok: false, reason: 'ofrece consejos o tips que nadie ha pedido' };
   if (REDIRECT_RE.test(text) && !MECHANICS_RE.test(question)) return { ok: false, reason: 'dice que no habla de mecánicas cuando nadie las ha mencionado; responde a lo que dice el usuario' };
@@ -555,8 +718,9 @@ module.exports = {
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
   vetAuto, styleProblem, claimsChannelOwner, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
-  validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, positiveSummaryFallback,
+  validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, summaryPersonalLife, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
+  dropPartialEmote, fitWithEmotes, junkProblem, malformedNumber, citesDeathCount, numberWordsEs, mentionsGenre, forcedComparison, selfHelp, openingKey, sameOpening, moveEmotesToEnd,
   unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
   mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesRawgScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

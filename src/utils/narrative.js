@@ -121,7 +121,8 @@ const FREE_COHOST_INTERVAL_MS = 15 * 60 * 1000;    // cada cuánto toca un comen
 const FREE_COHOST_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
 const FREE_COHOST_MIN_MESSAGES = 3;                // mensajes de usuarios en la ventana para considerar el chat activo
 const FREE_COHOST_AFTER_ANY_MS = 2 * 60 * 1000;    // no pisar un comentario de hace nada
-const FREE_COHOST_MAX_PER_HOUR = 6;                // freno de seguridad (los reintentos tras un fallo no deben acumularse)
+const FREE_COHOST_MAX_PER_HOUR = 4;                // cupo compartido libres + rachas de muertes (máximo, no objetivo: se busca ~3/h)
+const STREAK_COHOST_GAP_MS = 15 * 60 * 1000;       // hueco mínimo entre dos comentarios del cupo compartido (libre o racha)
 const DEATH_STREAK_WINDOW_MS = 10 * 60 * 1000;
 const DEATH_STREAK_SIZE = 3;
 const STREAK_BREAKERS = ['boss', 'victory', 'milestone'];
@@ -178,7 +179,44 @@ function freeCohostDue({ now = Date.now(), lastFreeAt = 0, intervalMs = FREE_COH
   return !hourlyCapReached(freeStamps, maxFree, now);
 }
 
+// ¿Puede comentarse una racha de muertes? Comparte cupo con los comentarios libres: respeta el hueco desde el último
+// comentario del cupo (libre o racha, `lastSharedAt`) y el máximo por hora (`sharedStamps`).
+function streakAllowed({ now = Date.now(), lastSharedAt = 0, sharedStamps = [], gapMs = STREAK_COHOST_GAP_MS, max = FREE_COHOST_MAX_PER_HOUR } = {}) {
+  if (lastSharedAt && now - lastSharedAt < gapMs) return false;
+  return !hourlyCapReached(sharedStamps, max, now);
+}
+
+// Segundo intento del cohost libre tras un SKIP: un ángulo concreto con datos reales del stream para que tenga de qué hablar.
+// `pick` (0-1) elige entre los ángulos disponibles (inyectable para tests).
+function freeAngleNote({ minutes = 0, bosses = 0, game = '', deathCount = 0, canCiteDeaths = true, pick = Math.random } = {}) {
+  const options = [];
+  if (minutes >= 30) options.push(`el rato que llevan de directo (${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h ` : ''}${minutes % 60} min)`);
+  if (bosses > 0) options.push(`los ${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy`);
+  if (deathCount > 0 && canCiteDeaths) options.push(`las caídas de Manu hoy (${deathCount} anotadas)`);
+  if (game) options.push(`lo que se ve en pantalla en ${game}, sin inventar datos del juego`);
+  options.push('una broma del lore del canal');
+  const choice = options[Math.min(options.length - 1, Math.floor(pick() * options.length))];
+  return `\nNo hay un tema claro en el chat, pero ahora NO respondas SKIP: habla de ${choice}. Una sola idea, frase sencilla, sin preguntas al chat.`;
+}
+
+// Tema concreto de cada intento del cohost libre, elegido por el código y rotando (nunca el mismo dos veces seguidas):
+// con "habla de lo que veas" el modelo respondía SKIP en 31 de 35 intentos. `last` = id del tema anterior.
+// → { id, note } con note listo para el prompt.
+function pickFreeTopic({ minutes = 0, bosses = 0, game = '', deathCount = 0, canCiteDeaths = true, last = '', pick = Math.random } = {}) {
+  const time = minutes >= 20 ? `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h ` : ''}${minutes % 60} min` : '';
+  const topics = [];
+  if (time) topics.push({ id: 'tiempo', note: `el rato que llevan de directo (${time}); no abras la frase con la cifra` });
+  if (game) topics.push({ id: 'partida', note: `cómo va la partida: ${bosses > 0 ? `${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy` : 'el ritmo de la sesión'}${deathCount > 0 && canCiteDeaths ? ` y las caídas de Manu (${deathCount} anotadas)` : ''}; sin datos del juego` });
+  topics.push({ id: 'chat_juego', note: 'algo que el chat haya dicho sobre el juego o la partida (sin nombrar a nadie ni inventar datos del juego)' });
+  topics.push({ id: 'lore', note: 'una broma del lore del canal' });
+  topics.push({ id: 'lusorums', note: 'los Lusorums, el chat, con cariño y humor' });
+  topics.push({ id: 'fua', note: 'el FUA como fuerza universal, con una broma directa' });
+  const pool = topics.filter(t => t.id !== last);
+  return pool[Math.min(pool.length - 1, Math.floor(pick() * pool.length))];
+}
+
 module.exports = {
+  streakAllowed, STREAK_COHOST_GAP_MS, freeAngleNote, pickFreeTopic,
   MAX_NARRATIVE_EVENTS, pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
   cohostProbability, pruneHourly, hourlyCapReached,
   EVENT_COHOST_MIN_GAP_MS, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR,

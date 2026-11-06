@@ -87,7 +87,7 @@ describe('emotes: como mucho 1 de cada 3 mensajes', () => {
   });
   test('sin permiso se quitan todos; con permiso queda solo el primero', () => {
     assert.equal(q.applyEmotePolicy('Vamos parlus1Alataqueel que sí parlus1PORELPODERDELFUAAAAA', false, emotes), 'Vamos que sí');
-    assert.equal(q.applyEmotePolicy('Vamos parlus1Alataqueel que sí parlus1PORELPODERDELFUAAAAA', true, emotes), 'Vamos parlus1Alataqueel que sí');
+    assert.equal(q.applyEmotePolicy('Vamos parlus1Alataqueel que sí parlus1PORELPODERDELFUAAAAA', true, emotes), 'Vamos que sí parlus1Alataqueel');
   });
   test('conserva el espacio en "usa !comando" y quita el de antes de un signo', () => {
     assert.equal(q.applyEmotePolicy('Para eso usa !dios_fua, que ahí me pongo serio.', true, emotes), 'Para eso usa !dios_fua, que ahí me pongo serio.');

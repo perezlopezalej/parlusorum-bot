@@ -11,7 +11,7 @@ function buildRawgTemplate(info, quips = [], pick = arr => arr[Math.floor(Math.r
   const studio = info.developers ? String(info.developers).split(',')[0].trim() : '';
   let facts = info.name;
   if (genres) facts += `: ${genres.toLowerCase()}`;
-  if (studio) facts += `${genres ? ',' : ':'} de ${studio}`;
+  if (studio) facts += `${genres ? ',' : ':'} de ${studio}${info.country ? `, estudio de ${info.country}` : ''}`;
   if (year) facts += ` (${year})`;
   const quip = quips.length ? pick(quips) : '';
   return `${facts}. ${quip}`.trim();

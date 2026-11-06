@@ -349,7 +349,8 @@ async function searchRawg(gameName, detail) {
 // { info, error }: error=true solo si ninguna fuente pudo responder (5xx, timeout, respuesta ilegible);
 // "no encontrado" es info null con error false: basta con que una fuente conteste limpiamente.
 // Si fallan las dos, sirve la ficha en caché aunque haya caducado.
-async function lookupGameInfo(gameName, { detail = false } = {}) {
+// rawg=false: solo IGDB, sin la reserva de RAWG (búsquedas masivas de candidatos que no necesitan segunda fuente)
+async function lookupGameInfo(gameName, { detail = false, rawg = true } = {}) {
   if (!gameName) return { info: null, error: false };
   const cacheKey = detail ? `${gameName}|detail` : gameName;
   const cached = gameInfoCache.get(cacheKey);
@@ -363,7 +364,7 @@ async function lookupGameInfo(gameName, { detail = false } = {}) {
   } catch (e) {
     logger.error(`Error IGDB: ${e.message}`);
   }
-  if (!info && process.env.RAWG_API_KEY) {
+  if (!info && rawg && process.env.RAWG_API_KEY) {
     try {
       info = await searchRawg(gameName, detail);
       answered = true;

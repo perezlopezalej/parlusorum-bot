@@ -99,19 +99,22 @@ const stripMention = s => String(s || '').replace(/^@\S+\s*/, '');
 async function runFilterCase(c) {
   const deaths = c.deaths ?? 5;
   const game = c.game || 'Phantom Blade Zero';
-  const ctx = { deathCount: deaths, recent: [], named: new Map(), currentGame: game, channelGames: [], usedStructures: new Set(c.usedStructures || []) };
+  const ctx = { deathCount: deaths, recent: c.recent || [], named: new Map(), currentGame: game, channelGames: [], usedStructures: new Set(c.usedStructures || []), lastCitedDeaths: !!c.lastCitedDeaths, player: c.player || 'manu' };
   const rules = {
     cohost: t => quality.validateCohost(t, ctx),
     timer_ia: t => quality.validateTimerIA(t, ctx),
     hook: t => quality.validateHook(t, ctx),
-    mention: t => quality.validateMention(t, { question: c.question || '' }),
+    mention: t => quality.validateMention(t, { question: c.question || '', player: ctx.player }),
+    // Petición de silencio al bot (rejected = reconocida como tal) y resumen de fin de stream (reglas de src/memory/handler.js)
+    shutup: t => (classifyMessage(t, {}, { botNames: [process.env.BOT_USERNAME || 'Dios_Fua'] }) === 'shutup' ? { ok: false, reason: 'petición de silencio' } : { ok: true }),
+    summary: t => { const p = require('../src/memory/handler').summaryProblem(t); return p ? { ok: false, reason: p } : { ok: true }; },
   };
   if (!rules[c.filter]) throw new Error(`filtro desconocido: ${c.filter}`);
   const started = realNow();
   const n429 = state.getCohostStats().groq429;
   const v = rules[c.filter](c.input);
   let rejectedBy = v.ok ? null : `regla — ${v.reason}`;
-  if (!rejectedBy) {
+  if (!rejectedBy && c.filter !== 'shutup') {
     const r = await factcheck.evaluate(c.input, `Juego: ${game}. Muertes anotadas: ${deaths}.`, { game, sense: true });
     if (r.discard) rejectedBy = 'revisión de datos del juego';
     else if (r.nonsense) rejectedBy = 'revisión de sentido (IA)';

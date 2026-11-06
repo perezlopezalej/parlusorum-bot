@@ -21,6 +21,16 @@ const AUTO_GAME_RULE = 'Del juego solo puedes decir lo que aparece en los datos 
 
 const PROVOCATION_RULE = 'Te acaban de provocar o insultar. Responde con UNA frase corta (máx. 90 caracteres), con ironía y personalidad, como un colega que no se corta: devuelve la pulla sin ofenderte, sin sermonear. PROHIBIDO rechazar ("no puedo", "lo siento", "no es algo que haga"), explicar que eres un bot o repetir el insulto. Sin emotes.';
 
+
+// Quién juega y quién escribe: juega Manu salvo que un mod indique que juega Pao (!juega). Quien pregunta en el chat no juega.
+// La cuenta ParLusorum la comparten Manu y Pao, pero casi siempre escribe Pao.
+function playerRule(player = 'manu') {
+  if (player === 'ambos') return 'QUIÉN JUEGA: ahora juegan Manu y Pao a la vez; puedes hablar de los dos como jugadores ("Manu y Pao caen otra vez"). Quien escribe en el chat NO es quien juega: no le hables como si jugara él ni de "su racha" o "su partida". Los mensajes de la cuenta ParLusorum suelen ser de Pao: no la llames Manu.';
+  const who = player === 'pao' ? 'Pao' : 'Manu';
+  const other = player === 'pao' ? 'Manu' : 'Pao';
+  return `QUIÉN JUEGA: ahora juega ${who}; ${other} no juega ahora (nunca "Manu y Pao" jugando o muriendo). Quien escribe en el chat NO es quien juega: no le hables como si jugara él ni de "su racha" o "su partida". Los mensajes de la cuenta ParLusorum suelen ser de Pao: no la llames Manu.`;
+}
+
 function buildQuestionSystemContent({ personality = '', toneNote = '', trapNote = '' } = {}) {
   // La personalidad completa ya trae la regla de lore y la de español de España: no se repiten
   const lore = personality.includes(LORE_RULE) ? '' : ` ${LORE_RULE}`;
@@ -28,4 +38,4 @@ function buildQuestionSystemContent({ personality = '', toneNote = '', trapNote 
   return `${personality}${toneNote}${trapNote}\nPuedes responder sobre CUALQUIER tema, especialmente videojuegos. En videojuegos NUNCA inventes datos específicos. ${GAME_RULE} ${GENERAL_RULE}${lore} Sin "Lo siento". Responde SIEMPRE en espanol.${spain}`;
 }
 
-module.exports = { STYLE_RULES, IDENTITY_RULE, LORE_RULE, GAME_RULE, GENERAL_RULE, SPAIN_RULE, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, buildQuestionSystemContent };
+module.exports = { STYLE_RULES, IDENTITY_RULE, LORE_RULE, GAME_RULE, GENERAL_RULE, SPAIN_RULE, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, playerRule, buildQuestionSystemContent };

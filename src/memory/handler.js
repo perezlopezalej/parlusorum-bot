@@ -17,6 +17,18 @@ const { aiChat } = require('../utils/ai-router');
 const { onStreamEndLore } = require('../lore/handler');
 
 
+// Motivo de rechazo del resumen (null si vale): vacío, negativo, muertes como logro, género a ParLusorum, vida personal o texto basura
+function summaryProblem(text) {
+  if (!text) return 'vacío';
+  if (quality.negativeSummary(text)) return 'es negativo; el resumen siempre va en positivo';
+  if (quality.achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
+  if (quality.genderedParlusorum(text)) return 'pone género a ParLusorum';
+  if (quality.summaryPersonalLife(text)) return 'habla de vida personal o charla ajena al stream (comida, clima, calor...); habla solo del juego, el stream y el ambiente del chat';
+  const junk = quality.junkProblem(text, { minWords: 1 });
+  if (junk) return junk.reason;
+  return null;
+}
+
 // ─── GENERAR RESUMEN AL ACABAR EL STREAM ─────────────────────────────────────
 
 async function generateStreamMemory(streamStats, chatSample) {
@@ -37,6 +49,7 @@ Genera un resumen BREVE y CONCRETO del stream en español. Incluye:
 2. El momento más destacado si lo detectas en el chat
 3. Una frase recurrente del chat si la hay
 No pongas género a ParLusorum (la cuenta la usan Manu y Pao): nada de tía/tío/amigo/amiga.
+Habla SOLO del juego, del stream y del ambiente del chat. PROHIBIDO cualquier vida personal o charla ajena al stream: comida (hamburguesas...), clima y temperatura (calor, frío, lluvia, verano), sueño, familia, trabajo, estudios, salud, fútbol. Si el chat habló de eso, ignóralo.
 
 Responde SOLO en JSON con este formato exacto:
 {
@@ -45,26 +58,38 @@ Responde SOLO en JSON con este formato exacto:
   "recurringPhrases": ["frase1", "frase2"]
 }`;
 
-    const response = await aiChat('endstream', {
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }]
-    });
+    // Hasta 2 intentos: si el resumen habla de vida personal, es negativo o está mal, el segundo recibe el motivo
+    let parsed = {};
+    let summary = '';
+    let feedback = '';
+    for (let attempt = 0; attempt < 2 && !summary; attempt++) {
+      const response = await aiChat('endstream', {
+        max_tokens: 300,
+        messages: [{ role: 'user', content: feedback ? `${prompt}
 
-    const text = response.choices[0].message.content.trim();
-    // Limpiar posibles backticks de markdown
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : prompt }]
+      });
 
-    const rawSummary = String(parsed.summary || '').trim();
-    const summary = !rawSummary || quality.negativeSummary(rawSummary) || quality.achievesDeaths(rawSummary) || quality.genderedParlusorum(rawSummary)
-      ? quality.positiveSummaryFallback(streamStats)
-      : rawSummary;
+      const text = response.choices[0].message.content.trim();
+      // Limpiar posibles backticks de markdown
+      const clean = text.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(clean);
+
+      const rawSummary = String(parsed.summary || '').trim();
+      const problem = summaryProblem(rawSummary);
+      if (problem) { feedback = problem; logger.info(`Resumen de fin de stream descartado (${problem}): ${rawSummary.slice(0, 80)}`); continue; }
+      summary = rawSummary;
+    }
+    if (!summary) summary = quality.positiveSummaryFallback(streamStats);
+
+    // Los momentos y frases también entran luego en los prompts: sin vida personal ni charla ajena al stream
+    const keep = list => (Array.isArray(list) ? list : []).filter(item => typeof item === 'string' && !quality.summaryPersonalLife(item));
 
     return {
       game,
       summary,
-      highlights: parsed.highlights || [],
-      recurringPhrases: parsed.recurringPhrases || [],
+      highlights: keep(parsed.highlights),
+      recurringPhrases: keep(parsed.recurringPhrases),
       activeUsers: streamStats.activeUsers || []
     };
   } catch (e) {
@@ -183,4 +208,4 @@ function invalidateMemoryCache() {
   memoryCacheTime = 0;
 }
 
-module.exports = { onStreamEnd, getMemoryContext, invalidateMemoryCache };
+module.exports = { onStreamEnd, getMemoryContext, invalidateMemoryCache, generateStreamMemory, summaryProblem };

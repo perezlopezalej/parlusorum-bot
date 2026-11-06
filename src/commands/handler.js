@@ -3,7 +3,7 @@ const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeath
 const { loadUsers } = require('../utils/storage');
 const { MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
-const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent } = require('../utils/state');
+const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent, getPlayer, setPlayer } = require('../utils/state');
 const { handleShoutout, invalidateContextCache } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');
@@ -64,6 +64,9 @@ async function handle(client, channel, tags, command, args, config) {
     case 'silencio':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return handleSilencio(client, channel, username);
+    case 'juega':
+      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
+      return handleJuega(client, channel, username, args);
     case 'so': return await handleShoutout(client, channel, tags, args[1]);
     case 'clip':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
@@ -86,6 +89,16 @@ async function handle(client, channel, tags, command, args, config) {
       client.say(channel, `@${username} ese comando ya no existe. Usa !comandos para ver los disponibles.`);
       return;
   }
+}
+
+// !juega pao|manu (solo mods): quién tiene el mando ahora; sin argumento, dice quién juega
+function handleJuega(client, channel, username, args) {
+  const arg = args.slice(1).join(' ').trim().toLowerCase();
+  const label = () => ({ pao: 'Pao', ambos: 'Manu y Pao' }[getPlayer()] || 'Manu');
+  const verb = () => (getPlayer() === 'ambos' ? 'juegan' : 'juega');
+  if (!arg) { client.say(channel, `@${username} ahora ${verb()} ${label()}. Cambia con !juega pao | manu | ambos.`); return; }
+  if (!setPlayer(arg)) { client.say(channel, `@${username} uso: !juega pao | manu | ambos.`); return; }
+  client.say(channel, `🎮 Ahora ${verb()} ${label()}. ¡FUA!`);
 }
 
 const lurkMessages = [
@@ -393,4 +406,4 @@ function restoreCooldowns(data) {
   }
 }
 
-module.exports = { handle, resetSessionCounters, restoreCooldowns };
+module.exports = { handle, handleJuega, resetSessionCounters, restoreCooldowns };

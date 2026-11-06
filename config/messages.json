@@ -111,6 +111,12 @@
     "not_found": "@{username} no encuentro el lore #{id}.",
     "error": "@{username} no pude actualizar el lore ahora."
   },
+  "shutup_replies": [
+    "Vale, me callo un ratito. Si me necesitas, aquí estoy 💜",
+    "Entendido, bajo el volumen un rato. ¡Nos leemos luego!",
+    "Sin problema, descanso un rato. El FUA no se va a ningún sitio.",
+    "Hecho, silencio por un rato. Avisadme cuando queráis FUA otra vez."
+  ],
   "provocation_replies": [
     "Qué arte tienes para el insulto, así da gusto.",
     "Anda, desahógate, que el FUA tiene la espalda ancha.",

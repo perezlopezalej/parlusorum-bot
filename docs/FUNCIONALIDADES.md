@@ -36,6 +36,7 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 | !boss / !score | 6 | 6 | 4 | 5.1 | **5.4** ▲ | I | ▲ (V) !boss ya alimenta la narrativa y dispara el modo victoria. Con las mismas funciones que !muertes: `!boss` muestra los jefes del stream (todos), `!boss +N` / `-N` / `reset` (mods, sin bajar de 0) y `!boss <juego>` suma los jefes de ese juego en todos los streams desde que se lleva la cuenta (migración 008, `stream_sessions.boss_count`). El contador se guarda en la sesión con retardo de 3 s y se recupera tras un despliegue a mitad de directo. Sigue sin atomicidad y con total_losses huérfano. |
 | !brb | 7 | 5 | 3 | 5.2 | **5.2** | I | Sin cambios. no se apaga al acabar el stream (no re-verificado). _Importancia: Comando de stream._ |
 | !silencio | 7 | 6 | 3 | 5.5 | **5.5** | I | Sin cambios. _Importancia: Interruptor de seguridad de los mods; protege el funcionamiento._ |
+| !juega | - | - | - | - | **-** | N | Solo mods. `!juega pao`, `!juega manu` o `!juega ambos` (también `los dos`): indica quién juega y se lo dice a la IA (con `ambos` el bot puede hablar de los dos como jugadores). Vuelve a `manu` al empezar cada stream. _Importancia: Evita que el bot atribuya la partida a quien no juega._ |
 | !so (shoutout IA) | 7 | 6 | 6 | 6.4 | **6.4** | I | Sin cambios. _Importancia: Comando de stream, uso a menudo._ |
 | !clip | 7 | 6 | 2 | 5.2 | **5.2** | I | Sin cambios. _Importancia: Comando de stream._ |
 | !marker | 7 | 5 | 4 | 5.5 | **5.5** | I | Sin cambios. _Importancia: Comando de stream._ |

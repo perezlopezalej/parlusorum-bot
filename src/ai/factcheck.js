@@ -18,12 +18,35 @@ function parseVerdict(raw) {
   return null;
 }
 
+// Los emotes del canal no son datos del juego: se quitan antes de cualquier comprobación
+const { channel_emotes: CHANNEL_EMOTES = [] } = require('../../config/channel.json');
+function stripEmotes(text) {
+  let t = String(text || '');
+  for (const e of CHANNEL_EMOTES) t = t.split(e).join(' ');
+  return t.replace(/\bparlus1w+/gi, '').replace(/s{2,}/g, ' ').trim();
+}
+
 function buildCheckPrompt(text, data, source) {
+  text = stripEmotes(text);
   const ctx = String(data || '').trim() || '(ninguno)';
   const question = source === 'rawg'
     ? '¿El mensaje afirma algún dato concreto y comprobable del juego (fechas, estudio, país o nacionalidad del estudio, personas, cifras, presupuestos, mecánicas, armas, zonas, dificultades, personajes, tramas) que no esté en el resultado de la consulta de arriba (incluida su descripción; el país del estudio solo cuenta si aparece como "País de la desarrolladora")? Las opiniones, valoraciones y descripciones de tono o ambiente ("atmósfera densa", "ideal para flipar"), las bromas y el FUA no se comprueban y no cuentan. Si no hay datos y el mensaje solo dice que no conoce el juego, responde NO. Responde "NO" si todo está respaldado, o "SÍ: " seguido de la frase o dato no respaldado, copiado del mensaje (máx. 15 palabras).'
-    : '¿El mensaje afirma algo concreto del juego (mecánicas, armas, zonas, dificultad, jefes, historia, consejos, fechas) que no esté en estos datos? Las bromas, el FUA y los hechos del stream (muertes, chat, eventos) no cuentan.';
+    : '¿El mensaje afirma algo concreto del juego (mecánicas, armas, zonas, dificultad, jefes, historia, consejos, fechas) que no esté en estos datos? ' + GENERIC_NOT_CLAIM + ' Las bromas, el FUA y los hechos del stream (muertes, chat, eventos) no cuentan.';
   return `Datos disponibles:\n${ctx}\n\nMensaje:\n${text}\n\n${question} ${source === 'rawg' ? '' : 'Responde SOLO "SÍ" o "NO".'}`;
+}
+
+// Ficha del juego (IGDB/RAWG, la de lookupGameInfo) como texto de "datos disponibles" para el revisor.
+// Sin ficha devuelve '' y el revisor solo conoce el nombre.
+function gameFactsText(info) {
+  if (!info || !info.name) return '';
+  const parts = [`Ficha del juego: ${info.name}`];
+  if (info.released) parts.push(`Fecha de salida: ${info.released}`);
+  if (info.developers) parts.push(`Desarrolladora: ${info.developers}`);
+  if (info.publishers) parts.push(`Editora: ${info.publishers}`);
+  if (info.country) parts.push(`País de la desarrolladora: ${info.country}`);
+  if (info.genres) parts.push(`Géneros: ${info.genres}`);
+  if (info.description) parts.push(`Descripción: ${info.description}`);
+  return parts.join('. ') + '.';
 }
 
 // Juego a partir de los datos ("Juego: X. Muertes...") cuando el llamador no lo pasa aparte
@@ -35,12 +58,15 @@ function gameFromData(data) {
 // Pregunta de redacción, en la misma llamada que la de datos: ¿se entiende y está bien escrita?
 const SENSE_QUESTION = 'SENTIDO: ¿el mensaje tiene sentido y está bien escrito en español de España? Responde NO si la idea no se entiende, mezcla imágenes que no encajan (metáforas absurdas), usa palabras inventadas o mal usadas, copia palabras sueltas del chat sin entenderlas, tiene errores gramaticales o suena a traducción. Responde NO también si suena poético o profundo pero no dice nada concreto, si compara cosas sin relación lógica, si dice que alguien "se hace" o "será" algo que no se entiende, o si el sujeto y lo que hace no encajan. Ejemplos que son NO: "la flor que brota cuando el FUA se queja, ya vas a ser la mariposa de la derrota" (metáforas encadenadas sin sentido), "el FUA está sudando más que la nevera del microondas" (comparación sin relación lógica), "el FUA se está haciendo de la muerte una obra de arte" (frase mal construida). Los chistes y exageraciones claros (que se entienden a la primera) SÍ valen. "El FUA" (grito de carácter del canal) y "Dios Fua" (nombre del bot) no son errores.';
 
+// Frases genéricas de tono o ambiente no son datos comprobables (falsos positivos: "exige temple de acero")
+const GENERIC_NOT_CLAIM = 'Las frases genéricas de tono, esfuerzo o ambiente sin ningún dato concreto ("exige temple de acero", "pide paciencia", "es un viaje intenso", "la dificultad del jefe") NO son datos del juego: responde NO.';
+
 function buildReviewPrompt(text, data, { checkData }) {
   const ctx = String(data || '').trim() || '(ninguno)';
   const dataPart = checkData
-    ? 'DATOS: ¿el mensaje afirma algo concreto del juego (mecánicas, armas, zonas, dificultad, jefes, historia, consejos, fechas) que no esté en los datos? Las bromas, el FUA y los hechos del stream (muertes, chat, eventos) no cuentan. Responde "DATOS: SÍ" o "DATOS: NO".\n'
+    ? `DATOS: ¿el mensaje afirma algo concreto del juego (mecánicas, armas, zonas, jefes concretos, historia, consejos, fechas, cifras) que no esté en los datos (la ficha incluye año, estudio, géneros y descripción)? ${GENERIC_NOT_CLAIM} Las bromas, el FUA y los hechos del stream (muertes, chat, eventos) no cuentan. Responde "DATOS: SÍ" o "DATOS: NO".\n`
     : '';
-  return `Datos disponibles:\n${ctx}\n\nMensaje:\n${text.replace(/\bparlus1\w+/gi, '').replace(/\s{2,}/g, ' ').trim()}\n\nResponde en ${checkData ? 'dos líneas' : 'una línea'}.\n${dataPart}${SENSE_QUESTION} Responde "SENTIDO: SÍ" o "SENTIDO: NO".`;
+  return `Datos disponibles:\n${ctx}\n\nMensaje:\n${stripEmotes(text)}\n\nResponde en ${checkData ? 'dos líneas' : 'una línea'}.\n${dataPart}${SENSE_QUESTION} Responde "SENTIDO: SÍ" o "SENTIDO: NO".`;
 }
 
 // { data, sense }: 'yes' | 'no' | null por línea
@@ -108,4 +134,4 @@ async function shouldDiscard(text, data, opts) {
   return (await evaluate(text, data, opts)).discard;
 }
 
-module.exports = { parseVerdict, parseClaim, parseReview, buildReviewPrompt, evaluate, buildCheckPrompt, gameFromData, shouldDiscard };
+module.exports = { stripEmotes, gameFactsText, GENERIC_NOT_CLAIM, parseVerdict, parseClaim, parseReview, buildReviewPrompt, evaluate, buildCheckPrompt, gameFromData, shouldDiscard };
