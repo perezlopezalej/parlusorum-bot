@@ -1,5 +1,6 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
+const identityReplies = require('../../config/identity-replies.json');
 const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
 const { getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
 const { windowFacts, mergeBossMoments, bossInBatch, BOSS_SETTLE_MS } = require('../utils/narrative');
@@ -997,6 +998,15 @@ async function handleQuestion(client, channel, tags, args) {
   if (!rawQuestion) { client.say(channel, `@${username} escribe algo después de !dios_fua 😅`); return; }
   const question = sanitizeForAI(rawQuestion);
   if (!question) { client.say(channel, `@${username} esa pregunta no la puedo responder 🙅`); return; }
+  // Identidad (quién eres, quién te creó, quién lleva el canal): plantilla fija, sin IA ni cupo
+  const identity = quality.identityQuestion(question);
+  if (identity) {
+    const reply = pickIdentityReply(identity);
+    client.say(channel, truncate(`@${username} ${reply}`));
+    addBotMessage(reply);
+    questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
+    return;
+  }
   if (!canMakeRequest()) { client.say(channel, `@${username} demasiadas peticiones globales ⏳`); return; }
 
   const userType = getUserType(username, tags);
@@ -1103,6 +1113,7 @@ async function handleQuestion(client, channel, tags, args) {
       questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
       return;
     }
+    answer = String(answer).replace(/\s*\n+\s*/g, ' ').trim(); // una sola línea
     client.say(channel, truncate(`@${username} ${answer}`, qMaxChars));
     addBotMessage(truncate(answer, qMaxChars));
     questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
@@ -1468,11 +1479,13 @@ async function checkPatternMatch(client, channel, tags, message) {
 
     // "Cuéntame de qué va Silent Hill F": se busca el juego en IGDB y se responde con esos datos (sin IA que pueda inventar).
     // Si IGDB no contesta, a !dios_fua; si pide datos de un juego que no encuentra, se dice con humor que no se pilla.
-    if (!isProvocation && !quality.isCurrentGameQuestion(question) && !quality.isDeathQuestion(question)) {
+    const identity = isProvocation ? null : quality.identityQuestion(question);
+    if (identity) answer = pickIdentityReply(identity);
+    if (!answer && !isProvocation && !quality.isCurrentGameQuestion(question) && !quality.isDeathQuestion(question)) {
       const gameQuery = quality.extractGameQuery(question);
       if (gameQuery) {
         const lookup = await buscarJuegoLookup(gameQuery.name, question);
-        if (lookup.info) answer = buildGameTemplate(lookup.info, messagesConfig.dios_fua_game_quips);
+        if (lookup.info) answer = buildGameTemplate(lookup.info, messagesConfig.mention_game_quips);
         else if (lookup.unavailable) answer = pickRandom(messagesConfig.mention_game_redirect);
         else if (gameQuery.strict) answer = pickRandom(messagesConfig.mention_not_understood);
       }
@@ -1558,6 +1571,15 @@ async function checkPatternMatch(client, channel, tags, message) {
     release();
     return false;
   }
+}
+
+// Respuesta fija a una pregunta de identidad (config/identity-replies.json): rota sin repetir la última de ese tipo
+const lastIdentityReply = {};
+function pickIdentityReply(kind) {
+  const pool = (identityReplies[kind] || []).filter(r => r !== lastIdentityReply[kind]);
+  const pick = pool[Math.floor(Math.random() * pool.length)] || '';
+  lastIdentityReply[kind] = pick;
+  return pick;
 }
 
 // Réplicas de reserva (config/messages.json), sin repetir la última

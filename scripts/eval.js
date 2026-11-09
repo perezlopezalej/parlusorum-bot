@@ -45,6 +45,11 @@ for (const [name, fn] of Object.entries(supabase)) {
   }
 }
 
+// Memoria simulada por caso (case.memory): se lee a través de este envoltorio
+let simulatedMemory = null;
+const realGetMemory = supabase.getRecentStreamMemory;
+supabase.getRecentStreamMemory = async n => simulatedMemory || realGetMemory(n);
+
 // El tiempo salta entre casos para que no choquen los cooldowns globales de las menciones
 let skewMs = 0;
 const realNow = Date.now.bind(Date);
@@ -133,6 +138,8 @@ async function runCase(c, i, rep = 0) {
   const client = { say: (_ch, text) => { said.push(String(text)); } };
   const tags = fakeTags(i, rep);
   state.setDeathCount(c.deaths || 0);
+  simulatedMemory = c.memory || null;
+  if (c.memory) require('../src/memory/handler').invalidateMemoryCache();
 
   const isCommand = /^!dios_fua\b/i.test(c.input);
   const kind = isCommand ? 'question' : classifyMessage(c.input, tags, { botNames: [process.env.BOT_USERNAME] });

@@ -260,3 +260,79 @@ describe('timer IA: resumen de la última media hora', () => {
     assert.ok(said.some(m => /última media hora/.test(m)), 'se envió el resumen');
   });
 });
+
+describe('ajustes previos al merge', () => {
+  test('claimsChannelOwner caza a vlxj97 "detrás" del canal o de ParLusorum', () => {
+    for (const x of [
+      'Fui creado por vlxj97, el mastermind detrás de ParLusorum.',
+      'vlxj97 es el cerebro detrás del canal',
+      'El fundador del canal es vlxj97',
+      'El mastermind de ParLusorum, vlxj97, me programó',
+      'vlxj97 está al mando del canal',
+      'Fue vlxj97, el master de los Lusorums, quien me dio vida.',
+      'vlxj97 es el jefe de los Lusorums.',
+      'Soy obra de vlxj97, el creador del ParLusorum.',
+      'Fui creado por vlxj97, el mastermind detrás de Manu y Pao.',
+    ]) assert.equal(q.claimsChannelOwner(x), true, x);
+    for (const x of ['Me creó vlxj97, pero el canal es de Manu y Pao.', 'vlxj97 me programó a mí, el bot.', 'Me creó vlxj97 para el canal de Manu y Pao', 'Soy el bot del canal de Manu y Pao; me programó vlxj97', 'vlxj97 es mi creador, el canal es de Manu y Pao']) assert.equal(q.claimsChannelOwner(x), false, x);
+  });
+  test('las menciones de juego invitan a !dios_fua', () => {
+    assert.ok(messages.mention_game_quips.length >= 3);
+    for (const m of messages.mention_game_quips) assert.match(m, /!dios_fua/);
+  });
+  test('"sin datos" suena a robot y se descarta', () => {
+    assert.equal(q.leaksTech('Hoy el FUA me deja sin datos, lo siento'), true);
+  });
+  test('!dios_fua: una sola línea', async () => {
+    stubModels(() => text('La luz azul rebota más en el aire.\nY el FUA brilla al final.'));
+    await ai.handleQuestion(client, '#parlusorum', { 'display-name': 'u9', 'user-id': 'u9', username: 'u9', badges: {} }, ['!dios_fua', 'por', 'qué', 'el', 'cielo', 'es', 'azul']);
+    assert.ok(said.length && !said[0].includes('\n'), said[0]);
+  });
+  test('prompts de cultura general: el FUA va al final y en una línea', () => {
+    assert.match(style.buildQuestionSystem({}), /el toque del FUA va en una frase final aparte/);
+    assert.match(style.buildMentionSystem({}), /toque del FUA va al final/);
+  });
+});
+
+describe('preguntas de identidad con plantillas fijas', () => {
+  const ids = require('../config/identity-replies.json');
+  test('identityQuestion detecta las tres preguntas y no confunde otras', () => {
+    const cases = [
+      ['dios fua quién te ha creado', 'creator'], ['quién te programó?', 'creator'], ['quién es tu creador', 'creator'],
+      ['dios fua quién eres', 'who'], ['!dios_fua qué eres', 'who'],
+      ['quién lleva este canal?', 'owner'], ['de quién es el canal', 'owner'], ['dios fua quién dirige el stream', 'owner'],
+    ];
+    for (const [t, k] of cases) assert.equal(q.identityQuestion(t), k, t);
+    for (const t of ['quién eres tú para decirme eso', 'quién ganó el mundial', 'quién es el jefe final de Hades', 'cuántas muertes llevamos']) assert.equal(q.identityQuestion(t), null, t);
+  });
+  test('3-4 variantes por tipo, sin descartes de identidad', () => {
+    for (const k of ['creator', 'who', 'owner']) {
+      assert.ok(ids[k].length >= 3 && ids[k].length <= 4, k);
+      for (const r of ids[k]) {
+        assert.equal(q.claimsChannelOwner(r), false, r);
+        assert.equal(q.hasLatam(r), false, r);
+        assert.equal(q.styleProblem(r, { personal: false }), null, r);
+        assert.doesNotMatch(r, /\bt[ií]o\b|\bcolega\b/i);
+      }
+    }
+    for (const r of ids.creator) assert.match(r, /vlxj97/);
+    for (const r of [...ids.owner, ...ids.who]) assert.match(r, /Manu y Pao/);
+  });
+  test('menciones y !dios_fua responden sin IA y las variantes rotan', async () => {
+    stubModels(() => { throw new Error('la identidad no debe llamar a la IA'); });
+    const seen = new Set();
+    for (let i = 0; i < 6; i++) {
+      said = [];
+      const realNow = Date.now;
+      Date.now = () => realNow() + (100 + i) * 3600e3;
+      try { await ai.checkPatternMatch(client, '#parlusorum', { 'display-name': `idm${i}`, 'user-id': `idm${i}`, username: `idm${i}`, badges: {} }, 'dios fua quién te ha creado'); } finally { Date.now = realNow; }
+      assert.ok(said.length === 1 && /vlxj97/.test(said[0]), said[0]);
+      seen.add(said[0].replace(/^@\S+ /, ''));
+    }
+    assert.ok(seen.size >= 3, `${seen.size} variantes`);
+    said = [];
+    await ai.handleQuestion(client, '#parlusorum', { 'display-name': 'idq', 'user-id': 'idq', username: 'idq', badges: {} }, ['!dios_fua', 'quién', 'lleva', 'este', 'canal?']);
+    assert.match(said[0], /Manu y Pao/);
+    assert.equal(prompts.length, 0);
+  });
+});

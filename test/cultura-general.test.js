@@ -63,7 +63,7 @@ describe('nada técnico en el chat', () => {
 describe('prompt de !dios_fua para cultura general', () => {
   const p = buildQuestionSystem({ context: 'Se está jugando a «X».' });
   test('responde la cultura general con lo que sabe y humor si duda', () => {
-    assert.match(p, /En cultura general, responde con lo que sabes y, si dudas, dilo con humor/);
+    assert.match(p, /En cultura general, explica primero con claridad lo que sabes y, si dudas, dilo con humor/);
   });
   test('para juegos sigue usando buscar_juego', () => {
     assert.match(p, /lo primero es llamar a la herramienta buscar_juego/);

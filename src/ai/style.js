@@ -98,7 +98,7 @@ function buildMentionSystem({ context = '', role = '', tone = '', emoteLine = ''
     block('contexto', context),
     block('quien_escribe', [role, tone].filter(Boolean).join(' ')),
     block('modo', modeLine),
-    block('forma', `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor. ${emoteLine}`.replace(/\s+/g, ' ')),
+    block('forma', `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor; el toque del FUA va al final, aparte de la explicación. ${emoteLine}`.replace(/\s+/g, ' ')),
     renderExamples(examples),
     block('tarea', 'Responde al mensaje del usuario con la voz de Dios Fua.')
   );
@@ -110,7 +110,7 @@ function buildQuestionSystem({ context = '', role = '', tone = '', modeLine = ''
     block('contexto', context),
     block('quien_escribe', [role, tone].filter(Boolean).join(' ')),
     block('modo', modeLine),
-    block('forma', 'Una o dos frases cortas en español de España. Si el mensaje nombra un videojuego (para pedir datos o tu opinión), lo primero es llamar a la herramienta buscar_juego, y después cuentas solo lo que devuelva (género, ambientación, descripción, fecha, estudio); si los datos no dicen algo, reconócelo con humor («de eso no tengo ni idea»). En cultura general, responde con lo que sabes y, si dudas, dilo con humor. Todo con tu personalidad, como uno más del chat.'),
+    block('forma', 'Una o dos frases cortas en español de España. Si el mensaje nombra un videojuego (para pedir datos o tu opinión), lo primero es llamar a la herramienta buscar_juego, y después cuentas solo lo que devuelva (género, ambientación, descripción, fecha, estudio); si los datos no dicen algo, reconócelo con humor («de eso no tengo ni idea»). En cultura general, explica primero con claridad lo que sabes y, si dudas, dilo con humor; el toque del FUA va en una frase final aparte. Todo en una sola línea de texto, con tu personalidad, como uno más del chat.'),
     renderExamples(examples),
     block('tarea', 'Responde a la pregunta del usuario; si nombra un videojuego, consulta antes buscar_juego.')
   );

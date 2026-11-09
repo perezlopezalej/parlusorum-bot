@@ -61,6 +61,18 @@ function extractGameQuery(text) {
   }
   return null;
 }
+// Preguntas de identidad (se responden con plantillas fijas, sin IA): 'creator' (quién te creó), 'who' (quién eres), 'owner' (quién lleva el canal)
+const ID_CREATOR_RE = /\bquien (?:te )?(?:ha |a )?(?:creado|creo|programado|programo|hecho|hizo|desarrollado|desarrollo|inventado|invento|construido|construyo)\b|\bquien (?:es|fue) tu (?:creador|programador|desarrollador)\b|\bquien te (?:ha )?(?:hecho|creado|programado)\b/;
+const ID_OWNER_RE = /\bquien (?:lleva|dirige|gestiona|maneja|manda|es el dueno|es el streamer) (?:en |de )?(?:este|el|esto|esta)? ?(?:canal|stream|directo)\b|\bde quien es (?:este |el )?(?:canal|stream|directo)\b|\bquien (?:esta )?detras (?:de este |del )?canal\b/;
+const ID_WHO_RE = /^(?:y )?(?:quien|que) eres(?: tu)?$/;
+function identityQuestion(text) {
+  const t = norm(text).replace(/[¿?¡!.,]/g, ' ').replace(/@?dios[_ ]?fua/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || t.length > 70) return null;
+  if (ID_CREATOR_RE.test(t)) return 'creator';
+  if (ID_OWNER_RE.test(t)) return 'owner';
+  if (ID_WHO_RE.test(t)) return 'who';
+  return null;
+}
 function isDeathQuestion(text) { return DEATH_QUESTION_RE.test(text) && /\?|cu[aá]nt|llev|van\b/i.test(text); }
 
 
@@ -81,7 +93,7 @@ function talksAboutGames(text, game = '') {
 }
 
 // Nada técnico en el chat: ni IGDB, ni "datos", ni herramientas
-const TECH_LEAK_RE = /\bigdb\b|buscar_juego|herramientas?\b|bases? de datos|\bapi\b|\bmis datos\b|no tengo (?:los |esos )?datos/i;
+const TECH_LEAK_RE = /\bigdb\b|buscar_juego|herramientas?\b|bases? de datos|\bapi\b|\bmis datos\b|no tengo (?:los |esos )?datos|\bsin datos\b/i;
 function leaksTech(text) { return TECH_LEAK_RE.test(String(text || '')); }
 
 function mentionsGameName(t, game = '') {
@@ -361,7 +373,7 @@ const MANU_PAO_RE = /\bmanu y pao\b[^.!?]{0,40}\b(?:mueren|muere|caen|cae|juegan
 // Dios Fua es el bot del canal, no su creador (lo creó vlxj97)
 const CREATOR_CLAIM_RE = /\b(?:soy|somos)\s+(?:el\s+)?(?:creador|due[ñn]o|jefe)\b|\b(?:creador|due[ñn]o) del canal\b/i;
 // El canal es de Manu y Pao; vlxj97 solo creó el bot: nada de atribuirle el canal
-const CHANNEL_OWNER_RE = /\bvlxj97\b[^.!?]{0,25}\b(?:lleva|llevan|dirige|gestiona|maneja)\s+(?:el|este|todo|esto|la)\b|\b(?:lleva|llevan|dirige|dirigen|gestiona|gestionan|maneja|manejan)\b[^.,;:!?]{0,30}\bvlxj97\b|\b(?:canal|stream|directo)\s+(?:de|del)\s+@?vlxj97\b|\bvlxj97\b[^.!?]{0,20}\b(?:es|fue)\s+(?:el\s+)?(?:due[ñn]o|jefe|streamer|creador del canal)|\bvlxj97\b[^.!?]{0,15}\bcre[óo]\s+(?:el|este)\s+canal\b/i;
+const CHANNEL_OWNER_RE = /\bvlxj97\b[^.!?]{0,25}\b(?:lleva|llevan|dirige|gestiona|maneja)\s+(?:el|este|todo|esto|la)\b|\b(?:lleva|llevan|dirige|dirigen|gestiona|gestionan|maneja|manejan)\b[^.,;:!?]{0,30}\bvlxj97\b|\b(?:canal|stream|directo)\s+(?:de|del)\s+@?vlxj97\b|\bvlxj97\b[^.!?]{0,20}\b(?:es|fue)\s+(?:el\s+)?(?:due[ñn]o|jefe|streamer|creador del canal)|\bvlxj97\b[^.!?]{0,15}\bcre[óo]\s+(?:el|este)\s+canal\b|\bvlxj97\b[^.!?]{0,60}\b(?:mastermind|cerebro|fundador|art[ií]fice|responsable|al mando|detr[aá]s|tras)\b[^.!?]{0,30}\b(?:canal|parlusorum|stream|directo|manu y pao)\b|\bvlxj97\b[^.!?]{0,40}\b(?:creador|due[ñn]o|jefe)\s+(?:de|del)\s+(?:el\s+)?(?:parlusorum|canal|stream)\b|\bvlxj97\b[^.!?]{0,40}\b(?:master|m[aá]ster|jefe|l[ií]der|rey|amo)\s+(?:de|del)\s+(?:los\s+)?(?:lusorums?|parlusorum|canal|stream|chat)\b|\b(?:mastermind|cerebro|fundador|art[ií]fice|al mando|detr[aá]s)\b[^.!?]{0,30}\b(?:canal|parlusorum)\b[^.!?]{0,30}\bvlxj97\b/i;
 function claimsChannelOwner(text) { return CHANNEL_OWNER_RE.test(String(text || '')); }
 // Final colgando ("el stream y.", "cuando la.")
 const DANGLING_RE = /(?:^|\s)(?:y|e|o|u|a|de|del|la|el|los|las|un|una|que|con|por|para|en|se|su|sus|al|como|pero|cuando|mi|tu|ni|sin|sobre)$/i;
@@ -780,6 +792,6 @@ module.exports = {
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, summaryPersonalLife, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   dropPartialEmote, fitWithEmotes, junkProblem, malformedNumber, citesDeathCount, numberWordsEs, mentionsGenre, forcedComparison, selfHelp, openingKey, sameOpening, moveEmotesToEnd,
-  extractGameQuery, madridDay, wrongWeekday, mentionsEthnicTerms, inventedQuote, unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
+  identityQuestion, extractGameQuery, madridDay, wrongWeekday, mentionsEthnicTerms, inventedQuote, unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
   mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesGameScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };
