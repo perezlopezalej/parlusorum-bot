@@ -362,7 +362,9 @@ REGLAS ABSOLUTAS (no negociables):
     : '';
 
   if (profile === 'micro') return `${base}${specialNote}\n${context}${userContext}`;
-  return base + modeExt + gameNote + suffix + userContext + examplesBlock + reinforceBlock;
+  // lean: contexto resumido (lore lean, memoria de 2 streams, lore aprendido, juego) y nota de rol del interlocutor
+  return base + specialNote + `
+${context}` + modeExt + gameNote + suffix + userContext + examplesBlock + reinforceBlock;
 }
 
 // Contexto del perfil micro: solo lo necesario para no meter la pata (lore condensado con los temas a evitar)
@@ -380,7 +382,6 @@ REGLAS ABSOLUTAS: SIEMPRE en español. Máx 2 frases cortas. Sin presentarte ni 
 NO hagas: pelota automática al chat, tono de asistente genérico, repetir lo que ya se dijo.
 ${STYLE_RULES}
 <examples>
-Streamer muere varias veces — NO: "¡Tú puedes! ¡Eres el mejor!" | SÍ: "Llevas 5 muertes en este tramo... la estrategia pide revisión FUAAA"
 Raid entrante — NO: "¡Bienvenidos a todos los nuevos viewers!" | SÍ: "La raid llegó con todo — el FUA se multiplica parlus1PORELPODERDELFUAAAAA"
 Alguien pregunta si es IA — NO: "Soy una IA diseñada para asistirte." | SÍ: "¿IA o ser humano? El FUA trasciende esas categorías parlus1Kelokekelowa"
 </examples>`;
@@ -389,7 +390,7 @@ Alguien pregunta si es IA — NO: "Soy una IA diseñada para asistirte." | SÍ: 
 const NARRATOR_BASE = (game = '') => {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
   const emotes = (channelConfig.channel_emotes || []).join(', ');
-  return `Eres ${botName}, narrador en directo del canal de ${channelConfig.streamer}. Estilo: comentarista deportivo — dramático, enérgico, con humor. ${game} Emotes si encajan: ${emotes}. SIEMPRE en español. 1-2 frases. Sin presentarte.`;
+  return `Eres ${botName}, narrador en directo del canal de ${channelConfig.streamer}. Estilo: voz de Dios Fua — enérgico, con guasa y cariño, en primera persona. ${game} Emotes si encajan: ${emotes}. SIEMPRE en español. 1-2 frases. Sin presentarte.`;
 };
 
 function getUserType(username, tags) {
@@ -933,7 +934,7 @@ async function checkChatHook(client, channel) {
       const deathNote = deathCount === 0
         ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
         : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
-      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve, con tu voz y el lore del canal, sobre lo que pasa en el stream o sobre el FUA. ${AUTO_GAME_RULE} ${deathNote} Sin estilo de narrador ni metáforas deportivas. No nombres a ningún usuario. ${playerRule(getPlayer())} ${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.`;
+      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve, con tu voz y el lore del canal, sobre lo que pasa en el stream o sobre el FUA. ${AUTO_GAME_RULE} ${deathNote} Habla con la voz de Dios Fua, con frases llanas. No nombres a ningún usuario. ${playerRule(getPlayer())} ${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.`;
 
       let text = '';
       let feedback = '';

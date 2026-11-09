@@ -510,7 +510,7 @@ function createEventSubHandler(client, channel, deps) {
           const response = await aiChat('alert', {
             max_tokens: 120,
             messages: [
-              { role: 'system', content: `${getBotPersonality()} Narra con energía de comentarista deportivo. Máx 400 caracteres. Sin presentarte.` },
+              { role: 'system', content: `${getBotPersonality()} Cuéntalo con la energía y la guasa de Dios Fua, en primera persona. Máx 400 caracteres. Sin presentarte.` },
               { role: 'user', content: `El streamer ha abierto una predicción: '${title}'. Opciones: ${opcionesTexto}. Narra esto en 1-2 frases.` }
             ]
           });

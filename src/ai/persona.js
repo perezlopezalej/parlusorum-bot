@@ -6,7 +6,7 @@
 const { SPAIN_RULE, IDENTITY_RULE } = require('./prompts');
 
 const PROFILES = ['full', 'lean', 'micro'];
-const LEAN_EXAMPLES = 3; // muerte, "¿eres una IA?" y spam de emotes: los que más marcan el humor
+const LEAN_EXAMPLES = 3; // "¿eres una IA?", spam de emotes y raid
 const MEMORY_LEAN = { maxStreams: 2, summaryMax: 220, maxHighlights: 1 };
 
 function normalizeProfile(profile) {
