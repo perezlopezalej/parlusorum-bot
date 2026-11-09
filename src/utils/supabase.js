@@ -317,6 +317,20 @@ async function getSessionsDeathsByGame() {
   }
 }
 
+// Número de sesiones de stream de un juego (la actual incluida); null si no hay base de datos o falla
+async function countSessionsOfGame(game) {
+  const db = getClient();
+  if (!db || !game) return null;
+  try {
+    const { count, error } = await db.from('stream_sessions').select('id', { count: 'exact', head: true }).eq('game', game);
+    if (error) throw error;
+    return Number.isInteger(count) ? count : null;
+  } catch (e) {
+    logger.warn(`Sesiones del juego no consultadas: ${e.message}`);
+    return null;
+  }
+}
+
 // Muertes y juego de las últimas sesiones cerradas (base del récord de muertes)
 async function getRecentSessionDeaths(limit = 10) {
   const db = getClient();
@@ -765,6 +779,7 @@ async function deleteChatLogBefore(isoDate) {
 }
 
 module.exports = {
+  countSessionsOfGame,
   insertChatLog,
   getSessionChatLog,
   saveSelfReview,

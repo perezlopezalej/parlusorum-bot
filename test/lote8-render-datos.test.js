@@ -100,9 +100,8 @@ test('setPlayer acepta ambos / los dos y rechaza lo demás; resetPlayer vuelve a
 });
 
 test('con ambos: el prompt lo dice y "Manu y Pao caen" no se descarta (con manu sí)', () => {
-  const { playerRule } = require('../src/ai/prompts');
-  assert.match(playerRule('ambos'), /juegan Manu y Pao/);
-  assert.doesNotMatch(playerRule('ambos'), /no juega ahora/);
+  const { playerLine } = require('../src/ai/style');
+  assert.match(playerLine('ambos'), /Juegan Manu y Pao a la vez/);
   const t = 'Manu y Pao caen otra vez, FUA';
   assert.equal(q.validateCohost(t, { player: 'manu' }).ok, false);
   assert.equal(q.validateCohost(t, { player: 'ambos' }).rule === 'manu', false);

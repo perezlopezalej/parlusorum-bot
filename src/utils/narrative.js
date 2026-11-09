@@ -145,7 +145,8 @@ function deathStreakLength(events, now = Date.now(), windowMs = DEATH_STREAK_WIN
 function classifyCohostMoment(event, { events = [], deathCount = 0, recordToBeat = 0, now = Date.now() } = {}) {
   if (!event) return null;
   const { type, description } = event;
-  if (['boss', 'raid', 'milestone', 'victory'].includes(type)) return { kind: type, description };
+  if (type === 'boss') return { kind: type, description, n: Number.isInteger(event.n) && event.n > 0 ? event.n : 1 };
+  if (['raid', 'milestone', 'victory'].includes(type)) return { kind: type, description };
   if (type !== 'death') return null;
   const added = Number.isInteger(event.n) && event.n > 0 ? event.n : 1;
   const before = Math.max(0, deathCount - added);
@@ -215,7 +216,53 @@ function pickFreeTopic({ minutes = 0, bosses = 0, game = '', deathCount = 0, can
   return pool[Math.min(pool.length - 1, Math.floor(pick() * pool.length))];
 }
 
+// --- Jefes seguidos: varios !boss en pocos minutos se comentan una sola vez ---
+const BOSS_MERGE_MS = 2 * 60 * 1000;   // hueco máximo entre dos jefes para que cuenten como una tanda
+const BOSS_SETTLE_MS = 25 * 1000;      // el comentario del primer jefe espera por si llegan más
+
+// Suma el jefe nuevo al momento pendiente: { kind: 'boss', n, description }
+function mergeBossMoments(pending, incoming, total = null) {
+  const n = (pending.n || 1) + (incoming.n || 1);
+  const where = Number.isInteger(total) && total > 0 ? ` (${total} en este stream)` : '';
+  return { kind: 'boss', n, description: `Han caído ${n} jefes seguidos en pocos minutos${where}` };
+}
+
+// ¿Este jefe entra en la tanda anterior? lastBossAt = último !boss (aviso pendiente o ya comentado)
+function bossInBatch(lastBossAt, now = Date.now(), windowMs = BOSS_MERGE_MS) {
+  return !!lastBossAt && now - lastBossAt < windowMs;
+}
+
+// --- Qué ha pasado en una ventana (resumen de la última media hora, hooks sobre sucesos) ---
+// Cuenta muertes y jefes (con las unidades de "+N"), la racha actual y las descripciones de victorias/hitos.
+function windowFacts(events = [], now = Date.now(), windowMs = 30 * 60 * 1000) {
+  const inWin = events.filter(e => now - e.ts <= windowMs);
+  const units = e => (Number.isInteger(e.n) && e.n > 0 ? e.n : 1);
+  const sum = type => inWin.filter(e => e.type === type).reduce((a, e) => a + units(e), 0);
+  const deaths = sum('death');
+  const bosses = sum('boss');
+  const streak = deathStreakLength(events, now);
+  const celebrations = inWin.filter(e => ['victory', 'milestone'].includes(e.type)).map(e => e.description).slice(-2);
+  const lines = [];
+  if (deaths > 0) lines.push(`${deaths} ${deaths === 1 ? 'caída' : 'caídas'} del streamer`);
+  if (bosses > 0) lines.push(`${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'}`);
+  if (streak >= DEATH_STREAK_SIZE) lines.push(`racha actual de ${streak} caídas seguidas sin superar un jefe`);
+  lines.push(...celebrations);
+  return { deaths, bosses, streak, celebrations, lines, relevant: lines.length > 0 };
+}
+
+// Palabras más repetidas del chat (sin nombres de usuario)
+function topChatWords(lines = [], n = 5, min = 2) {
+  const words = new Map();
+  for (const { message } of lines) {
+    for (const w of new Set(String(message).toLowerCase().split(/[^\p{L}\p{N}_]+/u))) {
+      if (w.length >= 4 && !STOPWORDS.has(w)) words.set(w, (words.get(w) || 0) + 1);
+    }
+  }
+  return [...words.entries()].filter(([, c]) => c >= min).sort((a, b) => b[1] - a[1]).slice(0, n).map(([w]) => w);
+}
+
 module.exports = {
+  windowFacts, topChatWords, mergeBossMoments, bossInBatch, BOSS_MERGE_MS, BOSS_SETTLE_MS,
   streakAllowed, STREAK_COHOST_GAP_MS, freeAngleNote, pickFreeTopic,
   MAX_NARRATIVE_EVENTS, pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
   cohostProbability, pruneHourly, hourlyCapReached,

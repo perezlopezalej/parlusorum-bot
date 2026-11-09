@@ -207,11 +207,11 @@ test('estado: quién juega (Manu por defecto, !juega pao|manu) y pausa del cohos
 });
 
 test('prompt: quién juega y quién escribe', () => {
-  const { playerRule } = require('../src/ai/prompts');
-  assert.match(playerRule('manu'), /ahora juega Manu; Pao no juega/);
-  assert.match(playerRule('pao'), /ahora juega Pao; Manu no juega/);
-  assert.match(playerRule('manu'), /NO es quien juega/);
-  assert.match(playerRule('manu'), /ParLusorum suelen ser de Pao: no la llames Manu/);
+  const { playerLine } = require('../src/ai/style');
+  assert.match(playerLine('manu'), /^Juega Manu./);
+  assert.match(playerLine('pao'), /^Juega Pao./);
+  assert.match(playerLine('manu'), /mira la partida desde fuera/);
+  assert.match(playerLine('manu'), /ParLusorum suele ser Pao/);
 });
 
 test('la regla "solo juega Manu" no descarta frases cuando juega Pao', () => {

@@ -129,6 +129,11 @@
     "Con esa labia, el FUA te queda corto.",
     "Qué intensidad, tío. Respira, que es un directo."
   ],
+  "mention_not_understood": [
+    "Esa pregunta me ha dejado en blanco, ni el FUA la pilla. Pregúntamelo de otra forma.",
+    "No te sigo, y mira que el FUA suele pillarlo todo. ¿Me lo dices con otras palabras?",
+    "Ahí me he perdido: ese juego no me suena de nada. ¿Seguro que se escribe así?"
+  ],
   "mention_game_redirect": [
     "Eso del juego mejor pregúntamelo con !dios_fua, que ahí me concentro y no me lío.",
     "Para cosas concretas del juego usa !dios_fua, que ahí me pongo serio y no me invento nada.",

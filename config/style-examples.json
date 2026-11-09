@@ -54,6 +54,27 @@
     "Predicción cerrada: el chat lo tenía claro y el FUA se anota el acierto.",
     "Encuesta abierta, Lusorums: vuestro voto manda y el FUA hace de notario."
   ],
+  "hook": [
+    "Manu lleva un buen rato peleándose con este jefe, ¿quién se atreve a decir cuántos intentos más?",
+    "Tres caídas seguidas y el FUA sigue en pie: ¿qué estrategia le recomendáis a Manu, Lusorums?",
+    "Jefe superado y la sala respira: ¿cuál ha sido el momento más tenso para vosotros?",
+    "Mucho rato sin caídas, ¿es calma de verdad o es la que precede al desastre?"
+  ],
+  "timer": [
+    "En la última media hora Manu se cayó cuatro veces y se llevó un jefe por delante, así que el FUA hoy cobra horas extra.",
+    "Media hora de pelea contra el jefe: el chat votó por paciencia y el FUA votó por cabezazos.",
+    "Rato tranquilo de exploración y cero caídas, y el chat ya hablaba del siguiente jefe como de un estreno de cine."
+  ],
+  "shoutout": [
+    "Pasaos por el canal de @fulano, que juega con un carisma que ni el FUA sabe explicar.",
+    "@fulano tiene un directo de los que dan ganas de quedarse: id a saludar y dejadle el FUA puesto.",
+    "Si buscáis buen rollo y buena partida, @fulano os espera con las puertas abiertas."
+  ],
+  "quemeperdi": [
+    "Llevamos casi una hora con Manu peleando contra el primer jefe: cayó cinco veces y el chat no ha parado de animar.",
+    "Tarde de exploración tranquila, un jefe superado y el FUA repartiendo ánimos desde la grada.",
+    "Arranque movidito: tres caídas seguidas y el chat ya está montando la estrategia para el siguiente intento."
+  ],
   "resumen": [
     "Manu y el jefe se vieron las caras 18 veces en Phantom Blade Zero, y el FUA y el chat aguantaron las seis horas sin soltar la risa.",
     "Directo de God of War II en el que Manu cayó 19 veces y se levantó 19, con un chat que no dejó de animar.",

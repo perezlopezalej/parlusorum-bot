@@ -2,6 +2,7 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
 const { getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const { windowFacts, mergeBossMoments, bossInBatch, BOSS_SETTLE_MS } = require('../utils/narrative');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR, streakAllowed, STREAK_COHOST_GAP_MS, hourlyCapReached, pickFreeTopic } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { buildGameTemplate } = require('./game-template');
@@ -12,11 +13,9 @@ const { sanitizeForAI } = require('../utils/filter');
 const { classifyGameMatch, recoverTruncatedName } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
-const { getManualLore, getLoreContext, getLoreTerms } = require('../lore/handler');
-const { buildMicroBase } = require('./persona');
-const { STYLE_RULES, AUTO_GAME_RULE, playerRule } = require('./prompts');
-const { playerLine, roleLine, pickCohostForm, buildProvocationSystem, buildCohostSystem, buildMentionSystem, buildQuestionSystem, parseCandidates, rankCandidates, retryNote } = require('./style');
-const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
+const { getLoreTerms } = require('../lore/handler');
+const { playerLine, roleLine, dayLine, buildHookSystem, buildShoutoutSystem, buildQueMePerdiSystem, pickCohostForm, buildProvocationSystem, buildCohostSystem, buildMentionSystem, buildQuestionSystem, parseCandidates, rankCandidates, retryNote } = require('./style');
+const { persistCooldown, getRecentSessionDeaths, countSessionsOfGame } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
 const { saveHighlight } = require('../utils/storage');
@@ -131,6 +130,11 @@ function addToHistory(username, message) {
 
 function updateLastChatTime() { lastChatMessageTime = Date.now(); }
 
+// Mensajes del chat de los últimos windowMs (sin comandos ni bots), del más antiguo al más reciente
+function getChatWindow(windowMs = 30 * 60 * 1000, now = Date.now()) {
+  return chatHistory.filter(m => now - m.ts <= windowMs).map(m => ({ username: m.username, message: m.message }));
+}
+
 function getRecentHistory(n = 6) {
   const cutoff = Date.now() - 10 * 60 * 1000;
   return chatHistory
@@ -234,7 +238,7 @@ async function buildContextText() {
     const safeGame = game ? sanitizeForAI(game) : '';
     if (safeGame) parts.push(`Se está jugando a «${safeGame}».`);
   } catch { /* sin juego */ }
-  parts.push(playerLine(getPlayer()));
+  parts.push(playerLine(getPlayer()), dayLine());
   const deaths = getDeathCount();
   parts.push(deaths === 0 ? 'Aún sin caídas anotadas hoy.' : `${deaths} caídas anotadas hoy del streamer.`);
   parts.push('La comunidad del canal son los Lusorums.');
@@ -277,21 +281,6 @@ function buildToneText(question) {
 }
 
 const emoteLineFor = (allowEmote, emotes) => (allowEmote ? `Puedes cerrar con un emote de esta lista: ${emotes.join(', ')}.` : 'Escribe solo texto.');
-
-function getBotPersonality() {
-  const botName = process.env.BOT_USERNAME || 'dios_fua';
-  const emotes = (channelConfig.channel_emotes || []).join(', ');
-  return `${buildMicroBase({ botName, streamer: channelConfig.streamer })}
-Canal: ${channelConfig.vibe || ''}. ${getManualLore('lean')}
-Emotes del canal (usa solo si encajan, máx 1-2, separados por espacios, NUNCA pegados a puntuación): ${emotes}.
-REGLAS ABSOLUTAS: SIEMPRE en español. Máx 2 frases cortas. Sin presentarte ni saludar. Sin "Lo siento". Sin "como IA". Sin inventar datos.
-NO hagas: pelota automática al chat, tono de asistente genérico, repetir lo que ya se dijo.
-${STYLE_RULES}
-<examples>
-Raid entrante — NO: "¡Bienvenidos a todos los nuevos viewers!" | SÍ: "La raid llegó con todo — el FUA se multiplica parlus1PORELPODERDELFUAAAAA"
-Alguien pregunta si es IA — NO: "Soy una IA diseñada para asistirte." | SÍ: "¿IA o ser humano? El FUA trasciende esas categorías parlus1Kelokekelowa"
-</examples>`;
-}
 
 const NARRATOR_BASE = (game = '') => {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
@@ -547,7 +536,26 @@ function scheduleDrain(ms) {
   drainTimer.unref?.();
 }
 
+// Jefes seguidos: varios !boss en ~2 min se comentan una sola vez (el primero espera BOSS_SETTLE_MS por si llegan más)
+let lastBossAt = 0;
+const BOSS_SETTLE = parseInt(process.env.COHOST_BOSS_SETTLE_MS || String(BOSS_SETTLE_MS), 10);
 function enqueueCohostMoment(client, channel, moment, now = Date.now()) {
+  if (moment.kind === 'boss') {
+    const inBatch = bossInBatch(lastBossAt, now);
+    lastBossAt = now;
+    if (inBatch) {
+      const pending = eventQueue.find(i => i.moment.kind === 'boss' && !i.started);
+      if (pending) {
+        pending.moment = mergeBossMoments(pending.moment, moment, getBossCount());
+        pending.notBefore = now + BOSS_SETTLE;
+        scheduleDrain(BOSS_SETTLE);
+      } else { recordCohostAttempt('event'); recordCohostDiscard('jefe_seguido'); } // la tanda ya se comentó
+      return;
+    }
+    eventQueue.push({ client, channel, moment, queuedAt: now, notBefore: now + BOSS_SETTLE });
+    scheduleDrain(BOSS_SETTLE);
+    return;
+  }
   eventQueue.push({ client, channel, moment, queuedAt: now, notBefore: now + EVENT_SETTLE_MS });
   if (eventQueue.length > EVENT_QUEUE_MAX) {
     eventQueue.shift();
@@ -570,9 +578,10 @@ async function drainEventQueue() {
         continue;
       }
       if (now < item.notBefore) { scheduleDrain(item.notBefore - now); return; }
+      item.started = true; // un jefe nuevo ya no se suma a este comentario
       const outcome = await chatlog.runWithOrigin('cohost', () => runCohost(item.client, item.channel, item.moment))
         .catch(err => { logger.warn(`Cohost por evento: ${err.message}`); return 'dropped'; });
-      if (outcome === 'retry') { scheduleDrain(5000); return; }
+      if (outcome === 'retry') { item.started = false; scheduleDrain(5000); return; }
       eventQueue.shift();
     }
   } finally { draining = false; }
@@ -729,17 +738,17 @@ async function handleQueMePerdi(client, channel, tags) {
       const response = await aiChat('quemeperdi', {
         max_tokens: 150,
         messages: [
-          { role: 'system', content: NARRATOR_BASE(game ? `Juego: "${game}".` : '') },
-          { role: 'user', content: `Un espectador llega tarde y pregunta qué se ha perdido. Datos (etiquetados, no mezcles unos con otros): ${facts}${story}
+          { role: 'system', content: `${buildQueMePerdiSystem({ game: game || '', player: getPlayer() })}${retryNote(feedback)}` },
+          { role: 'user', content: `<datos>${facts}</datos>${story}
 <chat>
 ${chat}
 </chat>
-Resume en EXACTAMENTE 2 frases lo que ha pasado hasta ahora, con tu personalidad. Las muertes son caídas del streamer, NO victorias ni enemigos derribados. No inventes cifras ni hechos que no estén en los datos.${retryNote(feedback)}` }
+Cuenta lo ocurrido.` }
         ]
       });
       const choice = response.choices[0];
       const out = (choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '')).trim();
-      const problem = quality.validateQueMePerdi(out, { deathCount: deaths, bosses, minutes });
+      const problem = quality.validateQueMePerdi(out, { deathCount: deaths, bosses, minutes, source: `${chat}\n${story}\n${facts}` });
       if (problem) { feedback = problem; logger.info(`!quemeperdi descartado (${problem}): ${out.slice(0, 80)}`); continue; }
       if (await factcheck.shouldDiscard(out, `Juego: ${game || 'desconocido'}. ${facts}`)) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
       text = out;
@@ -766,6 +775,19 @@ const usedStaticHooks = new Set(); // hooks estáticos ya dichos en este stream
 const HOOK_INTERVAL = parseInt(process.env.HOOK_INTERVAL_MS || '600000', 10);
 const HOOK_MIN_SILENCE = parseInt(process.env.HOOK_SILENCE_MS || '300000', 10);
 const MIN_VIEWERS_FOR_HOOKS = 3;
+
+// Los hooks fijos sobre el juego ("¿Alguien lo conocía ya?") solo valen en los primeros streams de un juego nuevo
+const NEW_GAME_HOOK_STREAMS = 2;
+const HOOK_FACTS_WINDOW_MS = 45 * 60 * 1000;
+const gameHookCache = new Map(); // juego → { ok, at }
+async function gameHooksAllowed(game) {
+  const cached = gameHookCache.get(game);
+  if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return cached.ok;
+  const count = await countSessionsOfGame(game);
+  const ok = count !== null && count <= NEW_GAME_HOOK_STREAMS; // sin base de datos, mejor ningún hook fijo del juego
+  gameHookCache.set(game, { ok, at: Date.now() });
+  return ok;
+}
 
 async function checkChatHook(client, channel) {
   if (isSilenced() || isTriviaActive()) return;
@@ -796,21 +818,19 @@ async function checkChatHook(client, channel) {
   const gameInfo = await getCurrentGame().catch(() => null);
   const game = gameInfo?.game;
 
-  // 50% de probabilidad de comentario espontáneo de IA si hay juego detectado
-  if (game && Math.random() < 0.5 && canMakeRequest()) {
+  // IA: una pregunta al chat sobre lo que ha pasado en el stream (caídas, jefes, rachas). Sin sucesos, hooks fijos.
+  const hookFacts = windowFacts(getStreamNarrative(), now, HOOK_FACTS_WINDOW_MS);
+  if (game && hookFacts.relevant && canMakeRequest()) {
     try {
       const gi = await getGameInfo(game, { detail: true }).catch(() => null);
       const gameFacts = factcheck.gameFactsText(gi);
       const gameContext = gi
         ? `${game} (${translateGenres(gi.genres) || 'sin género'}, ${gi.released?.slice(0,4) || '?'})`
         : game;
-
-      const learnedLore = await getLoreContext();
       const deathCount = getDeathCount();
-      const deathNote = deathCount === 0
-        ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
-        : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
-      const system = `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Rompe el silencio del chat con un comentario o pregunta breve, con tu voz y el lore del canal, sobre lo que pasa en el stream o sobre el FUA. ${AUTO_GAME_RULE} ${deathNote} Habla con la voz de Dios Fua, con frases llanas. No nombres a ningún usuario. ${playerRule(getPlayer())} ${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.`;
+      const eventText = `${hookFacts.lines.join('; ')}. Caídas anotadas hoy: ${deathCount}.`;
+      const system = buildHookSystem({ game, player: getPlayer() });
+      const lastCitedDeaths = quality.citesDeathCount((getBotHistory().slice(-1)[0] || {}).msg || '', deathCount);
 
       let text = '';
       let feedback = '';
@@ -820,18 +840,18 @@ async function checkChatHook(client, channel) {
           max_tokens: 80,
           messages: [
             { role: 'system', content: `${system}${retryNote(feedback)}` },
-            { role: 'user', content: `Llena el silencio con algo sobre ${game}.${buildStoryBlock(getStreamNarrative())}` }
+            { role: 'user', content: `<suceso>${eventText}</suceso>` }
           ]
         });
         const out = truncate((response.choices[0].message.content || '').trim());
-        const check = quality.validateHook(out, { deathCount, recent: recentHooks, player: getPlayer(), lastCitedDeaths: quality.citesDeathCount((getBotHistory().slice(-1)[0] || {}).msg || '', deathCount) });
+        const check = quality.validateHook(out, { deathCount, recent: recentHooks, player: getPlayer(), lastCitedDeaths, requireQuestion: true, extraDeathNumbers: [hookFacts.deaths, hookFacts.streak] });
         if (!check.ok) { feedback = check.reason; logger.info(`Hook descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
         const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}. ${gameFacts}`, { game, sense: response._ai?.provider !== 'gemini' });
         if (review.discard) {
           logger.info(`Hook descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;
         }
-        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas'; logger.info(`Hook descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
+        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita'; logger.info(`Hook descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
         text = out;
       }
       if (!text) throw new Error('hook IA sin respuesta válida');
@@ -855,7 +875,7 @@ async function checkChatHook(client, channel) {
   ];
 
   let gameHooks = [];
-  if (game) {
+  if (game && await gameHooksAllowed(game)) {
     try {
       const gi = await getGameInfo(game, { detail: true }); // misma clave de caché que la ficha precalentada del juego actual
       const genres = translateGenres(gi?.genres);
@@ -1114,12 +1134,12 @@ async function handleShoutout(client, channel, tags, targetUsername) {
       return;
     }
     const info = await getChannelInfo(target);
-    const game = info?.game_name ? `Su ultimo juego: "${info.game_name}".` : '';
+    const lastGame = info?.game_name ? `, su último juego: «${info.game_name}»` : '';
     const response = await aiChat('command', {
       max_tokens: 80,
       messages: [
-        { role: 'system', content: `${getBotPersonality()} Haz un shoutout para @${target}. ${game} 1 frase cálida y graciosa. Usa FUA si el momento merece épica. Sin presentarte.` },
-        { role: 'user', content: `Shoutout para @${target}` }
+        { role: 'system', content: buildShoutoutSystem() },
+        { role: 'user', content: `<canal>@${target}${lastGame}</canal>` }
       ]
     });
     client.say(channel, truncate(`📢 ${response.choices[0].message.content.trim()} twitch.tv/${target}`));
@@ -1446,7 +1466,21 @@ async function checkPatternMatch(client, channel, tags, message) {
     const maxChars = isProvocation ? Math.min(160, modeConfig.max_chars ?? 160) : Math.min(MENTION_MAX_CHARS, modeConfig.max_chars ?? MENTION_MAX_CHARS);
     let answer = '';
 
-    if (isProvocation) {
+    // "Cuéntame de qué va Silent Hill F": se busca el juego en IGDB y se responde con esos datos (sin IA que pueda inventar).
+    // Si IGDB no contesta, a !dios_fua; si pide datos de un juego que no encuentra, se dice con humor que no se pilla.
+    if (!isProvocation && !quality.isCurrentGameQuestion(question) && !quality.isDeathQuestion(question)) {
+      const gameQuery = quality.extractGameQuery(question);
+      if (gameQuery) {
+        const lookup = await buscarJuegoLookup(gameQuery.name, question);
+        if (lookup.info) answer = buildGameTemplate(lookup.info, messagesConfig.dios_fua_game_quips);
+        else if (lookup.unavailable) answer = pickRandom(messagesConfig.mention_game_redirect);
+        else if (gameQuery.strict) answer = pickRandom(messagesConfig.mention_not_understood);
+      }
+    }
+
+    if (answer) {
+      // consulta de juego ya resuelta
+    } else if (isProvocation) {
       answer = await generateProvocationReply(username, question, maxChars);
     } else if (quality.isCurrentGameQuestion(question)) {
       // "¿Qué juego es?": el juego actual del stream, sin IA
@@ -1598,5 +1632,5 @@ module.exports = {
   getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
   getStreamChatBuffer, resetStreamChatBuffer, getRecentChatters,
   restoreCooldowns, clearUserFactsCache, getCachedUserFacts,
-  getBotPersonality, NARRATOR_BASE,
+  getChatWindow, NARRATOR_BASE,
 };

@@ -78,8 +78,8 @@ function buildProvocationSystem({ examples = pickStyleExamples('provocacion', 5)
   );
 }
 
-function buildCohostSystem({ game = '', minutes = null, deathLine = '', player = 'manu', mood = '', form, emoteLine = '', nameLine = '', loreBlock = '', modeLine = '', examples = pickStyleExamples('cohost', 4), event = false }) {
-  const stream = [game ? `Juegan a «${game}».` : '', minutes != null ? `Llevan ${minutes} min de directo.` : '', deathLine, playerLine(player)].filter(Boolean).join(' ');
+function buildCohostSystem({ now = new Date(), game = '', minutes = null, deathLine = '', player = 'manu', mood = '', form, emoteLine = '', nameLine = '', loreBlock = '', modeLine = '', examples = pickStyleExamples('cohost', 4), event = false }) {
+  const stream = [game ? `Juegan a «${game}».` : '', minutes != null ? `Llevan ${minutes} min de directo.` : '', deathLine, playerLine(player), dayLine(now)].filter(Boolean).join(' ');
   return join(
     IDENTITY,
     block('stream', stream),
@@ -152,6 +152,55 @@ function buildSummaryPrompt({ streamer = 'ParLusorum', game, durationMinutes, de
   );
 }
 
+// --- Momento real: día de la semana y parte del día (Madrid), para los prompts que hablan de "ahora" ---
+function dayLine(now = new Date()) {
+  const d = quality.madridDay(now);
+  return `Hoy es ${d.weekday} por la ${d.part}.`;
+}
+
+// --- Hook anti-silencio: una pregunta al chat sobre lo que ha pasado en el stream ---
+function buildHookSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('hook', 4) } = {}) {
+  return join(
+    IDENTITY,
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
+    block('forma', 'Una pregunta al chat de menos de 140 caracteres que termina en «?», sobre lo que cuenta <suceso>, con una sola idea y palabras sencillas.'),
+    renderExamples(examples),
+    block('tarea', 'Escribe una pregunta al chat que rompa el silencio hablando de lo que ha pasado en el directo.')
+  );
+}
+
+// --- Timer IA: resumen de la última media hora ---
+function buildTimerSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('timer', 3) } = {}) {
+  return join(
+    IDENTITY,
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
+    block('forma', 'Una sola frase de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen>, en primera persona o hablando del FUA y del chat en general.'),
+    renderExamples(examples),
+    block('tarea', 'Cuenta la última media hora del directo en una frase.')
+  );
+}
+
+// --- !so ---
+function buildShoutoutSystem({ examples = pickStyleExamples('shoutout', 3) } = {}) {
+  return join(
+    IDENTITY,
+    block('forma', 'Una frase cálida y con guasa de menos de 200 caracteres que recomienda el canal de @usuario, con su nombre tal cual aparece en <canal>.'),
+    renderExamples(examples),
+    block('tarea', 'Escribe el shoutout al canal de <canal>.')
+  );
+}
+
+// --- !quemeperdi ---
+function buildQueMePerdiSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('quemeperdi', 3) } = {}) {
+  return join(
+    IDENTITY,
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
+    block('forma', 'Exactamente 2 frases que cuentan, con tus propias palabras, lo que ha pasado hasta ahora usando solo los datos de <datos>, <stream_story> y <chat>. Las muertes son caídas del streamer.'),
+    renderExamples(examples),
+    block('tarea', 'Un espectador llega tarde y pregunta qué se ha perdido: cuéntaselo.')
+  );
+}
+
 // --- Varios candidatos en una llamada ---
 // Acepta {"candidatos":[...]} (con o sin ```json), un array suelto o, si no hay JSON, el texto entero como único candidato.
 function parseCandidates(raw, max = 3) {
@@ -216,11 +265,16 @@ const FIX_BY_RULE = {
   genero: 'Dirígete a ParLusorum sin género, con su nombre.',
   consejos: 'Responde a lo que dice el usuario con una ocurrencia.',
   redirect: 'Responde a lo que dice el usuario con una ocurrencia.',
+  dia: 'Habla del momento de ahora sin nombrar el día de la semana.',
+  etnia: 'Haz la broma sobre la partida o el FUA.',
+  pregunta: 'Termina con una pregunta al chat.',
+  cita: 'Cuenta lo ocurrido con tus propias palabras.',
   positivo: 'Cuenta el stream en positivo, con buen rollo y ánimo.',
   logro: 'Cuenta las muertes como caídas del streamer y celebra el aguante.',
 };
 // Para los motivos que solo traen texto (hook, timer, resumen…): se reconoce el tipo por palabras clave
 const FIX_BY_REASON = [
+  [/d[ií]a de la semana/i, 'dia'], [/etnias? o pueblos/i, 'etnia'], [/no es una pregunta/i, 'pregunta'], [/entrecomillado|cita un mensaje/i, 'cita'],
   [/es negativo/i, 'positivo'], [/como un logro/i, 'logro'], [/a[ñn]o del juego|g[eé]nero del juego/i, 'formula'], [/empieza igual/i, 'estructura'],
   [/razonamiento|no est[aá] en espa|no parece un mensaje/i, 'sentido'], [/etiquetes a nadie/i, 'nombre'],
   [/latinoamerican/i, 'latam'], [/rechazo de robot/i, 'robot'], [/muertes que no est/i, 'muertes'], [/n[uú]mero de muertes/i, 'contador'],
@@ -246,5 +300,6 @@ function retryNote(ruleOrReason) {
 module.exports = {
   IDENTITY, COHOST_FORMS, ALERT_TASKS, WELCOME_NAME_RULE, loadExamples, setExamples, pickStyleExamples, renderExamples, playerLine, roleLine, pickCohostForm,
   buildProvocationSystem, buildCohostSystem, buildMentionSystem, buildQuestionSystem, buildAlertSystem, buildSummaryPrompt,
+  dayLine, buildHookSystem, buildTimerSystem, buildShoutoutSystem, buildQueMePerdiSystem,
   parseCandidates, rankCandidates, positiveFix, retryNote,
 };

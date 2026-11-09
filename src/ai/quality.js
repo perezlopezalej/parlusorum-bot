@@ -1,7 +1,7 @@
 // Control de calidad puro de las respuestas de la IA (sin estado ni I/O): tono, repetición, emotes, muertes y cortes.
 
 // Léxico latinoamericano que no encaja con un chat de España
-const LATAM_RE = /\b(pucha|puchas|qu[eé] onda|(?:la|esa|esta) onda|[oó]rale|[aá]ndale|chido|chida|ahorita|ch[eé]vere|bac[aá]n|g[uü]ey|wey|parce(?:r[oa]s?)?|enoj\w*|concha|boludo|che|vos|platicar|platicamos|padr[ií]simo|no manches)\b/i;
+const LATAM_RE = /\b(pucha|puchas|qu[eé] onda|(?:la|esa|esta) onda|[oó]rale|[aá]ndale|chido|chida|ahorita|ch[eé]vere|bac[aá]n|g[uü]ey|wey|parce(?:r[oa]s?)?|enoj\w*|concha|boludo|che|vos|platicar|platicamos|padr[ií]simo|no manches|(?:est(?:oy|[aá]s?|[aá]n|amos|[aá]is)|and(?:o|as?|an|amos)|ponerse|se (?:pone|puso|ponen|pusieron)|(?:me|te|lo|la|nos|os|los|las) (?:pone|ponen|puso|pusieron)) (?:muy |re |tan |bien )?brav[oa]s?|queda(?:n|ba|ban|r[aá]n?)? chic[oa]s?)\b/i;
 
 // Rechazos con voz de robot ("No puedo participar en eso", "Lo siento, no puedo ayudar")
 const ROBOT_REFUSAL_RE = /\b(no puedo (?:participar|ayudar|ayudarte|responder|continuar|hacer eso|cumplir)|no es algo que (?:haga|pueda)|lo siento|como (?:ia|inteligencia artificial|modelo)|no estoy (?:programado|autorizado)|no me est[aá] permitido|no entiend[eo] esos insultos)\b/i;
@@ -41,6 +41,26 @@ const GAME_TOPIC_RE = /\b(dificultad|armas?|espad\w+|jefes?|boss(?:es)?|zonas?|n
 const QUESTION_SHAPE_RE = /\?|^\s*(?:qu[eé]|c[oó]mo|cu[aá]nd[oa]|cu[aá]nt[oa]s?|d[oó]nde|cu[aá]l(?:es)?|por qu[eé]|hay|se puede|puedo|puedes?|sabes?)\b/i;
 function isGameQuestion(text) { return GAME_TOPIC_RE.test(text) && QUESTION_SHAPE_RE.test(text); }
 const DEATH_QUESTION_RE = /\b(cu[aá]ntas|cu[aá]ntos)\b.*\b(muertes?|veces|ca[ií]das?)\b|\bmuertes?\b.*\b(llev\w+|hay|van|total)\b|\b(llev\w+|van)\b.*\bmuertes?\b/i;
+// "cuéntame de qué va Silent Hill F", "qué tal es Hades", "has jugado a Celeste": nombre del juego por la frase que lo introduce.
+// strict = petición clara de datos de un juego (si no se encuentra, se dice con humor); si no, solo una opinión (puede no ser un juego).
+const GAME_QUERY_CUES = [
+  { re: /(?:de qu[eé] va|de qu[eé] trata|c[oó]mo es)\s+(?:el juego\s+)?(.{2,60})$/i, strict: true },
+  { re: /(?:cu[eé]ntame|h[aá]blame|dime|expl[ií]came|cu[eé]ntanos|h[aá]blanos)\s+(?:algo\s+)?(?:de|del|sobre|acerca de)\s+(?:qu[eé] va\s+)?(?:el juego\s+)?(.{2,60})$/i, strict: true },
+  { re: /(?:qu[eé] tal es|qu[eé] tal est[aá]|conoces|conoc[eé]is|has jugado (?:a|al)|hab[eé]is jugado (?:a|al))\s+(?:el juego\s+)?(.{2,60})$/i, strict: true },
+  { re: /(?:qu[eé] opinas|qu[eé] piensas|qu[eé] te parece)\s+(?:de|del|sobre)\s+(?:el juego\s+)?(.{2,60})$/i, strict: false },
+];
+const NOT_A_GAME_RE = /^(?:esto|eso|aquello|ese|esa|este|esta|algo|nada|todo|el juego|este juego|ese juego|un juego|juego|aqu[ií]|ahora)$/i;
+function extractGameQuery(text) {
+  const clean = String(text || '').replace(/[¿?¡!]+/g, ' ').replace(/\s+/g, ' ').trim();
+  for (const { re, strict } of GAME_QUERY_CUES) {
+    const m = re.exec(clean);
+    if (!m) continue;
+    const name = m[1].replace(/\b(?:por favor|porfa|please|gracias)\b.*$/i, '').replace(/[\s.,;:]+$/g, '').trim();
+    if (NOT_A_GAME_RE.test(name)) continue;
+    if (name.length >= 2 && name.split(' ').length <= 8) return { name, strict };
+  }
+  return null;
+}
 function isDeathQuestion(text) { return DEATH_QUESTION_RE.test(text) && /\?|cu[aá]nt|llev|van\b/i.test(text); }
 
 
@@ -80,11 +100,11 @@ function isRobotRefusal(text) { return ROBOT_REFUSAL_RE.test(text); }
 function matchesFormula(text) { return FORMULAS.some(re => re.test(text)); }
 
 // Muertes: con contador a 0 no se habla de muertes/caídas; si se cita una cifra debe ser la del contador
-function mentionsUnrecordedDeaths(text, deathCount) {
+function mentionsUnrecordedDeaths(text, deathCount, extraNumbers = []) {
   if (!DEATH_WORDS_RE.test(text)) return false;
   if (!deathCount) return true;
   const nums = [...text.matchAll(/(?:#|n[uú]mero |muerte |ca[ií]da )(\d+)|(\d+)\s*(?:muertes?|ca[ií]das?|veces)/gi)].map(m => parseInt(m[1] || m[2], 10));
-  return nums.some(n => n !== deathCount);
+  return nums.some(n => n !== deathCount && !extraNumbers.includes(n));
 }
 
 // --- Números en palabras (0-999): para detectar que se cita el contador de muertes y los mal escritos ("cuarentay siete") ---
@@ -299,6 +319,30 @@ function gameTalkProblem(text) {
   return null;
 }
 
+// Día y momento reales (Madrid): se pasan a los prompts que hablan del momento y se vigila que no se invente otro
+const WEEKDAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+function madridDay(now = new Date()) {
+  const d = now instanceof Date ? now : new Date(now);
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', weekday: 'short', hour: '2-digit', hour12: false }).formatToParts(d);
+  const wd = parts.find(p => p.type === 'weekday')?.value;
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value, 10) % 24;
+  const idx = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+  return { weekday: WEEKDAYS_ES[idx < 0 ? 0 : idx], part: hour < 6 ? 'noche' : hour < 14 ? 'mañana' : hour < 21 ? 'tarde' : 'noche' };
+}
+const DAY_REF_RE = /\b(?:(?:ma[ñn]ana|tarde|noche|madrugada|jornada|d[ií]a|plan|rollo|ambiente) de|este) (lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b|\b(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo) por la (?:ma[ñn]ana|tarde|noche)\b/gi;
+// ¿Cita un día de la semana que no es hoy ("tarde de martes" un sábado)?
+function wrongWeekday(text, now = new Date()) {
+  const today = norm(madridDay(now).weekday);
+  for (const m of String(text || '').matchAll(DAY_REF_RE)) {
+    const day = norm(m[1] || m[2]);
+    if (day !== today) return true;
+  }
+  return false;
+}
+// Expresiones con etnias o pueblos (la broma no va por ahí)
+const ETHNIC_RE = /\b(payos?|payas?|gitanada|gitaner[ií]a|judiada|sudacas?|negratas?|hacer el indio|trabajar como un negro)\b/i;
+function mentionsEthnicTerms(text) { return ETHNIC_RE.test(String(text || '')); }
+
 // Juzgar el ambiente del chat ("el chat está quieto/dormilón") no es un comentario, es relleno
 const MOOD_JUDGING_RE = /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
 function judgesChatMood(text) { return MOOD_JUDGING_RE.test(String(text || '')); }
@@ -333,11 +377,13 @@ function talksPersonalLife(text) { return PERSONAL_RE.test(String(text || '')); 
 function repeatsProfanity(text) { return PROFANITY_RE.test(String(text || '')); }
 
 // Motivo de rechazo por redacción o tema vetado (null si pasa). opts.personal=false deja pasar la vida personal (menciones)
-function styleProblem(text, { personal = true, minWords = 3, player = 'manu' } = {}) {
+function styleProblem(text, { personal = true, minWords = 3, player = 'manu', now = new Date() } = {}) {
   const t = String(text || '');
   const junk = junkProblem(t, { minWords });
   if (junk) return junk;
   if (isCutOff(t)) return { rule: 'cortada', reason: 'la frase está cortada o termina a medias; escribe una frase completa y sencilla' };
+  if (ETHNIC_RE.test(t)) return { rule: 'etnia', reason: 'usa una expresión con etnias o pueblos; haz la broma sobre la partida o el FUA' };
+  if (wrongWeekday(t, now)) return { rule: 'dia', reason: 'cita un día de la semana que no es hoy; habla del momento sin inventar el día' };
   if (PROFANITY_RE.test(t)) return { rule: 'grosería', reason: 'repite una grosería o insulto; no los repitas ni los cites' };
   if (BOT_SELF_RE.test(t) && !/\bsoy\b[^.!?]{0,30}\bbot\b/i.test(t)) return { rule: 'bot', reason: 'habla de sí mismo como "el bot"; habla en primera persona o como el FUA' };
   if (FUA_GENDER_RE.test(t)) return { rule: 'fua', reason: '"el FUA" va siempre en masculino' };
@@ -403,13 +449,14 @@ function vetAuto(text) {
 
 // Hook anti-silencio: voz de Dios Fua, sin deporte, sin muertes inventadas ni repetir los últimos hooks
 const DEATH_REPEAT_REASON = 'el mensaje anterior del bot ya citó el número de muertes; no lo cites ahora, habla de otra cosa';
-function validateHook(text, { deathCount = 0, recent = [], lastCitedDeaths = false, player = 'manu' } = {}) {
+function validateHook(text, { deathCount = 0, recent = [], lastCitedDeaths = false, player = 'manu', requireQuestion = false, extraDeathNumbers = [] } = {}) {
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
+  if (requireQuestion && !/\?/.test(text)) return { ok: false, reason: 'no es una pregunta al chat' };
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
-  if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  if (mentionsUnrecordedDeaths(text, deathCount, extraDeathNumbers)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
   const style = styleProblem(text, { player });
   if (style) return { ok: false, reason: style.reason };
@@ -438,7 +485,18 @@ const KILLS_CLAIM_RE = /\b(?:derrib\w+|elimin\w+|abati\w+|mat[oó]|liquid\w+|ven
 function claimsEnemyKills(text) { return KILLS_CLAIM_RE.test(String(text || '')); }
 
 // !quemeperdi: validación del resumen; devuelve el motivo de rechazo o null
-function validateQueMePerdi(text, { deathCount = 0, bosses = 0 } = {}) {
+// Texto entre comillas ("…", «…», “…») de más de dos palabras que no aparece en el chat ni en los datos: cita inventada
+const QUOTE_RE = /"([^"]{8,})"|«([^»]{8,})»|“([^”]{8,})”/g;
+function inventedQuote(text, source = '') {
+  const src = norm(source).replace(/\s+/g, ' ');
+  for (const m of String(text || '').matchAll(QUOTE_RE)) {
+    const q = norm(m[1] || m[2] || m[3]).replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (q.split(' ').length >= 2 && !src.replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').includes(q)) return m[0];
+  }
+  return '';
+}
+
+function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '' } = {}) {
   const junk = junkProblem(text);
   if (junk) return junk.reason;
   if (achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
@@ -447,6 +505,7 @@ function validateQueMePerdi(text, { deathCount = 0, bosses = 0 } = {}) {
   if (hasLatam(text)) return 'usa expresiones latinoamericanas; escribe español de España';
   if (isRobotRefusal(text)) return 'suena a rechazo de robot';
   if (mentionsUnrecordedDeaths(text, deathCount)) return 'menciona muertes que no están en el contador';
+  if (inventedQuote(text, source)) return 'cita un mensaje del chat que no existe (entrecomillado inventado)';
   const boss = text.match(/(\d+)\s+(?:jefes?|bosses|boss)\b/i);
   if (boss && parseInt(boss[1], 10) !== bosses) return `cita ${boss[1]} jefes y llevamos ${bosses}`;
   return null;
@@ -460,12 +519,12 @@ function repeatsYear(text, recent) {
 
 // Comentario IA del timer: misma validación que el hook, sin nota del juego y sin repetir ideas del stream
 // ctx.currentGame/channelGames: sin nombrar otros juegos; ctx.named: usuarios nombrados hace poco (no repetirlos)
-function validateTimerIA(text, { deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set(), lastCitedDeaths = false, player = 'manu' } = {}) {
+function validateTimerIA(text, { extraDeathNumbers = [], deathCount = 0, recent = [], currentGame = '', channelGames = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set(), lastCitedDeaths = false, player = 'manu' } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
-  if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  if (mentionsUnrecordedDeaths(text, deathCount, extraDeathNumbers)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
   if (mentionsGenre(text) && recent.some(mentionsGenre)) return { ok: false, reason: 'repite el género del juego ("juego de rol y acción"); no lo uses en cada mensaje, habla de otra cosa' };
   if (forcedComparison(text)) return { ok: false, reason: 'usa una comparación forzada ("igual que un despertador un lunes"); di la idea directa, sin comparar con objetos ni situaciones cotidianas' };
@@ -721,6 +780,6 @@ module.exports = {
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, summaryPersonalLife, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   dropPartialEmote, fitWithEmotes, junkProblem, malformedNumber, citesDeathCount, numberWordsEs, mentionsGenre, forcedComparison, selfHelp, openingKey, sameOpening, moveEmotesToEnd,
-  unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
+  extractGameQuery, madridDay, wrongWeekday, mentionsEthnicTerms, inventedQuote, unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
   mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesGameScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

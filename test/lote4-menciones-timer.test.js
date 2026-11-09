@@ -5,7 +5,6 @@ const assert = require('node:assert/strict');
 const q = require('../src/ai/quality');
 const { mentionBudget, isStale, classifyMessage } = require('../src/ai/patterns');
 const { translateGenres } = require('../src/utils/genres');
-const { pickTimerTopic } = require('../src/timers/handler');
 const channel = require('../config/channel.json');
 const messages = require('../config/messages.json');
 
@@ -100,18 +99,12 @@ describe('4. timer IA', () => {
     assert.equal(later.ok, true);
   });
   test('el timer no etiqueta a nadie (ningún tema es "usuario") y rechaza el @', () => {
-    for (let i = 0; i < 40; i++) assert.notEqual(pickTimerTopic({ rand: Math.random }).topic.id, 'usuario');
     const r = q.validateTimerIA('@harocho3847, el FUA te vigila desde hace rato en este directo.', ctx);
     assert.equal(r.ok, false);
   });
   test('"Manu y Pao" jugando o muriendo se rechaza: quien juega es Manu', () => {
     assert.equal(q.validateTimerIA('El FUA lo ve claro, Manu y Pao siguen firmes en este directo.', ctx).ok, false);
     assert.equal(q.validateTimerIA('El FUA lo ve claro, Manu sigue firme en este directo.', ctx).ok, true);
-  });
-  test('el tema nunca repite el anterior', () => {
-    for (let i = 0; i < 30; i++) {
-      assert.notEqual(pickTimerTopic({ last: 'lore' }).topic.id, 'lore');
-    }
   });
 });
 

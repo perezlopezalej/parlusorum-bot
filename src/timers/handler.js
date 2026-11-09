@@ -1,22 +1,22 @@
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const { getCurrentGame } = require('../twitch/api');
-const { isSilenced, getDeathCount, getStreamStartedAt, markStructure, getUsedStructures, getBotHistory, addBotMessage, getPlayer } = require('../utils/state');
+const { isSilenced, getDeathCount, getStreamStartedAt, getStreamNarrative, markStructure, getUsedStructures, getBotHistory, addBotMessage, getPlayer } = require('../utils/state');
+const { windowFacts, topChatWords } = require('../utils/narrative');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 
 const MIN_UPTIME_MS = 5 * 60 * 1000;
 const { withOrigin } = require('../utils/chatlog');
-const { getBotPersonality } = require('../ai/handler');
+const { getChatWindow } = require('../ai/handler');
 const quality = require('../ai/quality');
 const factcheck = require('../ai/factcheck');
 const { lookupGameInfo } = require('../twitch/api');
-const { AUTO_GAME_RULE, STYLE_RULES, playerRule } = require('../ai/prompts');
-const { retryNote } = require('../ai/style');
-const { getLoreContext } = require('../lore/handler');
+const { buildTimerSystem, retryNote } = require('../ai/style');
 const { truncate } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
-const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(25 * 60 * 1000), 10);
+const MIN_CHAT_FOR_SUMMARY = 15; // mensajes en la ventana para contar solo de qué ha hablado el chat
+const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(30 * 60 * 1000), 10);
 
 // Separación mínima entre mensajes de timer: si varios coinciden en el mismo minuto salen espaciados
 const MIN_TIMER_GAP_MS = parseInt(process.env.TIMER_MIN_GAP_MS || String(90 * 1000), 10);
@@ -41,21 +41,6 @@ function drainTimerQueue() {
 // Últimos comentarios IA del timer en este stream (para no repetir ideas)
 const MAX_RECENT_TIMER_IA = 20;
 const recentTimerIA = [];
-let lastTimerTopic = '';
-
-// Tema obligatorio de cada comentario, para que dos seguidos no sean el mismo. Ninguno nombra ni etiqueta a nadie.
-const TIMER_TOPICS = [
-  { id: 'lore', note: 'una anécdota o broma del lore del canal' },
-  { id: 'fua', note: 'el FUA como fuerza universal, con una broma directa (sin compararlo con objetos ni situaciones cotidianas)' },
-  { id: 'tiempo', note: 'el tiempo que llevamos de directo ({uptime}); no abras la frase con la hora ni con el contador' },
-  { id: 'chat', note: 'una pregunta concreta y divertida sobre el stream o el FUA (nada de motivación, autoayuda ni preguntas existenciales)' },
-];
-
-// Elige un tema distinto al anterior
-function pickTimerTopic({ last = '', rand = Math.random } = {}) {
-  const pool = TIMER_TOPICS.filter(t => t.id !== last);
-  return { topic: pool[Math.floor(rand() * pool.length)] };
-}
 
 const timerRefs = [];
 let lastMessages = [];
@@ -93,7 +78,8 @@ function start(client, config) {
     enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`)));
   }), 40 * 60 * 1000);
 
-  // Timer dinámico con IA — comenta sobre el juego actual cada ~25 min
+  // Timer IA: resumen de la última media hora. El código reúne lo que ha pasado (caídas, jefes, temas del chat) y la IA
+  // lo cuenta con gracia en una frase. Si no ha pasado nada relevante, no se envía nada.
   timerRefs.push(setInterval(withOrigin('timer_ia', async () => {
     if (!isLiveViaEventSub() || isSilenced() || !canMakeRequest()) return;
 
@@ -101,53 +87,50 @@ function start(client, config) {
     const game = gameInfo?.game;
     if (!game) return;
 
+    const now = Date.now();
+    const facts = windowFacts(getStreamNarrative(), now, AI_TIMER_INTERVAL_MS);
+    const chatLines = getChatWindow(AI_TIMER_INTERVAL_MS, now);
+    const topics = topChatWords(chatLines, 5);
+    const chatTalk = chatLines.length >= MIN_CHAT_FOR_SUMMARY && topics.length >= 2;
+    if (!facts.relevant && !chatTalk) { logger.info('Timer IA: nada relevante en la última media hora, no se envía'); return; }
+
     try {
-      // Solo el nombre del juego: con el género en el contexto el modelo lo repetía en cada mensaje ("juego de rol y acción")
-      const gameContext = game;
       // Ficha del juego actual (caché de IGDB) solo para el revisor: así no descarta datos correctos como el año
       const gameFacts = factcheck.gameFactsText((await lookupGameInfo(game, { detail: true }).catch(() => ({}))).info);
-      const emotes = channelConfig.channel_emotes || [];
-
-      const learnedLore = await getLoreContext();
       const deathCount = getDeathCount();
-      const deathNote = deathCount === 0
-        ? 'El contador de muertes está a 0: NO menciones muertes ni caídas.'
-        : `Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
-      // No se cita el número de muertes en dos mensajes seguidos del bot (cohost y timer comparten historial)
+      const summary = `Última media hora: ${facts.lines.length ? facts.lines.join('; ') : 'sin caídas ni jefes nuevos'}.${topics.length ? ` Temas del chat: ${topics.join(', ')}.` : ''} Caídas anotadas hoy: ${deathCount}.`;
+      // Lo que ya se dijo en ese tramo (cohost incluido): el código comprueba el parecido, el prompt no lo cita
+      const saidInWindow = getBotHistory().filter(e => now - e.ts <= AI_TIMER_INTERVAL_MS).map(e => e.msg);
+      const recent = [...recentTimerIA, ...saidInWindow];
       const lastCitedDeaths = quality.citesDeathCount((getBotHistory().slice(-1)[0] || {}).msg || '', deathCount);
-      const { topic } = pickTimerTopic({ last: lastTimerTopic });
-      const topicNote = topic.note.replace('{uptime}', String(getStreamUptime() || ''));
-      const tone = ['burla cariñosa', 'épica', 'observación curiosa'][Math.floor(Math.random() * 3)];
+      const emotes = channelConfig.channel_emotes || [];
+      const system = buildTimerSystem({ game, player: getPlayer() });
 
       let msg = '';
       let feedback = '';
       for (let attempt = 0; attempt < 2 && !msg; attempt++) {
         if (attempt > 0 && !canMakeRequest()) break;
         const response = await aiChat('timer', {
-          max_tokens: 80,
+          max_tokens: 90,
           messages: [
-            {
-              role: 'system',
-              content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve con tu personalidad y el lore del canal, sobre este tema: ${topicNote}. No nombres ni etiquetes (@) a ningún usuario, ni otros videojuegos que no sean el actual (nada de comparaciones con otros juegos), y no menciones el año de salida. ${playerRule(getPlayer())} ${AUTO_GAME_RULE} ${deathNote} Tono: ${tone}. Habla con la voz de Dios Fua, con frases llanas. No menciones el género del juego, no compares con objetos ni situaciones cotidianas y no hagas preguntas de motivación; cada mensaje con una estructura distinta. ${lastCitedDeaths ? 'Tu mensaje anterior ya citó el número de muertes: NO cites ninguna cifra de muertes en este. ' : ''}${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.${retryNote(feedback)}`
-            },
-            { role: 'user', content: `Suelta un comentario sobre el directo de ${game} (tono: ${tone})` }
+            { role: 'system', content: `${system}${retryNote(feedback)}` },
+            { role: 'user', content: `<resumen>${summary}</resumen>` }
           ]
         });
         // Emote como mucho 1 de cada 3 mensajes y siempre al final
         const allowEmote = quality.emoteAllowed(getBotHistory().map(e => e.msg), emotes);
         const out = quality.applyEmotePolicy(truncate((response.choices[0].message.content || '').trim()), allowEmote, emotes);
-        const check = quality.validateTimerIA(out, { deathCount, recent: recentTimerIA, currentGame: game, channelGames: channelConfig.games_played || [], usedStructures: getUsedStructures(), lastCitedDeaths, player: getPlayer() });
+        const check = quality.validateTimerIA(out, { deathCount, extraDeathNumbers: [facts.deaths, facts.streak], recent, currentGame: game, channelGames: channelConfig.games_played || [], usedStructures: getUsedStructures(), lastCitedDeaths, player: getPlayer() });
         if (!check.ok) { feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
-        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}. ${gameFacts}`, { game, sense: response._ai?.provider !== 'gemini' });
+        const review = await factcheck.evaluate(out, `Juego: ${game}. Muertes anotadas: ${deathCount}. ${summary} ${gameFacts}`, { game, sense: response._ai?.provider !== 'gemini' });
         if (review.discard) {
           logger.info(`Timer IA descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;
         }
-        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas'; logger.info(`Timer IA descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
+        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita'; logger.info(`Timer IA descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
         msg = out;
       }
       if (msg) {
-        lastTimerTopic = topic.id;
         markStructure(quality.structureKey(msg));
         addBotMessage(msg);
         recentTimerIA.push(msg);
@@ -170,4 +153,4 @@ function stop() {
   logger.info('⏹️ Timers detenidos');
 }
 
-module.exports = { pickTimerTopic, TIMER_TOPICS, start, stop, enqueueTimerMessage };
+module.exports = { start, stop, enqueueTimerMessage };

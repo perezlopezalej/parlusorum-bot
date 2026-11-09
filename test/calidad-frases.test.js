@@ -7,7 +7,7 @@ const q = require('../src/ai/quality');
 const { parseReview } = require('../src/ai/factcheck');
 const { parseBossArgs, applyBossDelta } = require('../src/commands/stats');
 const state = require('../src/utils/state');
-const { IDENTITY_RULE, STYLE_RULES } = require('../src/ai/prompts');
+const { IDENTITY } = require('../src/ai/style');
 
 const base = { deathCount: 3, recent: [], named: new Map(), now: Date.now() };
 
@@ -70,9 +70,6 @@ describe('estilo y español de España', () => {
     assert.equal(q.styleProblem('Dice que eres un subnormal, qué fuerte.').rule, 'grosería');
     assert.equal(q.styleProblem('Qué mierda de ronda, Manu.').rule, 'grosería');
   });
-  test('las reglas de estilo de hook y timer piden primera persona', () => {
-    assert.match(STYLE_RULES, /nunca de "el bot"/);
-  });
 });
 
 describe('identidad', () => {
@@ -81,10 +78,9 @@ describe('identidad', () => {
     assert.equal(q.validateMention('Soy dios_fua, creador del canal. Si quieres que haga algo, dime.').ok, false);
     assert.equal(q.validateMention('Soy Dios Fua, el bot del canal de Manu y Pao. Me creó vlxj97.').ok, true);
   });
-  test('la regla de identidad nombra a Manu, Pao y vlxj97', () => {
-    assert.match(IDENTITY_RULE, /Manu y Pao/);
-    assert.match(IDENTITY_RULE, /vlxj97/);
-    assert.match(IDENTITY_RULE, /NO el canal/);
+  test('la identidad nombra a Manu, Pao y vlxj97', () => {
+    assert.match(IDENTITY, /Manu y Pao/);
+    assert.match(IDENTITY, /creado por vlxj97/);
   });
 });
 
@@ -171,7 +167,6 @@ describe('variedad en el mismo stream', () => {
 
 describe('identidad: el canal es de Manu y Pao, vlxj97 solo creó el bot', () => {
   const quality = require('../src/ai/quality');
-  const { buildMicroBase } = require('../src/ai/persona');
   test('descarta atribuir el canal a vlxj97 (caso real del 120b)', () => {
     for (const t of [
       'El canal lo lleva @vlxj97',
@@ -191,11 +186,6 @@ describe('identidad: el canal es de Manu y Pao, vlxj97 solo creó el bot', () =>
       'Me creó vlxj97, pero el canal es de Manu y Pao.',
       'Manu y Pao llevan el canal, vlxj97 me programó a mí.',
     ]) assert.equal(quality.claimsChannelOwner(t), false, t);
-  });
-  test('la base ligera de los avisos lleva la identidad', () => {
-    const p = buildMicroBase({ botName: 'dios_fua', streamer: 'parlusorum' });
-    assert.match(p, /Manu y Pao/);
-    assert.match(p, /vlxj97 creó el bot, NO el canal: ni lo lleva, ni lo dirige/);
   });
   test('eval abejas: acepta respuestas correctas sin "sí"', () => {
     const cases = require('./eval-cases.json');
