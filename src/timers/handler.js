@@ -12,6 +12,7 @@ const quality = require('../ai/quality');
 const factcheck = require('../ai/factcheck');
 const { lookupGameInfo } = require('../twitch/api');
 const { AUTO_GAME_RULE, STYLE_RULES, playerRule } = require('../ai/prompts');
+const { retryNote } = require('../ai/style');
 const { getLoreContext } = require('../lore/handler');
 const { truncate } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
@@ -117,8 +118,6 @@ function start(client, config) {
       const { topic } = pickTimerTopic({ last: lastTimerTopic });
       const topicNote = topic.note.replace('{uptime}', String(getStreamUptime() || ''));
       const tone = ['burla cariñosa', 'épica', 'observación curiosa'][Math.floor(Math.random() * 3)];
-      const prior = recentTimerIA.length ? `
-YA DIJISTE (no repitas ni parafrasees ninguna idea): ${recentTimerIA.map(m => `"${m}"`).join(' | ')}` : '';
 
       let msg = '';
       let feedback = '';
@@ -129,8 +128,7 @@ YA DIJISTE (no repitas ni parafrasees ninguna idea): ${recentTimerIA.map(m => `"
           messages: [
             {
               role: 'system',
-              content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve con tu personalidad y el lore del canal, sobre este tema: ${topicNote}. No nombres ni etiquetes (@) a ningún usuario, ni otros videojuegos que no sean el actual (nada de comparaciones con otros juegos), y no menciones el año de salida. ${playerRule(getPlayer())} ${AUTO_GAME_RULE} ${deathNote} Tono: ${tone}. Habla con la voz de Dios Fua, con frases llanas. No menciones el género del juego, no compares con objetos ni situaciones cotidianas y no hagas preguntas de motivación; cada mensaje con una estructura distinta. ${lastCitedDeaths ? 'Tu mensaje anterior ya citó el número de muertes: NO cites ninguna cifra de muertes en este. ' : ''}${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.${prior}${feedback ? `
-TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
+              content: `${getBotPersonality()}${learnedLore} Juego actual: "${gameContext}". Haz un comentario breve con tu personalidad y el lore del canal, sobre este tema: ${topicNote}. No nombres ni etiquetes (@) a ningún usuario, ni otros videojuegos que no sean el actual (nada de comparaciones con otros juegos), y no menciones el año de salida. ${playerRule(getPlayer())} ${AUTO_GAME_RULE} ${deathNote} Tono: ${tone}. Habla con la voz de Dios Fua, con frases llanas. No menciones el género del juego, no compares con objetos ni situaciones cotidianas y no hagas preguntas de motivación; cada mensaje con una estructura distinta. ${lastCitedDeaths ? 'Tu mensaje anterior ya citó el número de muertes: NO cites ninguna cifra de muertes en este. ' : ''}${STYLE_RULES} Máx 2 frases cortas. Sin presentarte.${retryNote(feedback)}`
             },
             { role: 'user', content: `Suelta un comentario sobre el directo de ${game} (tono: ${tone})` }
           ]

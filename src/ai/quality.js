@@ -636,15 +636,15 @@ function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 // ctx.question: lo que escribió el usuario (los consejos y las mecánicas solo valen si él los sacó)
 function validateMention(text, { question = '', player = 'manu' } = {}) {
-  if (!text || text.length < 3) return { ok: false, reason: 'vacío' };
-  if (leaksTech(text)) return { ok: false, reason: 'menciona datos, herramientas o IGDB; habla con personalidad, sin nada técnico' };
-  if (genderedParlusorum(text)) return { ok: false, reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
-  if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
-  if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
+  if (!text || text.length < 3) return { ok: false, rule: 'vacio', reason: 'vacío' };
+  if (leaksTech(text)) return { ok: false, rule: 'tech', reason: 'menciona datos, herramientas o IGDB; habla con personalidad, sin nada técnico' };
+  if (genderedParlusorum(text)) return { ok: false, rule: 'genero', reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
+  if (hasLatam(text)) return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
+  if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   const style = styleProblem(text, { personal: false, minWords: 2, player });
-  if (style) return { ok: false, reason: style.reason };
-  if (TIPS_RE.test(text) && !TIPS_RE.test(question)) return { ok: false, reason: 'ofrece consejos o tips que nadie ha pedido' };
-  if (REDIRECT_RE.test(text) && !MECHANICS_RE.test(question)) return { ok: false, reason: 'dice que no habla de mecánicas cuando nadie las ha mencionado; responde a lo que dice el usuario' };
+  if (style) return { ok: false, rule: style.rule, reason: style.reason };
+  if (TIPS_RE.test(text) && !TIPS_RE.test(question)) return { ok: false, rule: 'consejos', reason: 'ofrece consejos o tips que nadie ha pedido' };
+  if (REDIRECT_RE.test(text) && !MECHANICS_RE.test(question)) return { ok: false, rule: 'redirect', reason: 'dice que no habla de mecánicas cuando nadie las ha mencionado; responde a lo que dice el usuario' };
   return { ok: true };
 }
 

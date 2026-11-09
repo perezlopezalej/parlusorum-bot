@@ -6,6 +6,7 @@ const { aiChat } = require('./utils/ai-router');
 const { restoreOpenSession, restoreSessionBosses, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
 const quality = require('./ai/quality');
+const { buildAlertSystem } = require('./ai/style');
 const { throttleSay } = require('./alerts/handler');
 const { getAppAccessToken } = require('./twitch/app-token');
 const {
@@ -499,7 +500,6 @@ function createEventSubHandler(client, channel, deps) {
         if (!isSilenced()) client.say(channel, `🏁 ¡Hype Train terminado en nivel ${level}!${winners} ¡Gracias por el hype!${golden} 💜`);
       }
 
-      const { getBotPersonality } = require('./ai/handler'); // lazy: circular dep eventsub↔ai
 
       if (type === 'channel.prediction.begin') {
         const { title, outcomes } = event || {};
@@ -510,8 +510,8 @@ function createEventSubHandler(client, channel, deps) {
           const response = await aiChat('alert', {
             max_tokens: 120,
             messages: [
-              { role: 'system', content: `${getBotPersonality()} Cuéntalo con la energía y la guasa de Dios Fua, en primera persona. Máx 400 caracteres. Sin presentarte.` },
-              { role: 'user', content: `El streamer ha abierto una predicción: '${title}'. Opciones: ${opcionesTexto}. Narra esto en 1-2 frases.` }
+              { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Invita al chat a apostar.' }) },
+              { role: 'user', content: `<evento>El streamer ha abierto una predicción: «${title}». Opciones: ${opcionesTexto}.</evento>` }
             ]
           });
           throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
@@ -539,8 +539,8 @@ function createEventSubHandler(client, channel, deps) {
             const response = await aiChat('alert', {
               max_tokens: 120,
               messages: [
-                { role: 'system', content: `${getBotPersonality()} Anuncia resultados con dramatismo. Máx 400 caracteres. Sin presentarte.` },
-                { role: 'user', content: `La predicción '${title}' terminó. Ganó: '${ganadorPred.title}' con ${numGanadores} acertantes y ${totalPuntos} puntos en juego. Anuncia el resultado en 1-2 frases.` }
+                { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Anuncia el resultado con dramatismo.' }) },
+                { role: 'user', content: `<evento>La predicción «${title}» terminó. Ganó «${ganadorPred.title}» con ${numGanadores} acertantes y ${totalPuntos} puntos en juego.</evento>` }
               ]
             });
             throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
@@ -558,8 +558,8 @@ function createEventSubHandler(client, channel, deps) {
           const response = await aiChat('alert', {
             max_tokens: 120,
             messages: [
-              { role: 'system', content: `${getBotPersonality()} Comenta encuestas con energía. Máx 400 caracteres. Sin presentarte.` },
-              { role: 'user', content: `El streamer ha abierto una encuesta: '${title}'. Opciones: ${opcionesTexto}. Comenta esto en 1-2 frases.` }
+              { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Invita al chat a votar.' }) },
+              { role: 'user', content: `<evento>El streamer ha abierto una encuesta: «${title}». Opciones: ${opcionesTexto}.</evento>` }
             ]
           });
           throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
@@ -580,8 +580,8 @@ function createEventSubHandler(client, channel, deps) {
             const response = await aiChat('alert', {
               max_tokens: 120,
               messages: [
-                { role: 'system', content: `${getBotPersonality()} Anuncia resultados de encuestas con energía. Máx 400 caracteres. Sin presentarte.` },
-                { role: 'user', content: `La encuesta '${title}' terminó. Ganó '${ganadorPoll.title}' con ${pct}% de ${totalVotos} votos.${esAjustado ? ' ¡Fue muy reñido!' : ''} Anuncia el resultado en 1-2 frases.` }
+                { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Anuncia el resultado con energía.' }) },
+                { role: 'user', content: `<evento>La encuesta «${title}» terminó. Ganó «${ganadorPoll.title}» con ${pct}% de ${totalVotos} votos.${esAjustado ? ' Fue muy reñido.' : ''}</evento>` }
               ]
             });
             throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));

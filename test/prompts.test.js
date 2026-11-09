@@ -1,19 +1,19 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildQuestionSystemContent, LORE_RULE } = require('../src/ai/prompts');
+const { buildQuestionSystem } = require('../src/ai/style');
 
 describe('prompt de !dios_fua', () => {
-  const p = buildQuestionSystemContent({ personality: 'P.', toneNote: ' T.', trapNote: ' X.' });
-  test('conserva personalidad y notas', () => assert.ok(p.startsWith('P. T. X.')));
-  test('obliga a buscar_juego también para opiniones', () => {
-    assert.match(p, /buscar_juego/);
-    assert.match(p, /opinión/);
-    assert.match(p, /SIEMPRE/);
+  const p = buildQuestionSystem({ context: 'Se está jugando a «X».', role: 'Es suscriptor.', tone: 'Suena frustrado.', modeLine: 'MODO CHILL.' });
+  test('lleva etiquetas de contexto, quién escribe, modo, forma, ejemplos y tarea al final', () => {
+    for (const tag of ['contexto', 'quien_escribe', 'modo', 'forma', 'ejemplos']) assert.match(p, new RegExp('<' + tag + '>'));
+    assert.match(p, /<tarea>Responde a la pregunta del usuario; si nombra un videojuego, consulta antes buscar_juego\.<\/tarea>$/);
   });
-  test('sin datos, que lo diga con humor sin inventar', () => assert.match(p, /con humor en vez de inventar/));
-  test('incluye la regla de lore', () => {
-    assert.ok(p.includes(LORE_RULE));
-    assert.match(LORE_RULE, /no inventes personajes, títulos, cargos/);
-    assert.match(LORE_RULE, /lore manual o en el lore aprendido activo/);
+  test('usa buscar_juego para videojuegos y reconoce con humor lo que los datos no dicen', () => {
+    assert.match(p, /lo primero es llamar a la herramienta buscar_juego/);
+    assert.match(p, /reconócelo con humor/);
+  });
+  test('entre 3 y 5 ejemplos de !dios_fua', () => {
+    const n = p.split('<example>').length - 1;
+    assert.ok(n >= 3 && n <= 5, String(n));
   });
 });

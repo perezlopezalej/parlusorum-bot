@@ -7,7 +7,7 @@ const q = require('../src/ai/quality');
 const { parseReview } = require('../src/ai/factcheck');
 const { parseBossArgs, applyBossDelta } = require('../src/commands/stats');
 const state = require('../src/utils/state');
-const { COHOST_RULES, IDENTITY_RULE, STYLE_RULES } = require('../src/ai/prompts');
+const { IDENTITY_RULE, STYLE_RULES } = require('../src/ai/prompts');
 
 const base = { deathCount: 3, recent: [], named: new Map(), now: Date.now() };
 
@@ -70,9 +70,7 @@ describe('estilo y español de España', () => {
     assert.equal(q.styleProblem('Dice que eres un subnormal, qué fuerte.').rule, 'grosería');
     assert.equal(q.styleProblem('Qué mierda de ronda, Manu.').rule, 'grosería');
   });
-  test('el prompt del cohost lleva las reglas de estilo y de temas', () => {
-    assert.match(COHOST_RULES, /UNA sola idea|una sola idea/i);
-    assert.match(COHOST_RULES, /vida personal/);
+  test('las reglas de estilo de hook y timer piden primera persona', () => {
     assert.match(STYLE_RULES, /nunca de "el bot"/);
   });
 });
@@ -173,7 +171,7 @@ describe('variedad en el mismo stream', () => {
 
 describe('identidad: el canal es de Manu y Pao, vlxj97 solo creó el bot', () => {
   const quality = require('../src/ai/quality');
-  const { buildLeanBase, buildMicroBase } = require('../src/ai/persona');
+  const { buildMicroBase } = require('../src/ai/persona');
   test('descarta atribuir el canal a vlxj97 (caso real del 120b)', () => {
     for (const t of [
       'El canal lo lleva @vlxj97',
@@ -194,12 +192,10 @@ describe('identidad: el canal es de Manu y Pao, vlxj97 solo creó el bot', () =>
       'Manu y Pao llevan el canal, vlxj97 me programó a mí.',
     ]) assert.equal(quality.claimsChannelOwner(t), false, t);
   });
-  test('la personalidad ligera y la micro llevan la identidad', () => {
-    const lean = buildLeanBase({ botName: 'dios_fua', streamer: 'parlusorum', creator: 'vlxj97', emotesLine: 'x' });
-    for (const p of [lean, buildMicroBase({ botName: 'dios_fua', streamer: 'parlusorum' })]) {
-      assert.match(p, /Manu y Pao/);
-      assert.match(p, /vlxj97 creó el bot, NO el canal: ni lo lleva, ni lo dirige/);
-    }
+  test('la base ligera de los avisos lleva la identidad', () => {
+    const p = buildMicroBase({ botName: 'dios_fua', streamer: 'parlusorum' });
+    assert.match(p, /Manu y Pao/);
+    assert.match(p, /vlxj97 creó el bot, NO el canal: ni lo lleva, ni lo dirige/);
   });
   test('eval abejas: acepta respuestas correctas sin "sí"', () => {
     const cases = require('./eval-cases.json');

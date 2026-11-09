@@ -275,8 +275,9 @@ test('resumen de fin de stream: onStreamEnd filtra momentos y frases personales 
     assert.ok(mem.generateStreamMemory, 'exporta generateStreamMemory para poder probarlo');
     const out = await mem.generateStreamMemory({ game: 'Phantom Blade Zero', durationMinutes: 200, deathCount: 9, peakViewers: 10, topCommands: {}, activeUsers: [] }, 'user: hola');
     assert.equal(calls, 2);
-    assert.match(prompts[0], /PROHIBIDO cualquier vida personal/);
-    assert.match(prompts[1], /RECHAZADO: habla de vida personal/);
+    assert.match(prompts[0], /habla del juego, del stream y del ambiente del chat/);
+    assert.match(prompts[1], /<correccion>Habla del directo: la partida, Manu o el FUA\.<\/correccion>/);
+    assert.doesNotMatch(prompts[1], /hamburguesas|calor|RECHAZADO/);
     assert.match(out.summary, /venció al jefe final/);
     assert.deepEqual(out.highlights, ['Manu venció al jefe']);
     assert.deepEqual(out.recurringPhrases, ['por el FUA']);

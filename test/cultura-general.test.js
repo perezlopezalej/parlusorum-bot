@@ -3,7 +3,7 @@ process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test';
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const q = require('../src/ai/quality');
-const { buildQuestionSystemContent, GENERAL_RULE } = require('../src/ai/prompts');
+const { buildQuestionSystem } = require('../src/ai/style');
 const messages = require('../config/messages.json');
 
 // Caso real: "!dios_fua es cierto que las abejas en verano viven menos que en invierno?" respondía "no tengo datos fiables de eso en IGDB"
@@ -61,15 +61,11 @@ describe('nada técnico en el chat', () => {
 });
 
 describe('prompt de !dios_fua para cultura general', () => {
-  const p = buildQuestionSystemContent({ personality: 'P.' });
-  test('indica no usar buscar_juego fuera de videojuegos y responder corto con humor si duda', () => {
-    assert.ok(p.includes(GENERAL_RULE));
-    assert.match(GENERAL_RULE, /NO es de videojuegos/);
-    assert.match(GENERAL_RULE, /NO llames a buscar_juego/);
-    assert.match(GENERAL_RULE, /dilo con humor/);
-    assert.match(GENERAL_RULE, /NUNCA menciones IGDB/);
+  const p = buildQuestionSystem({ context: 'Se está jugando a «X».' });
+  test('responde la cultura general con lo que sabe y humor si duda', () => {
+    assert.match(p, /En cultura general, responde con lo que sabes y, si dudas, dilo con humor/);
   });
-  test('para juegos sigue obligando a buscar_juego', () => {
-    assert.match(p, /llama SIEMPRE a la herramienta buscar_juego/);
+  test('para juegos sigue usando buscar_juego', () => {
+    assert.match(p, /lo primero es llamar a la herramienta buscar_juego/);
   });
 });

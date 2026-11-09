@@ -1,7 +1,7 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, tickReinforce, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const { getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR, streakAllowed, STREAK_COHOST_GAP_MS, hourlyCapReached, pickFreeTopic } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { buildGameTemplate } = require('./game-template');
@@ -12,9 +12,10 @@ const { sanitizeForAI } = require('../utils/filter');
 const { classifyGameMatch, recoverTruncatedName } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { getMemoryContext } = require('../memory/handler');
-const { getManualLore, getLoreContext } = require('../lore/handler');
-const { MEMORY_LEAN, normalizeProfile, pickExamples, buildLeanBase, buildMicroBase } = require('./persona');
-const { LORE_RULE, SPAIN_RULE, IDENTITY_RULE, STYLE_RULES, COHOST_RULES, AUTO_GAME_RULE, PROVOCATION_RULE, playerRule, buildQuestionSystemContent } = require('./prompts');
+const { getManualLore, getLoreContext, getLoreTerms } = require('../lore/handler');
+const { buildMicroBase } = require('./persona');
+const { STYLE_RULES, AUTO_GAME_RULE, playerRule } = require('./prompts');
+const { playerLine, roleLine, pickCohostForm, buildProvocationSystem, buildCohostSystem, buildMentionSystem, buildQuestionSystem, parseCandidates, rankCandidates, retryNote } = require('./style');
 const { persistCooldown, getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
@@ -60,17 +61,6 @@ function getFallback(type, mention = '') {
 
 function getEventSubLiveStatus() { return getStreamIsLive(); }
 
-// FIX #1: contexto con roles clarificados
-function getChannelContext(profile = 'full') {
-  const games = (channelConfig.games_played || []).slice(0, 4).join(', ');
-  return `Canal: ${channelConfig.streamer} (streamer/host). Bot creado por: @${CREATOR_USERNAME} (amo creador, NO es el streamer). ${channelConfig.content}. Ambiente: ${channelConfig.vibe}. Juegos recientes: ${games}. ${getManualLore(profile === 'full' ? 'full' : 'lean')}`;
-}
-
-// Un contexto cacheado por perfil de personalidad: { context, at }
-const contextCaches = new Map();
-const CONTEXT_CACHE_TTL = 2 * 60 * 1000;
-const LEAN_EMOTES_LINE = 'SOLO emotes de esta lista, NUNCA inventes otros. Canal: parlus1Esteeselrollo (buen rollo), parlus1Kelokekelowa (incredulidad/meme), parlus1Streambrothers5 (momentos de stream/hype), parlus1Alataqueel (accion), parlus1PORELPODERDELFUAAAAA (FUA/epico). Globales opcionales: KEKW, Pog, LUL, monkaS, Kappa, OMEGALUL. Maximo 1-2, solo si encajan, SIEMPRE separados por espacios y NUNCA pegados a puntuacion (pegado a un punto o coma no se renderiza).';
-
 const userFactsCache = new Map();
 const USER_FACTS_TTL = 5 * 60 * 1000;
 setInterval(() => {
@@ -90,72 +80,6 @@ async function getCachedUserFacts(username) {
 }
 
 function clearUserFactsCache() { userFactsCache.clear(); }
-
-async function getFullContext(profile = 'full') {
-  const now = Date.now();
-  const cached = contextCaches.get(profile);
-  if (cached && now - cached.at < CONTEXT_CACHE_TTL) return cached.context;
-  const lean = profile !== 'full';
-
-  const base = getChannelContext(profile);
-  let context = base;
-  let gameOk = false;
-
-  try {
-    const gameInfo = await getCurrentGame();
-    if (gameInfo?.game) {
-      const safeGame = sanitizeForAI(gameInfo.game);
-      if (safeGame) {
-        context += ` Juego actual: "${safeGame}".`;
-        gameOk = true;
-        try {
-          const gameData = await getGameInfo(gameInfo.game, { detail: true });
-          if (gameData) {
-            if (gameData.genres) context += ` Generos: ${gameData.genres}.`;
-            if (gameData.released) context += ` Anio: ${gameData.released?.slice(0, 4)}.`;
-          }
-        } catch {}
-      }
-    }
-  } catch {
-    gameOk = false;
-  }
-  setGameContextFailed(!gameOk);
-
-  const isLive = getEventSubLiveStatus();
-  context += isLive ? ` El canal ESTA EN DIRECTO ahora mismo.` : ` El canal esta offline ahora mismo.`;
-
-  // Inyectar memoria de streams anteriores
-  try {
-    const memory = await getMemoryContext(lean ? MEMORY_LEAN : undefined);
-    if (memory) context += memory;
-  } catch {}
-
-  // Campeón del ranking de trivia (solo en el contexto completo)
-  if (!lean) try {
-    const champion = await require('../games/handler').getChampion();
-    if (champion) context += ` Campeón actual de la trivia del chat: @${sanitizeForAI(champion.username)} con ${champion.count} victorias; puedes aludirle si encaja, sin forzarlo.`;
-  } catch {}
-
-  // Lore aprendido (el manual ya va en getChannelContext, con prioridad)
-  try {
-    const lore = await getLoreContext();
-    if (lore) context += lore;
-  } catch {}
-  context += ` ${LORE_RULE}`;
-
-  contextCaches.set(profile, { context, at: now });
-  return context;
-}
-
-function invalidateContextCache() {
-  contextCaches.clear();
-}
-
-function getMinimalContext() {
-  const games = (channelConfig.games_played || []).slice(0, 3).join(', ');
-  return `Canal de ${channelConfig.streamer}: ${channelConfig.vibe}. Juegos: ${games}. ${getManualLore()}`;
-}
 
 // --- Usuarios activos en el stream actual ---
 const activeUsersThisStream = new Set();
@@ -294,83 +218,65 @@ function getModeConfig() {
   return resolveModeConfig(channelConfig.personality_modes, getPersonalityMode(), getModeVariant());
 }
 
-// --- Personalidad ---
-// profile: 'lean' (!dios_fua, menciones, cohost) | 'micro' (provocaciones) | 'full' (ya sin uso: ~3,3K tokens); ver persona.js
-async function getPersonality(messageCount, userType = 'normal', username = null, profile = 'full') {
-  profile = normalizeProfile(profile);
-  refreshMode();
-  const needsReinforce = tickReinforce();
-  const reinforceBlock = needsReinforce
-    ? `\nRECUERDA QUIÉN ERES: Eres dios_fua. Gracioso, directo, con criterio propio. Nunca genérico. Nunca pelota. El FUA no se diluye con el tiempo.`
-    : '';
-  const botName = process.env.BOT_USERNAME || 'dios_fua';
-  const context = profile === 'micro' ? getMicroContext() : await getFullContext(profile);
+// --- Contexto de los prompts por tipo (etiquetas de style.js) ---
+// Lore del canal para el cohost: la comunidad y los términos aprendidos activos
+async function getLoreBlock() {
+  let terms = '';
+  try { terms = await getLoreTerms(); } catch { /* sin lore aprendido */ }
+  return `<lore>La comunidad del canal son los Lusorums.${terms ? ` Términos del canal: ${terms}.` : ''}</lore>`;
+}
 
-  // FIX #1: nota especial con roles 100% claros
-  let specialNote = '';
-  if (userType === 'creator') {
-    specialNote = ` ATENCION: Hablas con @${CREATOR_USERNAME}, quien programó y creó este BOT (a ti). Él no creó el canal (el canal es de Manu y Pao) y tú NO eres el creador de nada. NO es el streamer del canal (eso es @${STREAMER_USERNAME}). Tratale con humor reverente como al creador del bot.`;
-  } else if (userType === 'streamer') {
-    specialNote = ` ATENCION: Hablas con @${STREAMER_USERNAME}, el streamer/host del canal. No es tu creador (eso es @${CREATOR_USERNAME}). Tratale con respeto y complicidad como el jefe del canal.`;
-  } else if (userType === 'sub') {
-    specialNote = ` ATENCION: Hablas con un suscriptor del canal. Agradecele su apoyo con naturalidad si viene a cuento, sin ser forzado.`;
-  }
+// Contexto de menciones y !dios_fua: juego, quién juega, caídas, lore y el último stream
+async function buildContextText() {
+  const parts = [];
+  try {
+    const game = (await getCurrentGame().catch(() => null))?.game;
+    const safeGame = game ? sanitizeForAI(game) : '';
+    if (safeGame) parts.push(`Se está jugando a «${safeGame}».`);
+  } catch { /* sin juego */ }
+  parts.push(playerLine(getPlayer()));
+  const deaths = getDeathCount();
+  parts.push(deaths === 0 ? 'Aún sin caídas anotadas hoy.' : `${deaths} caídas anotadas hoy del streamer.`);
+  parts.push('La comunidad del canal son los Lusorums.');
+  try {
+    const terms = await getLoreTerms();
+    if (terms) parts.push(`Términos del canal: ${terms}.`);
+  } catch { /* sin lore aprendido */ }
+  try {
+    const memory = await getMemoryContext({ maxStreams: 1, summaryMax: 160, maxHighlights: 1, plain: true });
+    if (memory) parts.push(`Último stream: ${memory}`);
+  } catch { /* sin memoria */ }
+  return parts.join(' ');
+}
 
-  // FIX #4: prompt reforzado con experto en gaming + español forzado
-  const fullBase = () => `Eres ${botName}, bot del canal de Twitch de ${channelConfig.streamer}. Tu nombre viene del FUA: en 2011 Julio César Segura, un mexicano, explicó ebrio su filosofía — "Es que ya no puedo... ¿Cómo no? ¡FUAAA, carácter!" FUA significa "Fuerza Universal Aplicada" y además es un grito. No es la celebración después de ganar: es el grito EN el momento de duda, el impulso que te saca cuando ya no puedes más. Se volvió trending mundial y ese mismo año México ganó el Mundial Sub-17 con el estadio gritando FUAAA. El FUA funciona. El FUA es real. Es el Ki de Dragon Ball: energía interior que se saca en los momentos que importan. Julio César también decía que con suficiente FUA hasta los muertos reviven — hay un lado absurdo y grandioso en todo esto. Fuiste creado/programado por @${CREATOR_USERNAME}. ${IDENTITY_RULE}
-${context}${specialNote}
-
-REGLAS ABSOLUTAS (no negociables):
-- SIEMPRE en espanol. NUNCA uses palabras en ingles si existe equivalente en espanol. ${SPAIN_RULE}
-- Eres EXPERTO en videojuegos: cualquier consola, PC, movil, genero y epoca. Responde con datos reales.
-- Puedes hablar de CUALQUIER tema: ciencia, historia, deportes, musica, cultura general.
-- Si no sabes algo: admitelo con humor ("ni idea") pero NUNCA inventes datos especificos.
-- Maximo 2 frases cortas (400 chars), salvo que el MODO indique otra longitud: entonces manda el MODO. Directo al grano. Sin presentarte ni saludar.
-- El FUA se usa con caracter real, no de relleno. El momento exacto es DURANTE la dificultad, cuando el streamer esta a punto de rendirse — "¡FUAAA, carácter!" — no despues de superarlo. Tambien: cuando alguien llega con energia ("¡Trae el FUA!"), cuando el chat muerto necesita despertar, o en epica genuina. Ocasionalmente puedes hacer referencias absurdas con humor: "con suficiente FUA hasta los muertos reviven". Si el juego tiene transformaciones epicas o momentos Ki (Dragon Ball, accion intensa): el FUA y el Ki son lo mismo. Variantes: FUA, FUAAA, "el FUA", "sacar el FUA", "tienes el FUA". Solo cuando hay momento real — no en cada mensaje.
-- SOLO usa emotes de esta lista. NUNCA inventes emotes que no esten aqui. Emotes del canal (visibles para TODOS): parlus1Esteeselrollo (buen rollo/compañerismo), parlus1Kelokekelowa (incredulidad/meme), parlus1Streambrothers5 (momentos de stream/hype), parlus1Alataqueel (cuando atacan o hay accion), parlus1PORELPODERDELFUAAAAA (momentos FUA/epicos). Para momentos FUA usa parlus1PORELPODERDELFUAAAAA. Globales (opcionales): KEKW (risa fuerte), Pog (sorpresa/hype), LUL (risa), monkaS (nervios/susto), Kappa (sarcasmo), OMEGALUL (risa extrema). Maximo 1-2 emotes por respuesta, solo si encaja natural.
-- CRITICO — espaciado de emotes: los emotes del canal SIEMPRE van separados por espacios. NUNCA pegados a puntuacion. MAL: "¡texto! parlus1Alataqueel." o "parlus1KelokeKelowa," BIEN: "parlus1Alataqueel" o "texto parlus1KelokeKelowa texto". Un emote pegado a un punto o coma NO se renderiza en Twitch.
-- Sin "Lo siento". Sin "como IA". Sin formalismos.
-- Si tu contexto incluye MEMORIA DEL CANAL con frases recurrentes o momentos epicos de streams anteriores, mencionalos de forma espontanea y natural cuando encaje — el canal tiene historia propia y el chat lo aprecia.`;
-  const base = profile === 'full' ? fullBase()
-    : profile === 'lean' ? buildLeanBase({ botName, streamer: channelConfig.streamer, creator: CREATOR_USERNAME, emotesLine: LEAN_EMOTES_LINE })
-    : buildMicroBase({ botName, streamer: channelConfig.streamer });
-
-  const modeConfig = getModeConfig();
-  const modeExt = profile !== 'micro' && modeConfig.prompt_extension ? `\n${modeConfig.prompt_extension}` : '';
-  const gameNote = getGameContextFailed() ? ' NOTA INTERNA: no tenemos datos del juego actual — evita mencionarlo.' : '';
-  const suffix = messageCount >= 20 ? ' Chat muy activo, se energico y rapido.' : messageCount >= 5 ? ' Chat tranquilo, se amigable.' : ' Chat tranquilo, se acogedor.';
-
-  let userContext = '';
+// Quién escribe: su rol (creador, streamer, sub), la cuenta compartida ParLusorum y lo que el bot sabe de esa persona
+async function buildRoleText(userType, username) {
+  const parts = [roleLine(userType, { creator: CREATOR_USERNAME, streamer: STREAMER_USERNAME })];
+  if (String(username || '').toLowerCase() === 'parlusorum') parts.push('Escribe la cuenta ParLusorum, casi seguro Pao (o Manu).');
   if (username) {
     try {
-      const facts = await getCachedUserFacts(username);
-      if (facts.length > 0) {
-        const factLines = facts
-          .map(f => `${f.fact_type}: ${sanitizeForAI(String(f.value))}`)
-          .filter(line => line.split(': ')[1])
-          .join(', ');
-        if (factLines) userContext = `\n<user_context>${factLines}</user_context>`;
-      }
-    } catch {}
+      const facts = (await getCachedUserFacts(username))
+        .map(f => `${f.fact_type}: ${sanitizeForAI(String(f.value))}`)
+        .filter(line => line.split(': ')[1]);
+      if (facts.length) parts.push(`Datos del usuario: ${facts.join(', ')}.`);
+    } catch { /* sin datos del usuario */ }
   }
-
-  const examples = pickExamples(channelConfig.personality_examples || [], profile);
-  const examplesBlock = examples.length > 0
-    ? `\n<examples>\n${examples.map(e =>
-        `Situación: ${e.situation}\nNO: ${e.bad}\nSÍ: ${e.good}`
-      ).join('\n\n')}\n</examples>`
-    : '';
-
-  if (profile === 'micro') return `${base}${specialNote}\n${context}${userContext}`;
-  // lean: contexto resumido (lore lean, memoria de 2 streams, lore aprendido, juego) y nota de rol del interlocutor
-  return base + specialNote + `
-${context}` + modeExt + gameNote + suffix + userContext + examplesBlock + reinforceBlock;
+  return parts.filter(Boolean).join(' ');
 }
 
-// Contexto del perfil micro: solo lo necesario para no meter la pata (lore condensado con los temas a evitar)
-function getMicroContext() {
-  return `Creador del bot: @${CREATOR_USERNAME} (NO es el streamer). ${getManualLore('lean')} ${LORE_RULE}`;
+// Tono del mensaje del usuario, en positivo
+function buildToneText(question) {
+  const tone = detectTone(question);
+  const narrative = getStreamNarrative();
+  const manyDeaths = narrative.filter(e => e.type === 'death').length >= 3 && !narrative.some(e => e.type === 'victory');
+  const parts = [];
+  if (tone === 'frustration') parts.push(manyDeaths ? 'Suena frustrado y hay muchas caídas seguidas: responde con empatía y ánimo real, en serio.' : 'Suena frustrado: responde con empatía y ánimo.');
+  else if (tone === 'hype') parts.push('Está emocionado: responde con energía.');
+  if (isConfirmationTrap(question)) parts.push('Busca que le des la razón: responde con tu criterio real.');
+  return parts.join(' ');
 }
+
+const emoteLineFor = (allowEmote, emotes) => (allowEmote ? `Puedes cerrar con un emote de esta lista: ${emotes.join(', ')}.` : 'Escribe solo texto.');
 
 function getBotPersonality() {
   const botName = process.env.BOT_USERNAME || 'dios_fua';
@@ -426,6 +332,7 @@ function detectChatMood(messages) {
 let freeCohostTimes = []; // cupo compartido: comentarios libres + rachas de muertes ENVIADOS en la última hora (máx. COHOST_FREE_MAX_PER_HOUR)
 let freeAttemptTimes = []; // intentos de comentario libre (enviados o no): solo freno de seguridad para los reintentos
 const FREE_ATTEMPTS_MAX_PER_HOUR = 8;
+let lastCohostForm = ''; // id de la última forma del cohost (rota, no se repite seguida)
 let lastFreeTopic = ''; // id del último tema del cohost libre enviado (rota, no se repite seguido)
 let lastSharedAt = 0;    // último comentario enviado del cupo compartido (libre o racha)
 let deathRecordCache = { at: 0, max: 0 };
@@ -499,43 +406,29 @@ async function runCohost(client, channel, moment = null) {
   if (!moment) freeAttemptTimes = pruneHourly([...freeAttemptTimes, now]);
   refreshMode();
   const modeConfig = getModeConfig();
-  const botHistory = getBotHistory();
-  const recentBot = botHistory.map(e => e.msg);
+  const recentBot = getBotHistory().map(e => e.msg);
   const emotes = channelConfig.channel_emotes || [];
   const allowEmote = quality.emoteAllowed(recentBot, emotes);
   const deathCount = getDeathCount();
   const named = getNamedUsers();
   const namesAllowed = !!moment && (moment.kind === 'sub' || moment.kind === 'raid');
-  const blockedNames = [...named].filter(([, ts]) => now - ts < COHOST_NAME_WINDOW).map(([l]) => l);
 
   cohostRunning = true;
   let reason = 'error';
 
   try {
     const gameInfo = await getCurrentGame();
-    const game = gameInfo?.game ? `Estan jugando a "${gameInfo.game}".` : '';
-    const raidNote = isRaidActive()
-      ? ` Acaba de llegar una raid de @${getRaidUsername()}, hay nuevos viewers en el canal. Si encaja con el chat, menciona la raid con energia.`
-      : '';
-    const recentMsgs = chatHistory.slice(-10).map(m => m.message || '');
-    const mood = detectChatMood(recentMsgs);
-    const moodNote = `\nEl chat está en modo ${mood} ahora mismo. Ajusta el tono de tu comentario a ese ambiente.`;
-    const personalityBase = await getPersonality(recentMessages.length, 'normal', null, 'lean');
+    const mood = detectChatMood(chatHistory.slice(-10).map(m => m.message || ''));
     const startedAt = getStreamStartedAt();
-    const deathNote = deathCount === 0
-      ? ' El contador de muertes está a 0: NO menciones muertes, caídas ni que el streamer "cae".'
-      : ` Muertes anotadas del streamer: ${deathCount}. No cites otra cifra ni inventes muertes.`;
-    const streamNote = ` Llevan ${startedAt ? Math.floor((now - startedAt) / 60000) : '?'} min de stream.${deathNote}`;
-    const nameNote = namesAllowed
-      ? ' Puedes nombrar a quien aparece en el suceso, a nadie más.'
-      : ` Puedes nombrar a un usuario si aporta gracia${blockedNames.length ? `, pero NO a: ${blockedNames.join(', ')} (ya nombrados hace poco)` : ''}; nunca narres lo que hace cada usuario.`;
-    const emoteNote = allowEmote ? ' Como mucho 1 emote, solo si encaja de verdad.' : ' NO uses ningún emote en este mensaje.';
+    const minutes = startedAt ? Math.floor((now - startedAt) / 60000) : null;
+    const baseDeathLine = deathCount === 0 ? 'Aún sin caídas anotadas: el tema es la partida, el chat o el FUA.' : `${deathCount} ${deathCount === 1 ? 'caída anotada' : 'caídas anotadas'}.`;
+    const raidLine = isRaidActive() ? ` Acaba de llegar una raid de @${getRaidUsername()}.` : '';
+    const nameLine = namesAllowed ? 'Puedes nombrar a quien aparece en el suceso.' : 'Dirígete a Manu o al chat en general.';
+    const emoteLine = emoteLineFor(allowEmote, emotes);
+    const loreBlock = await getLoreBlock();
     const windowLines = chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).slice(-25);
     const chatSummary = condenseChat(windowLines);
     const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
-    const historyNote = botHistory.length > 0
-      ? `\nTUS RESPUESTAS ANTERIORES — NO repetir ni parafrasear ninguna, ni sus fórmulas:\n${botHistory.map(e => `- "${e.msg}"`).join('\n')}`
-      : '';
     // Ficha del juego actual (caché de IGDB) para que el revisor reconozca como respaldados el año, el estudio o el género
     const gameFacts = gameInfo?.game ? factcheck.gameFactsText((await lookupGameInfo(gameInfo.game, { detail: true }).catch(() => ({}))).info) : '';
     const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${gameFacts} ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
@@ -543,8 +436,8 @@ async function runCohost(client, channel, moment = null) {
     // El número de muertes no se cita en dos mensajes seguidos del bot (salvo en la primera muerte y el récord, que son el dato)
     const countIsTheNews = moment && ['first_death', 'record'].includes(moment.kind);
     const lastCitedDeaths = !countIsTheNews && quality.citesDeathCount(recentBot[recentBot.length - 1] || '', deathCount);
+    const deathLine = `${baseDeathLine}${lastCitedDeaths ? ' Esta vez deja fuera la cifra de caídas.' : ''}${raidLine}`;
     const validateCtx = { player: getPlayer(), deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures(), lastCitedDeaths };
-    const deathRepeatNote = lastCitedDeaths ? ' Tu mensaje anterior ya citó el número de muertes: NO cites ninguna cifra de muertes en este.' : '';
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
     // Lo que genera Gemini no pasa por la revisión de sentido por IA (solo reglas de quality.js y factcheck si habla del juego)
     let senseReview = true;
@@ -552,83 +445,70 @@ async function runCohost(client, channel, moment = null) {
       const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense: senseReview });
       if (review.discard) {
         logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`);
-        return { ok: false, reason: 'factcheck', feedback: 'afirma datos del juego sin respaldo; no hables del juego' };
+        return { ok: false, reason: 'factcheck' };
       }
       if (review.nonsense) {
         logger.info(`Co-host descartado (sin sentido o mal escrito): ${text.slice(0, 80)}`);
-        return { ok: false, reason: 'sentido', feedback: 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas, sin metáforas' };
+        return { ok: false, reason: 'sentido' };
       }
       return { ok: true };
     };
-    // Fallo leve que persiste tras el reintento: un nombre repetido se quita (solo si es un vocativo inicial); lo demás se envía igual
-    const settleSoft = (text, rule) => {
-      if (rule !== 'nombre') return text;
-      const stripped = quality.stripLeadingNames(text, quality.recentlyNamedIn(text, named, now, COHOST_NAME_WINDOW));
-      return stripped && quality.validateCohost(stripped, validateCtx).ok ? stripped : null;
+    // Un candidato listo para validar: recorte, política de emotes y, si abre con un nombre ya citado, sin él
+    const prepare = candidate => {
+      let text = quality.applyEmotePolicy(truncate(candidate, maxChars), allowEmote, emotes);
+      if (!namesAllowed) {
+        const repeated = quality.recentlyNamedIn(text, named, now, COHOST_NAME_WINDOW);
+        const stripped = repeated.length ? quality.stripLeadingNames(text, repeated) : null;
+        if (stripped) text = stripped;
+      }
+      return text;
     };
 
     let reply = '';
-    let softCandidate = null;
-    let feedback = '';
-    // Cohost libre: el código elige el tema (rotando) y el modelo solo hace SKIP si de verdad no puede hablar de él
-    const topicCtx = { minutes: startedAt ? Math.floor((now - startedAt) / 60000) : 0, bosses: getBossCount(), game: gameInfo?.game || '', deathCount, canCiteDeaths: !lastCitedDeaths };
+    let fixKey = ''; // regla fallida del intento anterior: el reintento recibe solo la corrección en positivo
+    const form = pickCohostForm(lastCohostForm); // la forma cambia en cada comentario, sin repetir la anterior
+    lastCohostForm = form.id;
+    // Cohost libre: el código elige el tema (rotando) y el modelo solo devuelve la lista vacía si de verdad no puede hablar de él
+    const topicCtx = { minutes: minutes || 0, bosses: getBossCount(), game: gameInfo?.game || '', deathCount, canCiteDeaths: !lastCitedDeaths };
     let freeTopic = moment ? null : pickFreeTopic({ ...topicCtx, last: lastFreeTopic });
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
       if (attempt > 0 && !canMakeRequest()) { reason = 'ratelimit'; break; }
-      const response = await aiChat('cohost', {
-        max_tokens: Math.min(90, modeConfig.max_tokens ?? 90),
-        frequency_penalty: 0.8,
-        presence_penalty: 0.6,
-        messages: [
-          {
-            role: 'system',
-            content: `${personalityBase} ${game}${streamNote}${raidNote}${nameNote}${emoteNote} ${COHOST_RULES} ${playerRule(getPlayer())} Sin saludos. Sin presentarte.${deathRepeatNote}${moodNote}${historyNote}${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}`
-          },
-          { role: 'user', content: moment
-            ? `Acaba de pasar esto en el stream: ${moment.description}.${recentContext ? `\nChat reciente:\n${recentContext}` : ''}\nComenta ESE hecho con humor y la voz de Dios Fua, en una frase sencilla con una sola idea. No hables de mecánicas del juego. Es un suceso importante: comenta siempre, no respondas SKIP.`
-            : `Chat reciente:\n${recentContext}${chatSummary ? `\n<chat_summary>${chatSummary}</chat_summary>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\nReacciona con humor a UN tema del stream: la partida, lo que le pasa a Manu, lo que el chat comenta sobre el juego o una broma del canal (no lo describas ni lo resumas). Ignora la vida personal de la gente y las conversaciones entre usuarios. Una sola idea, frase sencilla. Nunca juzgues el ambiente (nada de "el chat está quieto/dormido/tranquilo"). Sin hablar de mecánicas del juego. TEMA de este comentario: ${freeTopic.note}. Habla de ese tema con tu voz; responde SKIP solo si de verdad no puedes decir nada sobre él sin inventar.` }
-        ]
-      });
+      const system = buildCohostSystem({ game: gameInfo?.game || '', minutes, deathLine, player: getPlayer(), mood, form, emoteLine, nameLine, loreBlock, modeLine: modeConfig.prompt_extension, event: !!moment }) + retryNote(fixKey);
+      const chatBlock = recentContext ? `<chat>\n${recentContext}\n</chat>` : '';
+      const user = moment
+        ? `<suceso>${moment.description}</suceso>\n${chatBlock}\nComenta el suceso.`
+        : `${chatBlock}${chatSummary ? `\n<resumen_chat>${chatSummary}</resumen_chat>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\n<tema>${freeTopic.note}</tema>\nComenta el tema.`;
+      const response = await aiChat('cohost', { max_tokens: 220, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
       senseReview = response._ai?.provider !== 'gemini';
-      const choice = response.choices[0];
-      const raw = (choice.message.content || '').trim();
-      if (!moment && /^SKIP\b/i.test(raw)) {
-        recordCohostDiscard('skip'); // cuenta cada SKIP del modelo (sale en el resumen de fin de stream)
+      const raw = (response.choices[0].message.content || '').trim();
+      const candidates = /^SKIP\b/i.test(raw) ? [] : parseCandidates(raw);
+      if (!candidates.length) {
+        if (moment) { fixKey = 'vacio'; reason = 'quality:vacio'; continue; }
+        recordCohostDiscard('skip'); // cuenta cada lista vacía del modelo (sale en el resumen de fin de stream)
         if (attempt === 0) { // segundo intento con otro tema
           freeTopic = pickFreeTopic({ ...topicCtx, last: freeTopic.id });
-          logger.info(`Co-host: SKIP, reintento con otro tema (${freeTopic.id})`);
+          logger.info(`Co-host: sin candidatos, reintento con otro tema (${freeTopic.id})`);
           continue;
         }
         reason = 'sin_tema'; logger.info('Co-host: sin tema tras el reintento'); break;
       }
-      const complete = choice.finish_reason === 'length' ? quality.dropTrailingFragment(raw) : raw;
-      let text = quality.applyEmotePolicy(truncate(complete, maxChars), allowEmote, emotes);
-      const check = quality.validateCohost(text, validateCtx);
-      if (!check.ok && !check.soft) {
-        feedback = check.reason; reason = `quality:${check.rule}`;
-        logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`);
-        continue;
+      // El código elige: pasa todos los filtros y es el que menos se parece a los últimos mensajes del bot
+      const { ranked, failures } = rankCandidates(candidates.map(prepare), { validate: t => quality.validateCohost(t, validateCtx), recent: recentBot });
+      for (const f of failures) logger.info(`Co-host descartado (${f.reason}): ${f.text.slice(0, 80)}`);
+      for (const candidate of ranked.slice(0, 2)) { // la revisión por IA solo para los mejor colocados (cupo)
+        const review = await reviewText(candidate.text);
+        if (review.ok) { reply = candidate.text; break; }
+        fixKey = review.reason; reason = review.reason;
       }
-      if (!check.ok && attempt === 0) { // leve: un reintento; si no mejora se enviará este mismo
-        softCandidate = { text, rule: check.rule }; feedback = check.reason; reason = `quality:${check.rule}`;
-        continue;
+      if (!reply && !ranked.length) {
+        const counts = {};
+        for (const f of failures) counts[f.rule] = (counts[f.rule] || 0) + 1;
+        fixKey = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || 'vacio';
+        reason = `quality:${fixKey}`;
       }
-      if (!check.ok) {
-        const settled = settleSoft(text, check.rule);
-        if (!settled) { feedback = check.reason; reason = `quality:${check.rule}`; logger.info(`Co-host descartado (${check.reason}): ${text.slice(0, 80)}`); continue; }
-        text = settled;
-      }
-      const review = await reviewText(text);
-      if (!review.ok) { feedback = review.feedback; reason = review.reason; continue; }
-      reply = text;
-    }
-    // El reintento falló en algo grave pero el primer texto solo tenía un fallo leve: se envía ese (si pasa la revisión)
-    if (!reply && softCandidate && reason !== 'ratelimit' && reason !== 'sin_tema') {
-      const settled = settleSoft(softCandidate.text, softCandidate.rule);
-      if (settled && (await reviewText(settled)).ok) reply = settled;
     }
 
-    if (!reply) { recordCohostDiscard(reason); return 'dropped'; }
+    if (!reply) { recordCohostDiscard(reason); return 'dropped'; } // los candidatos fallaron: se calla
     if (freeTopic) lastFreeTopic = freeTopic.id;
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
@@ -761,11 +641,9 @@ async function checkStreamStatus(client, channel) {
   if (!streamWasLive && isLive) {
     streamWasLive = true;
     streamEndPostedByEventSub = false;
-    invalidateContextCache();
     client.say(channel, pickRandom(streamStartMessages));
   } else if (streamWasLive && !isLive) {
     streamWasLive = false;
-    invalidateContextCache();
     // EventSub ya posteó el resumen IA; solo usar fallback si no lo hizo
     if (!streamEndPostedByEventSub) {
       client.say(channel, pickRandom(streamEndMessages));
@@ -800,7 +678,6 @@ async function onWarmupMode(client, channel, game) {
 function postStreamEnd(client, channel, aiSummary) {
   streamWasLive = false;
   streamEndPostedByEventSub = true;
-  invalidateContextCache();
   const msg = aiSummary
     ? `🎬 ¡Fin del stream! ${aiSummary} ¡Hasta la próxima! FUA! 💜🔥`
     : pickRandom(streamEndMessages);
@@ -857,8 +734,7 @@ async function handleQueMePerdi(client, channel, tags) {
 <chat>
 ${chat}
 </chat>
-Resume en EXACTAMENTE 2 frases lo que ha pasado hasta ahora, con tu personalidad. Las muertes son caídas del streamer, NO victorias ni enemigos derribados. No inventes cifras ni hechos que no estén en los datos.${feedback ? `
-TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` }
+Resume en EXACTAMENTE 2 frases lo que ha pasado hasta ahora, con tu personalidad. Las muertes son caídas del streamer, NO victorias ni enemigos derribados. No inventes cifras ni hechos que no estén en los datos.${retryNote(feedback)}` }
         ]
       });
       const choice = response.choices[0];
@@ -943,8 +819,7 @@ async function checkChatHook(client, channel) {
         const response = await aiChat('hook', {
           max_tokens: 80,
           messages: [
-            { role: 'system', content: `${system}${feedback ? `
-TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${system}${retryNote(feedback)}` },
             { role: 'user', content: `Llena el silencio con algo sobre ${game}.${buildStoryBlock(getStreamNarrative())}` }
           ]
         });
@@ -1108,19 +983,16 @@ async function handleQuestion(client, channel, tags, args) {
   if (!canUserMakeRequest(userId, userType)) { client.say(channel, `@${username} espera un momento antes de volver a preguntar ⏳`); return; }
 
   try {
-    const personality = await getPersonality(trackMessage(), userType, username, 'lean'); // la 'full' (~3,3K tokens) llenaría el cupo por minuto del 120b
+    trackMessage();
+    refreshMode();
     const userConv = getUserConversation(userId);
-
-    const tone = detectTone(question);
-    const toneNote = tone === 'frustration' ? '\nEl usuario suena frustrado. Responde con empatía breve y ánimo, no con chistes.'
-      : tone === 'hype' ? '\nEl usuario está emocionado. Responde con energía y entusiasmo.'
-      : tone === 'question' ? '\nEl usuario hace una pregunta directa. Responde de forma concisa y clara.'
-      : '';
-    const trapNote = isConfirmationTrap(question)
-      ? '\nEl usuario busca validación automática. NO confirmes por defecto. Responde con tu criterio real, aunque no sea lo que quiere oír. Puedes estar de acuerdo, pero que sea genuino, no automático.'
-      : '';
-    const systemContent = buildQuestionSystemContent({ personality, toneNote, trapNote });
-
+    const questionMode = getModeConfig();
+    const systemContent = buildQuestionSystem({
+      context: await buildContextText(),
+      role: await buildRoleText(userType, username),
+      tone: buildToneText(question),
+      modeLine: questionMode.prompt_extension,
+    });
     const messages = [
       { role: 'system', content: systemContent },
       ...userConv,
@@ -1170,7 +1042,7 @@ async function handleQuestion(client, channel, tags, args) {
     let answer = response.choices[0].message.content;
     // El canal es de Manu y Pao: si la respuesta se lo atribuye a vlxj97, un reintento con la corrección; si repite, se descarta
     if (quality.claimsChannelOwner(answer)) {
-      messages.push({ role: 'user', content: 'Error: el canal lo llevan Manu y Pao; vlxj97 solo creó el bot. Responde otra vez sin atribuirle el canal a vlxj97.' });
+      messages.push({ role: 'user', content: 'Recuerda: el canal lo llevan Manu y Pao, y vlxj97 creó el bot. Responde otra vez.' });
       const fix = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
       answer = fix.choices[0].message.content;
     }
@@ -1193,8 +1065,7 @@ async function handleQuestion(client, channel, tags, args) {
     if (inventedAttr && !discard) { discard = true; claim = inventedAttr; }
     // Con datos reales de IGDB, un único reintento diciéndole qué frase no estaba respaldada
     if (discard && !techLeak && /^Nombre: /m.test(gameText)) {
-      const what = claim ? `Esto no estaba en los datos: "${claim}". No lo digas;` : 'Tu respuesta añadía datos que no están en la información del juego;';
-      messages.push({ role: 'user', content: `${what} cíñete a los datos (fecha, estudio, géneros, descripción) y a opiniones sin inventar mecánicas, armas, zonas ni tramas. Si te preguntan algo que los datos no dicen (país o nacionalidad del estudio, personas, cifras, presupuestos), admítelo con humor ("de eso no tengo ni idea") sin hablar de datos ni de fuentes. Responde otra vez.` });
+      messages.push({ role: 'user', content: 'Responde otra vez con la fecha, el estudio, los géneros y la descripción del juego; para lo demás, di con humor que no tienes ni idea.' });
       const retry = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
       const retryAnswer = retry.choices[0].message.content;
       if (retryAnswer && !quality.leaksTech(retryAnswer) && !quality.unsupportedAttributes(retryAnswer, gameText) && !await factcheck.shouldDiscard(retryAnswer, gameText, { source: 'juego' })) { answer = retryAnswer; discard = false; }
@@ -1592,34 +1463,22 @@ async function checkPatternMatch(client, channel, tags, message) {
       answer = pickRandom(messagesConfig.mention_game_redirect);
     } else {
       const userType = getUserType(username, tags);
-      const personality = await getPersonality(recentMessages.length, userType, username, 'lean');
       const userConv = getUserConversation(userId);
+      const system = buildMentionSystem({
+        context: await buildContextText(),
+        role: await buildRoleText(userType, username),
+        tone: buildToneText(question),
+        emoteLine: emoteLineFor(allowEmote, emotes),
+        modeLine: modeConfig.prompt_extension,
+      });
 
-      const tone = detectTone(question);
-      const narrative = getStreamNarrative();
-      const recentDeaths = narrative.filter(e => e.type === 'death').length;
-      const recentVictories = narrative.filter(e => e.type === 'victory').length;
-      const frustrationBlock = (tone === 'frustration' && recentDeaths >= 3 && recentVictories === 0)
-        ? ' El usuario está frustrado y hay muchas muertes seguidas. No hagas chistes — muestra empatía y ánimo real.'
-        : '';
-      const toneNote = tone === 'frustration' ? ' El usuario suena frustrado. Empatía y ánimo, no chistes.' + frustrationBlock
-        : tone === 'hype' ? ' El usuario está emocionado. Responde con energía.' : '';
-      const trapNote = isConfirmationTrap(question)
-        ? '\nEl usuario busca validación automática. NO confirmes por defecto. Responde con tu criterio real, aunque no sea lo que quiere oír. Puedes estar de acuerdo, pero que sea genuino, no automático.'
-        : '';
-      const emoteNote = allowEmote ? ' Como mucho 1 emote, solo si encaja.' : ' NO uses emotes en este mensaje.';
-
-      let feedback = '';
-      const currentGame = await getCurrentGame().catch(() => null);
-      const gameNote = currentGame?.game ? ` El juego que se está jugando ahora en el stream es "${currentGame.game}"; si preguntan cuál es, dilo.` : '';
-      const deathsNow = getDeathCount();
-      const deathsNote = deathsNow === 0 ? ' Muertes anotadas hoy: ninguna.' : ` Muertes anotadas hoy del streamer: ${deathsNow}.`;
+      let fixKey = ''; // regla fallida del intento anterior: el reintento recibe solo la corrección en positivo
       for (let attempt = 0; attempt < 2 && !answer; attempt++) {
         const response = await aiChat('mention', {
           max_tokens: modeConfig.max_tokens ?? 120,
           temperature: GENERAL_TEMPERATURE,
           messages: [
-            { role: 'system', content: `${personality}${toneNote}${trapNote}${emoteNote}\nEl usuario escribio de forma natural sin prefijo de comando. Responde conversacionalmente y breve: máximo 150 caracteres, una o dos frases. Los datos concretos de videojuegos (fecha, desarrolladora, armas, mecánicas, jefes) y los consejos no los des: sugiere !dios_fua. Pero las opiniones y predicciones sobre el stream (cuántas muertes habrá, si Manu ganará, cómo irá la partida) SÍ las respondes tú, con una postura o una cifra graciosa y tu personalidad, sin redirigir.${gameNote}${deathsNote} Responde a lo que dice el usuario y no saques temas que no ha mencionado. ${playerRule(getPlayer())}${username.toLowerCase() === 'parlusorum' ? ' Quien te escribe es la cuenta ParLusorum: casi seguro Pao (o Manu); no la llames Manu ni le hables en masculino.' : ''} ${STYLE_RULES} Si preguntan algo de cultura general (ciencia, animales, historia...), responde con lo que sabes, en corto y con tu personalidad; si no estás seguro, dilo con humor, sin inventar cifras. NUNCA menciones IGDB, datos, herramientas ni nada técnico.${feedback ? `\nTU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : ''}` },
+            { role: 'system', content: `${system}${retryNote(fixKey)}` },
             ...userConv,
             { role: 'user', content: `${username}: ${question}` }
           ]
@@ -1627,17 +1486,17 @@ async function checkPatternMatch(client, channel, tags, message) {
         const choice = response.choices[0];
         const raw = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
         const check = quality.validateMention(raw, { question, player: getPlayer() });
-        if (!check.ok) { feedback = check.reason; continue; }
+        if (!check.ok) { fixKey = check.rule; continue; }
         const mentionGame = await getCurrentGame().catch(() => null);
         // Solo se vigila lo que habla de videojuegos; "resistencia" o "zona" en una pregunta de cultura general no cuentan
         const gameTalk = quality.talksAboutGames(`${question} ${raw}`, mentionGame?.game);
-        if (gameTalk && quality.mentionsMechanics(raw)) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
+        if (gameTalk && quality.mentionsMechanics(raw)) { fixKey = 'juego'; continue; }
         const invented = gameTalk ? quality.unsupportedAttributes(raw, `Juego: ${mentionGame?.game || ''}`) : '';
-        if (invented) { feedback = `dices "${invented}" y no lo sabes (país, personas, cifras); no lo afirmes`; continue; }
+        if (invented) { fixKey = 'juego'; continue; }
         // Una sola llamada: datos del juego (solo si habla de videojuegos) y sentido/redacción
         const review = await factcheck.evaluate(raw, `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`, { game: mentionGame?.game, sense: true, checkData: gameTalk });
-        if (review.discard) { feedback = 'afirma datos del juego sin respaldo; no hables del juego'; continue; }
-        if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita; una sola idea, palabras sencillas'; continue; }
+        if (review.discard) { fixKey = 'juego'; continue; }
+        if (review.nonsense) { fixKey = 'sentido'; continue; }
         answer = raw;
       }
       // Sin respuesta válida tras reintentar: callar. Las réplicas de reserva son solo para provocaciones reales
@@ -1679,11 +1538,10 @@ function pickProvocationReply() {
 // Réplica corta con personalidad; si la IA falla, rechaza o suena latina, se usa la de reserva
 async function generateProvocationReply(username, question, maxChars) {
   try {
-    const personality = await getPersonality(recentMessages.length, 'normal', username, 'micro');
     const response = await aiChat('provocation', {
       max_tokens: 60,
       messages: [
-        { role: 'system', content: `${personality}\n${PROVOCATION_RULE} ${SPAIN_RULE}` },
+        { role: 'system', content: buildProvocationSystem() },
         { role: 'user', content: `${username}: ${question}` }
       ]
     }, 1, { maxDelayMs: PROVOCATION_MAX_RETRY_DELAY_MS });
@@ -1735,10 +1593,10 @@ function restoreCooldowns(data) {
 module.exports = {
   handleCohost, runCohost, enqueueCohostMoment, startEventCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi,
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
-  initStreamStatus, invalidateContextCache, checkForHighlight,
+  initStreamStatus, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,
   getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
   getStreamChatBuffer, resetStreamChatBuffer, getRecentChatters,
   restoreCooldowns, clearUserFactsCache, getCachedUserFacts,
-  getBotPersonality, getPersonality, NARRATOR_BASE,
+  getBotPersonality, NARRATOR_BASE,
 };

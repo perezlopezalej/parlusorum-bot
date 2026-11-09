@@ -5,8 +5,6 @@ const assert = require('node:assert/strict');
 const { isDailyQuota, stripThinking } = require('../src/utils/groq-utils');
 const { recordGroqTokens, getGroqTokenUse, resetGroqTokenUse } = require('../src/utils/state');
 const { formatTokenUse } = require('../src/eventsub');
-const { normalizeProfile, pickExamples, buildLeanBase, buildMicroBase } = require('../src/ai/persona');
-const { buildQuestionSystemContent, SPAIN_RULE, LORE_RULE } = require('../src/ai/prompts');
 
 const quota = (msg = 'Rate limit reached: tokens per minute (TPM)', retryAfter) =>
   Object.assign(new Error(msg), { status: 429, headers: retryAfter ? { 'retry-after': String(retryAfter) } : {} });
@@ -53,31 +51,5 @@ describe('contador de tokens por modelo', () => {
     const txt = formatTokenUse({ stream: { m1: { total: 1000, calls: 3 } }, day: { m1: { total: 50000, calls: 9 } } }, 200000);
     assert.match(txt, /m1: 1000 este stream \(3 llamadas\), 50000 hoy \(25% de 200000, quedan ~150000\)/);
     assert.match(formatTokenUse({ stream: {}, day: {} }), /sin llamadas/);
-  });
-});
-
-describe('perfiles de personalidad', () => {
-  const ex = [1, 2, 3, 4, 5];
-  test('normalizeProfile cae a full con valores raros', () => {
-    assert.equal(normalizeProfile('lean'), 'lean');
-    assert.equal(normalizeProfile('x'), 'full');
-  });
-  test('lean conserva 3 ejemplos, micro ninguno, full todos', () => {
-    assert.deepEqual(pickExamples(ex, 'lean'), [1, 2, 3]);
-    assert.deepEqual(pickExamples(ex, 'micro'), []);
-    assert.deepEqual(pickExamples(ex, 'full'), ex);
-  });
-  test('lean mantiene español de España, emotes y no inventar; sin la historia larga del FUA', () => {
-    const p = buildLeanBase({ botName: 'dios_fua', streamer: 'S', creator: 'c', emotesLine: 'EMOTES-X' });
-    assert.ok(p.includes(SPAIN_RULE));
-    assert.match(p, /EMOTES-X/);
-    assert.match(p, /NUNCA inventes datos/);
-    assert.doesNotMatch(p, /Julio César Segura/);
-    assert.ok(buildMicroBase({ botName: 'b', streamer: 'S' }).length < p.length / 2);
-  });
-  test('!dios_fua no repite lore ni español si la personalidad ya los trae', () => {
-    const p = buildQuestionSystemContent({ personality: `P. ${LORE_RULE} ${SPAIN_RULE}` });
-    assert.equal(p.split(LORE_RULE).length - 1, 1);
-    assert.equal(p.split(SPAIN_RULE).length - 1, 1);
   });
 });

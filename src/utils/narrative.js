@@ -205,9 +205,9 @@ function freeAngleNote({ minutes = 0, bosses = 0, game = '', deathCount = 0, can
 function pickFreeTopic({ minutes = 0, bosses = 0, game = '', deathCount = 0, canCiteDeaths = true, last = '', pick = Math.random } = {}) {
   const time = minutes >= 20 ? `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h ` : ''}${minutes % 60} min` : '';
   const topics = [];
-  if (time) topics.push({ id: 'tiempo', note: `el rato que llevan de directo (${time}); no abras la frase con la cifra` });
-  if (game) topics.push({ id: 'partida', note: `cómo va la partida: ${bosses > 0 ? `${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy` : 'el ritmo de la sesión'}${deathCount > 0 && canCiteDeaths ? ` y las caídas de Manu (${deathCount} anotadas)` : ''}; sin datos del juego` });
-  topics.push({ id: 'chat_juego', note: 'algo que el chat haya dicho sobre el juego o la partida (sin nombrar a nadie ni inventar datos del juego)' });
+  if (time) topics.push({ id: 'tiempo', note: `el rato que llevan de directo (${time}), con la cifra en medio o al final de la frase` });
+  if (game) topics.push({ id: 'partida', note: `cómo va la partida: ${bosses > 0 ? `${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy` : 'el ritmo de la sesión'}${deathCount > 0 && canCiteDeaths ? ` y las caídas de Manu (${deathCount} anotadas)` : ''}; cuéntalo con humor sobre la sesión` });
+  topics.push({ id: 'chat_juego', note: 'algo que el chat haya dicho sobre el juego o la partida contado en general, como una anécdota del directo' });
   topics.push({ id: 'lore', note: 'una broma del lore del canal' });
   topics.push({ id: 'lusorums', note: 'los Lusorums, el chat, con cariño y humor' });
   topics.push({ id: 'fua', note: 'el FUA como fuerza universal, con una broma directa' });

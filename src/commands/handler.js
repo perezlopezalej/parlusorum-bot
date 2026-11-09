@@ -4,7 +4,7 @@ const { loadUsers } = require('../utils/storage');
 const { MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent, getPlayer, setPlayer } = require('../utils/state');
-const { handleShoutout, invalidateContextCache } = require('../ai/handler');
+const { handleShoutout } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');
 const { formatJuegoLine } = require('./juego');
@@ -372,7 +372,6 @@ async function handleLore(client, channel, username, args) {
     if (!Number.isInteger(id) || id < 1) return say(loreMsgs.usage.replace('{username}', username));
     const row = sub === 'aprobar' ? await approveLore(id) : await deleteLore(id);
     if (!row) return say(loreMsgs.not_found.replace('{username}', username).replace('{id}', id));
-    invalidateContextCache();
     const tpl = sub === 'aprobar' ? loreMsgs.approved : loreMsgs.deleted;
     return say(tpl.replace('{id}', id).replace('{term}', sanitizeForAI(row.term) || '?'));
   } catch (err) {

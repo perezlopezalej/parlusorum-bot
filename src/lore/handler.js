@@ -132,6 +132,7 @@ function getNickname(username) {
 // ─── LORE APRENDIDO: INYECCIÓN EN EL PROMPT ──────────────────────────────────
 
 let loreCache = null;
+let loreTerms = ''; // los mismos términos, sin texto de instrucciones (para prompts con etiquetas)
 let loreCacheTime = 0;
 
 function weightOf(row) {
@@ -158,6 +159,7 @@ async function getLoreContext() {
       parts.push(piece);
       used += piece.length + 2;
     }
+    loreTerms = parts.join(', ');
     loreCache = parts.length
       ? `\nLORE APRENDIDO DEL CANAL (úsalo solo si encaja, sin explicarlo ni inventar su origen): ${parts.join(', ')}.`
       : '';
@@ -169,8 +171,15 @@ async function getLoreContext() {
   }
 }
 
+// Solo los términos aprendidos activos ("x" (meme), …), o '' si no hay
+async function getLoreTerms() {
+  await getLoreContext();
+  return loreTerms;
+}
+
 function invalidateLoreCache() {
   loreCache = null;
+  loreTerms = '';
   loreCacheTime = 0;
 }
 
@@ -369,6 +378,7 @@ async function deleteLore(id) {
 
 module.exports = {
   getManualLore,
+  getLoreTerms,
   getNickname,
   touchesAvoidedTopic,
   getLoreContext,

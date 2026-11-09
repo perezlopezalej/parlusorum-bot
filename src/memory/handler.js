@@ -12,6 +12,7 @@ const {
 } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const quality = require('../ai/quality');
+const { buildSummaryPrompt, retryNote } = require('../ai/style');
 const { containsBlockedContent } = require('../utils/filter');
 const { aiChat } = require('../utils/ai-router');
 const { onStreamEndLore } = require('../lore/handler');
@@ -35,28 +36,7 @@ async function generateStreamMemory(streamStats, chatSample) {
   try {
     const { game, durationMinutes, deathCount, peakViewers, topCommands } = streamStats;
 
-    const prompt = `Eres el bot dios_fua del canal de ${channelConfig.streamer}. 
-Acaba de terminar un stream con estos datos:
-- Juego: ${game || 'no definido'}
-- Duración: ${durationMinutes} minutos
-- Muertes: ${deathCount}
-- Pico de viewers: ${peakViewers}
-- Comandos más usados: ${JSON.stringify(topCommands)}
-- Muestra del chat durante el stream: ${chatSample || 'sin datos'}
-
-Genera un resumen BREVE y CONCRETO del stream en español. Incluye:
-1. Una frase en POSITIVO con lo que pasó (muertes, jefes, momentos del juego, ambiente del chat). Las muertes son caídas del streamer, no un logro: nunca escribas "logrando/consiguiendo X muertes" (di "cayó X veces" o "con X caídas"). Nunca digas que hubo poca acción, que fue aburrido, flojo o tranquilo: si pasó poco, destaca el buen rollo y el chat.
-2. El momento más destacado si lo detectas en el chat
-3. Una frase recurrente del chat si la hay
-No pongas género a ParLusorum (la cuenta la usan Manu y Pao): nada de tía/tío/amigo/amiga.
-Habla SOLO del juego, del stream y del ambiente del chat. PROHIBIDO cualquier vida personal o charla ajena al stream: comida (hamburguesas...), clima y temperatura (calor, frío, lluvia, verano), sueño, familia, trabajo, estudios, salud, fútbol. Si el chat habló de eso, ignóralo.
-
-Responde SOLO en JSON con este formato exacto:
-{
-  "summary": "frase resumen del stream",
-  "highlights": ["momento1", "momento2"],
-  "recurringPhrases": ["frase1", "frase2"]
-}`;
+    const prompt = buildSummaryPrompt({ streamer: channelConfig.streamer, game, durationMinutes, deathCount, peakViewers, topCommands, chatSample });
 
     // Hasta 2 intentos: si el resumen habla de vida personal, es negativo o está mal, el segundo recibe el motivo
     let parsed = {};
@@ -65,9 +45,7 @@ Responde SOLO en JSON con este formato exacto:
     for (let attempt = 0; attempt < 2 && !summary; attempt++) {
       const response = await aiChat('endstream', {
         max_tokens: 300,
-        messages: [{ role: 'user', content: feedback ? `${prompt}
-
-TU INTENTO ANTERIOR FUE RECHAZADO: ${feedback}. Escribe otro distinto.` : prompt }]
+        messages: [{ role: 'user', content: `${prompt}${retryNote(feedback)}` }]
       });
 
       const text = response.choices[0].message.content.trim();
@@ -171,7 +149,7 @@ let memoryCacheTime = 0;
 const MEMORY_CACHE_TTL = 10 * 60 * 1000;
 
 // Texto de memoria para el prompt. maxStreams/summaryMax recortan el perfil "lean" (los más recientes primero)
-function renderMemory(memories, { maxStreams = 5, summaryMax = 500, maxHighlights = 2 } = {}) {
+function renderMemory(memories, { maxStreams = 5, summaryMax = 500, maxHighlights = 2, plain = false } = {}) {
   if (!memories.length) return '';
   const lines = memories.slice(0, maxStreams).map(m => {
     const date = m.stream_date;
@@ -185,6 +163,7 @@ function renderMemory(memories, { maxStreams = 5, summaryMax = 500, maxHighlight
       : '';
     return `[${date}] ${game}: ${summary} ${highlights} ${phrases}`.trim();
   });
+  if (plain) return lines.join(' | ');
   return `\nMEMORIA DEL CANAL — referencía estos momentos y frases de forma espontanea cuando encaje en la conversacion:\n${lines.join('\n')}`;
 }
 
