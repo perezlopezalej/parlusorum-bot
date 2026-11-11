@@ -4,6 +4,9 @@ const http = require('http');
 const config = require('./config/commands.json');
 const channelConfig = require('./config/channel.json');
 const logger = require('./src/utils/logger');
+const botState = require('./src/utils/state');
+const { restoreBotState, persistBotState } = require('./src/utils/bot-state');
+const { reconcileLive, buildHealth } = require('./src/utils/live-status');
 
 // --- Validar variables de entorno obligatorias ---
 const REQUIRED_ENV = ['BOT_USERNAME', 'BOT_TOKEN', 'CLIENT_ID', 'CLIENT_SECRET', 'CHANNEL', 'GROQ_API_KEY', 'BROADCASTER_TOKEN', 'EVENTSUB_SECRET'];
@@ -13,7 +16,7 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const { createEventSubHandler, registerSubscriptions, initStreamState } = require('./src/eventsub');
+const { createEventSubHandler, registerSubscriptions, initStreamState, checkLiveNow } = require('./src/eventsub');
 const commands = require('./src/commands/handler');
 const { resetSessionCounters } = commands;
 
@@ -44,7 +47,10 @@ const chatStatus = { connected: false, lastError: null, lastErrorAt: null, lastC
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+    res.end(JSON.stringify(buildHealth({
+      connected: chatStatus.connected, uptime: process.uptime(), live: botState.getStreamIsLive(),
+      lastConnectedAt: chatStatus.lastConnectedAt, lastError: chatStatus.lastError,
+    })));
     return;
   }
   if (req.url === '/status' && req.method === 'GET') {
@@ -226,6 +232,7 @@ client.on('connected', async (addr, port) => {
     }
 
     await initStreamState();
+    await restoreBotState(client, CHANNEL);
     await ai.initStreamStatus();
     ai.startEventCohost(client, CHANNEL);
 
@@ -241,6 +248,25 @@ client.on('connected', async (addr, port) => {
 
     const { setTriviaActive } = require('./src/utils/state');
     setTriviaActive(false);
+
+    // Reconciliación con Twitch: si se pierde el aviso de fin (o de inicio) de stream, el estado se corrige solo
+    let liveMisses = 0;
+    setInterval(async () => {
+      const r = reconcileLive({ flagLive: botState.getStreamIsLive(), check: await checkLiveNow(), misses: liveMisses });
+      liveMisses = r.misses;
+      if (r.action === 'set_offline') {
+        logger.warn('⚠️ Twitch dice que el canal está offline y no llegó el aviso de fin de stream: se da el directo por terminado');
+        botState.setStreamIsLive(false); botState.setStreamStartedAt(null);
+        botState.setSilenceMode(false); botState.setBrbMode(false, null, null);
+        persistBotState();
+      } else if (r.action === 'set_online') {
+        const live = await checkLiveNow();
+        if (live?.live) {
+          logger.warn('⚠️ Twitch dice que el canal está en directo y no llegó el aviso de inicio: se marca como en directo');
+          botState.setStreamIsLive(true); botState.setStreamStartedAt(live.startedAt || Date.now());
+        }
+      }
+    }, 60 * 1000);
 
     setInterval(async () => {
       const info = await getStreamInfo().catch(() => null);
@@ -281,6 +307,7 @@ client.on('message', async (channel, tags, message, self) => {
 
   const msg = message.trim();
   const username = tags['display-name'];
+  botState.pushUserText(msg);
   chatlog.logUserMessage(username, msg, tags['reply-parent-user-login']);
 
   try {

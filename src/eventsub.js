@@ -5,13 +5,14 @@ const { truncate } = require('./utils/groq-utils');
 const { aiChat } = require('./utils/ai-router');
 const { restoreOpenSession, restoreSessionBosses, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
+const { persistBotState } = require('./utils/bot-state');
 const quality = require('./ai/quality');
 const { buildAlertSystem } = require('./ai/style');
 const { throttleSay } = require('./alerts/handler');
 const { getAppAccessToken } = require('./twitch/app-token');
 const {
   setStreamStartedAt, getStreamStartedAt,
-  setStreamIsLive, getStreamIsLive, isSilenced,
+  setStreamIsLive, getStreamIsLive, isSilenced, setSilenceMode, setBrbMode, setStreamEndGraceUntil,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, setDeathCount, setBossCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter,
@@ -35,6 +36,7 @@ const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
 
 // Deduplicación de notificaciones — Twitch puede reenviar el mismo evento
 const MESSAGE_MAX_AGE_MS = 10 * 60 * 1000;
+const END_OF_STREAM_GRACE_MS = 15 * 60 * 1000; // margen para el resumen de fin de stream (memoria IA incluida)
 const processedEventIds = new Map(); // message-id | tipo:event.id → expiresAt
 
 const DEDUPE_BY_EVENT_ID = /^channel\.(poll|prediction)\./;
@@ -140,6 +142,23 @@ async function initStreamState() {
   } catch (e) {
     logger.error(`Error inicializando estado del stream: ${e.message}`);
   }
+}
+
+// Consulta puntual a Twitch: { live, startedAt } o null si la consulta falla (un fallo nunca equivale a "offline")
+async function checkLiveNow() {
+  try {
+    const appToken = await getAppAccessToken();
+    if (!appToken) return null;
+    const res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${channelConfig.broadcaster_id}`, {
+      headers: { 'Client-ID': process.env.CLIENT_ID, 'Authorization': `Bearer ${appToken}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data.data)) return null;
+    const stream = data.data[0];
+    return { live: !!stream, startedAt: stream?.started_at ? new Date(stream.started_at).getTime() : null };
+  } catch { return null; }
 }
 
 // --- Verificar firma ---
@@ -374,6 +393,7 @@ function createEventSubHandler(client, channel, deps) {
         // Cambios de estado en memoria: síncronos e inmediatos
         setStreamIsLive(true);
         setStreamStartedAt(event?.started_at ? new Date(event.started_at).getTime() : Date.now());
+        setStreamEndGraceUntil(0);
         logger.info(`🔴 Stream online via EventSub`);
         try { onStreamOnline(); } catch {}
         try { resetSessionCounters(); } catch {}
@@ -420,6 +440,10 @@ function createEventSubHandler(client, channel, deps) {
           ? Math.floor((endedAt - streamStartedAt) / 60000)
           : 0;
         setStreamStartedAt(null);
+        // El silencio y el BRB no pasan al siguiente directo; el bot aún puede despedirse unos minutos
+        setSilenceMode(false); setBrbMode(false, null, null);
+        setStreamEndGraceUntil(endedAt + END_OF_STREAM_GRACE_MS);
+        persistBotState();
         logger.info(`⚫ Stream offline via EventSub`);
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
@@ -624,6 +648,7 @@ module.exports = {
   formatCohostStats, formatTokenUse, formatAiUsage,
   registerSubscriptions,
   initStreamState,
+  checkLiveNow,
   isLiveViaEventSub,
   getStreamUptime,
   getViewersWithAppToken,

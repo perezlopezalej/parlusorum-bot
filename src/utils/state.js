@@ -16,9 +16,9 @@ let brbMode = false;
 let brbStart = null;
 let brbInterval = null;
 
-function setBrbMode(active, client, channel) {
+function setBrbMode(active, client, channel, startedAt = null) {
   brbMode = active;
-  brbStart = active ? Date.now() : null;
+  brbStart = active ? (startedAt || Date.now()) : null;
 
   if (brbInterval) {
     clearInterval(brbInterval);
@@ -35,6 +35,7 @@ function setBrbMode(active, client, channel) {
 }
 
 function isBrb() { return brbMode; }
+function getBrbStart() { return brbStart; }
 function getBrbDuration() {
   if (!brbStart) return 0;
   return Math.floor((Date.now() - brbStart) / 60000);
@@ -231,6 +232,25 @@ function setStreamStartedAt(val) { streamStartedAt = val; }
 function getStreamStartedAt() { return streamStartedAt; }
 function setStreamIsLive(val) { streamIsLive = val; }
 function getStreamIsLive() { return streamIsLive; }
+
+// Margen tras el fin del directo en el que el bot aún puede despedirse (resumen de fin de stream)
+let streamEndGraceUntil = 0;
+function setStreamEndGraceUntil(ts) { streamEndGraceUntil = ts; }
+function getStreamEndGraceUntil() { return streamEndGraceUntil; }
+
+// Últimos mensajes de usuarios (para que el filtro de salida detecte si el bot los repite tal cual)
+const RECENT_USER_TEXTS_MAX = 60;
+const RECENT_USER_TEXTS_TTL_MS = 5 * 60 * 1000;
+const recentUserTexts = [];
+function pushUserText(text, at = Date.now()) {
+  recentUserTexts.push({ text: String(text || ''), at });
+  while (recentUserTexts.length > RECENT_USER_TEXTS_MAX) recentUserTexts.shift();
+}
+function getRecentUserTexts(now = Date.now()) {
+  while (recentUserTexts.length && now - recentUserTexts[0].at > RECENT_USER_TEXTS_TTL_MS) recentUserTexts.shift();
+  return recentUserTexts.slice();
+}
+function resetRecentUserTexts() { recentUserTexts.length = 0; }
 function setSessionStarting(promise) { _sessionStarting = promise; }
 function getSessionStarting() { return _sessionStarting; }
 function clearSessionStarting() { _sessionStarting = null; }
@@ -489,7 +509,7 @@ module.exports = {
   addLoreSample, getLoreSample, resetLoreSample,
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,
-  setBrbMode, isBrb, getBrbDuration,
+  setBrbMode, isBrb, getBrbDuration, getBrbStart,
   setRaidActive, isRaidActive, getRaidUsername,
   markGiftBatch, isGiftBatch,
   setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt,
@@ -501,7 +521,8 @@ module.exports = {
   setGameContextFailed, getGameContextFailed,
   setLastCapsRageTime, getLastCapsRageTime,
   setStreamStartedAt, getStreamStartedAt,
-  setStreamIsLive, getStreamIsLive,
+  setStreamIsLive, getStreamIsLive, setStreamEndGraceUntil, getStreamEndGraceUntil,
+  pushUserText, getRecentUserTexts, resetRecentUserTexts,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, incrementDeathCount, resetDeathCount, setDeathCount,
   getBossCount, setBossCount, resetBossCount, markStructure, getUsedStructures,

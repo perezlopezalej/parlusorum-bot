@@ -778,7 +778,38 @@ async function deleteChatLogBefore(isoDate) {
   return count || 0;
 }
 
+// ─── ESTADO DEL BOT (silencio, BRB, contadores) ──────────────────────────────
+
+// Sin tabla (migración 009 sin aplicar) o sin Supabase: devuelve null / no guarda, nunca lanza
+async function saveBotState(value) {
+  const db = getClient();
+  if (!db) return false;
+  try {
+    const { error } = await db.from('bot_state').upsert({ key: 'main', value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    logger.warn(`Estado del bot no guardado: ${e.message}`);
+    return false;
+  }
+}
+
+async function loadBotState() {
+  const db = getClient();
+  if (!db) return null;
+  try {
+    const { data, error } = await db.from('bot_state').select('value').eq('key', 'main').maybeSingle();
+    if (error) throw error;
+    return data?.value || null;
+  } catch (e) {
+    logger.warn(`Estado del bot no cargado: ${e.message}`);
+    return null;
+  }
+}
+
 module.exports = {
+  saveBotState,
+  loadBotState,
   countSessionsOfGame,
   insertChatLog,
   getSessionChatLog,

@@ -2,6 +2,7 @@ const logger = require('./logger');
 const chatlog = require('./chatlog');
 const state = require('./state');
 const { limitFillers, limitLusorums } = require('../ai/quality');
+const { checkOutbound } = require('./output-guard');
 
 const BOT_NAME = process.env.BOT_USERNAME || 'bot';
 
@@ -11,8 +12,10 @@ const BOT_NAME = process.env.BOT_USERNAME || 'bot';
 // - Moderador: 100 msgs / 30 s (no aplicable aquí — el bot no es mod)
 const WINDOW_MS   = 30_000;
 const MAX_IN_WIN  = 18;
-const MIN_GAP_MS  = 1_100;
+let   MIN_GAP_MS  = 1_100;
 const MAX_QUEUE   = 50;
+// Un say() que no contesta no puede dejar la cola parada: pasado este tiempo se da por enviado/perdido
+let   SAY_TIMEOUT_MS = 10_000;
 
 const _window = [];   // timestamps de mensajes enviados (sliding window)
 const _queue  = [];   // { sayFn, channel, msg } pendientes
@@ -37,38 +40,67 @@ function _waitMs(now) {
   return gap < MIN_GAP_MS ? MIN_GAP_MS - gap + 10 : 0;
 }
 
-// Envía el primer mensaje de la cola (asume que _waitMs() ya dio 0)
+// Envía el primer mensaje de la cola (asume que _waitMs() ya dio 0).
+// Devuelve true solo si llegó a enviarlo: los descartes no gastan hueco del límite de Twitch.
 async function _sendNext() {
   const { sayFn, channel, msg: rawMsg, client, meta, expiresAt } = _queue.shift();
-  if (expiresAt && Date.now() > expiresAt) {
-    logger.info(`IRC: mensaje caducado en cola, descartado: "${String(msg).slice(0, 60)}"`);
-    return;
-  }
-  if (client && client.readyState() !== 'OPEN') {
-    logger.warn('IRC: mensaje descartado — cliente no conectado');
-    return;
-  }
-  const lusorums = limitLusorums(limitFillers(rawMsg), state.getLusorumsHistory());
-  const msg = lusorums.text;
-  state.noteLusorums(lusorums.had);
-  _window.push(Date.now());
   try {
-    await sayFn(channel, msg);
-    chatlog.logBotMessage(BOT_NAME, msg, meta);
+    if (expiresAt && Date.now() > expiresAt) {
+      logger.info(`IRC: mensaje caducado en cola, descartado: "${String(rawMsg).slice(0, 60)}"`);
+      return false;
+    }
+    if (client && client.readyState() !== 'OPEN') {
+      logger.warn('IRC: mensaje descartado — cliente no conectado');
+      return false;
+    }
+    const lusorums = limitLusorums(limitFillers(rawMsg), state.getLusorumsHistory());
+    const msg = lusorums.text;
+    const origin = meta?.origin || 'otro';
+    const guard = checkOutbound(msg, {
+      origin,
+      live: state.getStreamIsLive(),
+      graceUntil: state.getStreamEndGraceUntil(),
+      recent: state.getRecentUserTexts(),
+      names: state.getChatterNames(),
+    });
+    if (!guard.ok) {
+      logger.warn(`IRC: mensaje descartado por filtro de salida (${guard.reason}) [${origin}]: "${String(msg).slice(0, 80)}"`);
+      return false;
+    }
+    state.noteLusorums(lusorums.had);
+    _window.push(Date.now());
+    let timer;
+    try {
+      await Promise.race([
+        sayFn(channel, msg),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`say sin respuesta en ${SAY_TIMEOUT_MS} ms`)), SAY_TIMEOUT_MS); }),
+      ]);
+      chatlog.logBotMessage(BOT_NAME, msg, meta);
+    } catch (e) {
+      logger.warn(`IRC say error: ${e.message}`);
+    } finally {
+      clearTimeout(timer);
+    }
+    return true;
   } catch (e) {
-    logger.warn(`IRC say error: ${e.message}`);
+    logger.error(`IRC: error preparando mensaje, descartado: ${e.message}`);
+    return false;
   }
 }
 
 async function _drain() {
   _timer = null;
-  if (_queue.length === 0) return;
-
-  const wait = _waitMs(Date.now());
-  if (wait > 0) { _scheduleDrain(wait); return; }
-
-  await _sendNext();
-  if (_queue.length > 0) _scheduleDrain(MIN_GAP_MS);
+  try {
+    while (_queue.length > 0) {
+      const wait = _waitMs(Date.now());
+      if (wait > 0) { _scheduleDrain(wait); return; }
+      // Un descarte no consume el hueco de envío: se pasa al siguiente mensaje sin esperar
+      if (await _sendNext() && _queue.length > 0) { _scheduleDrain(MIN_GAP_MS); return; }
+    }
+  } catch (e) {
+    logger.error(`IRC: error en la cola: ${e.message}`);
+    if (_queue.length > 0) _scheduleDrain(MIN_GAP_MS);
+  }
 }
 
 /**
@@ -130,4 +162,12 @@ async function _flushOnExit(signal) {
 process.on('SIGTERM', () => _flushOnExit('SIGTERM'));
 process.on('SIGINT',  () => _flushOnExit('SIGINT'));
 
-module.exports = { wrapClientSay };
+// Solo para tests: tiempos ajustables y reinicio de la cola
+function _testHooks({ gapMs, sayTimeoutMs, reset } = {}) {
+  if (gapMs !== undefined) MIN_GAP_MS = gapMs;
+  if (sayTimeoutMs !== undefined) SAY_TIMEOUT_MS = sayTimeoutMs;
+  if (reset) { _queue.length = 0; _window.length = 0; clearTimeout(_timer); _timer = null; }
+  return { queued: _queue.length };
+}
+
+module.exports = { wrapClientSay, _testHooks };

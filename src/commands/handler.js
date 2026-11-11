@@ -1,7 +1,7 @@
 const { canMakeRequest } = require('../utils/ratelimit');
 const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths, saveSessionBosses, getSessionsDeathsByGame, getSessionsBossesByGame, getCurrentSessionId } = require('../utils/supabase');
 const { loadUsers } = require('../utils/storage');
-const { MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
+const { MAX_DEATHS_ADD, gameTotalReply, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
 const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent, getPlayer, setPlayer } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
@@ -9,6 +9,7 @@ const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');
 const { formatJuegoLine } = require('./juego');
 const { sanitizeForAI } = require('../utils/filter');
+const { persistBotState } = require('../utils/bot-state');
 const { truncate } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
@@ -98,6 +99,7 @@ function handleJuega(client, channel, username, args) {
   const verb = () => (getPlayer() === 'ambos' ? 'juegan' : 'juega');
   if (!arg) { client.say(channel, `@${username} ahora ${verb()} ${label()}. Cambia con !juega pao | manu | ambos.`); return; }
   if (!setPlayer(arg)) { client.say(channel, `@${username} uso: !juega pao | manu | ambos.`); return; }
+  persistBotState();
   client.say(channel, `🎮 Ahora ${verb()} ${label()}. ¡FUA!`);
 }
 
@@ -211,14 +213,15 @@ async function handleBoss(client, channel, args = [], isMod = false, username = 
     const rows = await getSessionsBossesByGame();
     const sid = getCurrentSessionId();
     const res = sumGameDeaths(cmd.game, rows, sid != null ? { id: sid, deaths: current } : null, 'boss_count');
-    const game = sanitizeForAI(res.game) || cmd.game;
-    client.say(channel, truncate(res.total > 0
+    const reply = gameTotalReply(res);
+    const game = reply.kind === 'total' ? sanitizeForAI(reply.game) : null;
+    client.say(channel, truncate(game
       ? bossMsgs.total.replace('{game}', game).replace('{total}', bossPlural(res.total)).replace('{streams}', res.streams)
-      : bossMsgs.total_none.replace('{game}', game)));
+      : bossMsgs.bad_format.replace('{max}', MAX_DEATHS_ADD)));
     return;
   }
   if (cmd.type === 'reset') {
-    resetBossCount(); saveSessionBosses(0);
+    resetBossCount(); saveSessionBosses(0); persistBotState();
     if (current > 0) incrementChannelStat('total_wins', -current).catch(() => {});
     client.say(channel, bossMsgs.reset);
     return;
@@ -226,12 +229,12 @@ async function handleBoss(client, channel, args = [], isMod = false, username = 
   const { wins, removed } = applyBossDelta(current, cmd);
   if (cmd.type === 'sub') {
     if (removed === 0) { client.say(channel, bossMsgs.none_to_remove); return; }
-    setBossCount(wins); saveSessionBosses(wins);
+    setBossCount(wins); saveSessionBosses(wins); persistBotState();
     incrementChannelStat('total_wins', -removed).catch(() => {});
     client.say(channel, truncate(bossMsgs.corrected.replace('{total}', bossPlural(wins))));
     return;
   }
-  setBossCount(wins); saveSessionBosses(wins);
+  setBossCount(wins); saveSessionBosses(wins); persistBotState();
   incrementChannelStat('total_wins', cmd.n).catch(() => {});
   addNarrativeEvent('boss', cmd.n === 1 ? `Jefe derrotado (#${wins} de este stream)` : `${cmd.n} jefes más derrotados (${wins} en este stream)`, cmd.n);
   client.say(channel, cmd.n === 1 ? `¡Boss eliminado! 💀 ${bossPlural(wins)} este stream` : truncate(bossMsgs.added.replace('{n}', cmd.n).replace('{total}', bossPlural(wins))));
@@ -255,19 +258,22 @@ async function handleMuertes(client, channel, args, isMod, username) {
   if (cmd.type === 'add') {
     let total = getDeathCount();
     for (let i = 0; i < cmd.n; i++) total = incrementDeathCount();
-    saveSessionDeaths(total);
+    saveSessionDeaths(total); persistBotState();
     addNarrativeEvent('death', cmd.n === 1 ? `Muerte #${total} del streamer en este stream` : `${cmd.n} muertes más del streamer (${total} en este stream)`, cmd.n);
     client.say(channel, cmd.n === 1 ? `💀 Muerte #${total} en este stream 😅` : truncate(muertesMsgs.added.replace('{n}', cmd.n).replace('{total}', total)));
   } else if (cmd.type === 'reset') {
-    resetDeathCount(); saveSessionDeaths(0); client.say(channel, `💀 Contador reseteado.`);
+    resetDeathCount(); saveSessionDeaths(0); persistBotState(); client.say(channel, `💀 Contador reseteado.`);
   } else if (cmd.type === 'bad_format') {
     client.say(channel, truncate(muertesMsgs.bad_format.replace('{max}', MAX_DEATHS_ADD)));
   } else if (cmd.type === 'game') {
     const rows = await getSessionsDeathsByGame();
     const sid = getCurrentSessionId();
     const res = sumGameDeaths(cmd.game, rows, sid != null ? { id: sid, deaths: getDeathCount() } : null);
-    const tpl = res.total > 0 ? muertesMsgs.total : muertesMsgs.total_none;
-    client.say(channel, truncate(tpl.replace('{game}', sanitizeForAI(res.game) || cmd.game).replace('{total}', res.total).replace('{streams}', res.streams)));
+    const reply = gameTotalReply(res);
+    const game = reply.kind === 'total' ? sanitizeForAI(reply.game) : null;
+    client.say(channel, truncate(game
+      ? muertesMsgs.total.replace('{game}', game).replace('{total}', res.total).replace('{streams}', res.streams)
+      : muertesMsgs.bad_format.replace('{max}', MAX_DEATHS_ADD)));
   } else {
     client.say(channel, `💀 Muertes hoy: ${getDeathCount()}`);
   }
@@ -303,9 +309,11 @@ function handleBrb(client, channel, username) {
   if (isBrb()) {
     const mins = getBrbDuration();
     setBrbMode(false, null, null);
+    persistBotState();
     client.say(channel, `🔙 ¡@${username} ha vuelto después de ${mins} min! 🎉`);
   } else {
     setBrbMode(true, client, `#${process.env.CHANNEL}`);
+    persistBotState();
     client.say(channel, `🚪 El streamer ha salido un momento. ¡Ahora vuelve! 👀`);
   }
 }
@@ -313,6 +321,7 @@ function handleBrb(client, channel, username) {
 function handleSilencio(client, channel, username) {
   const newState = !isSilenced();
   setSilenceMode(newState);
+  persistBotState();
   client.say(channel, newState ? `🔇 Modo silencio activado por @${username}.` : `🔊 ¡De vuelta! ¡FUA! 💪`);
 }
 
@@ -333,7 +342,7 @@ async function handleMarker(client, channel, args) {
   const desc = args.slice(1).join(' ') || 'Momento marcado manualmente';
   try {
     const marker = await createStreamMarker(desc.slice(0, 140));
-    if (marker) client.say(channel, `🏁 Marker creado: "${desc.slice(0, 50)}" ¡FUA!`);
+    if (marker) client.say(channel, '🏁 Marker creado ¡FUA!'); // sin repetir el texto del mod
     else client.say(channel, '❌ No se pudo crear el marker. Revisa scope user:edit:broadcast.');
   } catch (err) {
     logger.error(`!marker: ${err.message}`);

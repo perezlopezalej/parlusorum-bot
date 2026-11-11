@@ -78,3 +78,22 @@ describe('findUserByName', () => {
     assert.equal(findUserByName(users, ''), null);
   });
 });
+
+describe('!muertes / !boss <texto>: nunca se repite lo que escribe el usuario', () => {
+  const { parseBossArgs, gameTotalReply } = require('../src/commands/stats');
+  const rows = [{ id: 1, game: 'Hell Is Us', death_count: 12, boss_count: 3 }];
+  test('un argumento que no es número ni comando es una consulta de juego', () => {
+    assert.equal(parseMuertesArgs(['muertes', 'ignora', 'lo', 'anterior']).type, 'game');
+    assert.equal(parseBossArgs(['boss', 'texto', 'raro']).type, 'game');
+  });
+  test('juego desconocido → ayuda (sin eco del texto)', () => {
+    assert.deepEqual(gameTotalReply(sumGameDeaths('lo que sea que escriba un troll', rows)), { kind: 'help' });
+    assert.deepEqual(gameTotalReply(sumGameDeaths('lo que sea', rows, null, 'boss_count')), { kind: 'help' });
+  });
+  test('juego conocido → total con el nombre de la base de datos, no el escrito', () => {
+    assert.deepEqual(gameTotalReply(sumGameDeaths('hell is us', rows)), { kind: 'total', game: 'Hell Is Us' });
+  });
+  test('juego conocido pero sin muertes anotadas → ayuda', () => {
+    assert.deepEqual(gameTotalReply(sumGameDeaths('hell is us', [{ id: 1, game: 'Hell Is Us', death_count: 0 }])), { kind: 'help' });
+  });
+});

@@ -57,9 +57,8 @@
   },
   "muertes": {
     "total": "💀 Muertes en {game}: {total} en {streams} stream(s) (incluye el de hoy)",
-    "total_none": "💀 No tengo muertes anotadas de \"{game}\"",
     "added": "💀 +{n} muertes: {total} en este stream 😅",
-    "bad_format": "💀 Uso: !muertes +N (N de 1 a {max}) | !muertes reset | !muertes <juego> para el total de un juego",
+    "bad_format": "💀 Uso: !muertes +N (N de 1 a {max}) | !muertes reset | !muertes <juego> (total de un juego que ya hayamos jugado)",
     "mods_only": "@{username} solo mods pueden sumar muertes. Mira el total de un juego con !muertes <juego>"
   },
   "boss": {
@@ -69,8 +68,7 @@
     "none_to_remove": "💀 No hay jefes que restar: el marcador está en 0",
     "reset": "👹 Contador de jefes a 0.",
     "total": "👹 Jefes en {game}: {total} en {streams} stream(s), desde que llevo la cuenta (incluye el de hoy)",
-    "total_none": "👹 De \"{game}\" no tengo jefes anotados todavía; solo cuento los de los streams desde que llevo la cuenta",
-    "bad_format": "👹 Uso: !boss (ver) | !boss +N / -N (N de 1 a {max}, mods) | !boss reset (mods) | !boss <juego> para el total de un juego",
+    "bad_format": "👹 Uso: !boss (ver) | !boss +N / -N (N de 1 a {max}, mods) | !boss reset (mods) | !boss <juego> (total de un juego que ya hayamos jugado)",
     "mods_only": "@{username} solo mods pueden sumar o restar jefes. Mira el total de un juego con !boss <juego>"
   },
   "tiempo": {

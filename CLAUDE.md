@@ -16,6 +16,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 - Si se añade una función pura nueva, añadirle su test en `test/`.
 - Antes de desplegar cambios en prompts o filtros (`prompts.js`, `quality.js`, `factcheck.js`, `patterns.js`), ejecutar `npm run eval` (casos en `test/eval-cases.json`, informe en `logs/eval.txt`).
 - Al terminar cada tarea, actualizar `PROGRESS.md` (Hecho / Pendiente de probar en directo / Ideas futuras).
+- `docs/investigacion-buenas-practicas.md`: investigación sobre buenas prácticas de IA, chatbots, seguridad y privacidad (nov. 2026). Consultarla antes de cambiar prompts, el router de IA o el tratamiento de datos. Algunos datos legales y de límites deben verificarse; no es asesoramiento jurídico.
 
 ## Comandos
 

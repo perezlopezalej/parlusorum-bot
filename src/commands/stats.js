@@ -42,6 +42,13 @@ function applyBossDelta(wins, cmd) {
   return { wins: next, removed: wins - next };
 }
 
+// !muertes <juego> / !boss <juego>: solo se responde con el total si el juego consta en la base de datos, y con el
+// nombre tal y como consta allí. Si no, ayuda del comando: el texto que escribió el usuario nunca vuelve al chat.
+// → { kind: 'total', game } | { kind: 'help' }
+function gameTotalReply(res) {
+  return res && res.total > 0 && res.streams > 0 && res.game ? { kind: 'total', game: res.game } : { kind: 'help' };
+}
+
 function sumGameDeaths(query, rows, liveSession = null, field = 'death_count') {
   const counts = new Map();
   let total = 0;
@@ -87,4 +94,5 @@ function findUserByName(users, name) {
   return Object.values(users || {}).find(u => String(u.username || '').toLowerCase() === target) || null;
 }
 
-module.exports = { MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName };
+module.exports = {
+  gameTotalReply, MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName };
