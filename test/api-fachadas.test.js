@@ -108,3 +108,45 @@ test('src/ai/quality exporta exactamente su API pública', () => {
   assert.deepEqual(Object.keys(q).sort(), QUALITY);
   for (const name of QUALITY) assert.ok(q[name] !== undefined, name);
 });
+
+const HANDLER = [
+  'addToHistory',
+  'addToUserConversation',
+  'checkCapsRage',
+  'checkChatHook',
+  'checkEmoteSpam',
+  'checkForHighlight',
+  'checkPatternMatch',
+  'checkStreamStatus',
+  'clearUserFactsCache',
+  'enqueueCohostMoment',
+  'forgetUserInMemory',
+  'getActiveUserIds',
+  'getActiveUsers',
+  'getActiveUsersWithMinMessages',
+  'getCachedUserFacts',
+  'getChatWindow',
+  'getRecentHistory',
+  'getStreamChatBuffer',
+  'getUserConversation',
+  'handleChiste',
+  'handleQueMePerdi',
+  'handleQuestion',
+  'handleShoutout',
+  'initStreamStatus',
+  'onWarmupMode',
+  'postStreamEnd',
+  'resetActiveUsers',
+  'resetStreamChatBuffer',
+  'restoreCooldowns',
+  'runCohost',
+  'startEventCohost',
+  'updateLastChatTime'
+];
+
+test('src/ai/handler exporta exactamente su API pública', () => {
+  process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test';
+  const h = require('../src/ai/handler');
+  assert.deepEqual(Object.keys(h).sort(), HANDLER);
+  for (const name of HANDLER) assert.equal(typeof h[name], 'function', name);
+});
