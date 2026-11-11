@@ -1,5 +1,7 @@
 # Funcionalidades — parlusorum-bot
 
+> **Documento histórico (anterior al 11-11).** Algunos datos están desfasados (cohost por probabilidad, recuento de tests, módulos `quality.js` y `ai/handler.js` ya partidos). Para la visión actual, ver [README.md](../README.md) y [arquitectura-ia.md](arquitectura-ia.md).
+
 _Documento único que sustituye a `INVENTARIO_FUNCIONES*.md` (v1–v4) y `ANALISIS_FUNCIONALIDADES.md`. La base es el inventario v4 (2026-10-27, HEAD 9e69e64, 219 tests pasando); al final se conserva lo útil del análisis del 2026-10-26 (comparativa con otros bots, diferenciales, ideas). Las versiones anteriores del inventario y los bugs ya corregidos del análisis se han descartado; siguen en el historial de git (los `v2`–`v4` eran locales y no se conservan)._
 
 _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 9e69e64, árbol limpio) y comparada con INVENTARIO_FUNCIONES_v3.md (HEAD 3afa21e). Se ha ejecutado `npm test` (219 pasan, 0 fallan) pero no el bot, y no se ha leído .env._

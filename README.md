@@ -1,106 +1,179 @@
 # Parlusorum Bot
 
-Chatbot de Twitch con IA para el canal "parlusorum": responde preguntas, recuerda lo ocurrido en streams anteriores y reacciona en directo a las alertas y al ambiente del chat.
+[![CI](https://github.com/perezlopezalej/parlusorum-bot/actions/workflows/test.yml/badge.svg)](https://github.com/perezlopezalej/parlusorum-bot/actions/workflows/test.yml)
+![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)
+![Licencia](https://img.shields.io/badge/licencia-todos%20los%20derechos%20reservados-lightgrey)
 
-## Demo
+Bot de Twitch con IA para el canal «parlusorum»: comenta el directo como un cohost, responde con datos reales de videojuegos, recuerda lo ocurrido en streams anteriores y respeta la privacidad de quien escribe en el chat.
 
-[GIF/VÍDEO AQUÍ]
+## Qué hace
 
-## Funcionalidades principales
+- **Cohost con criterio**: comenta jefes, muertes y rachas, y de vez en cuando saca un tema libre. Cada comentario pasa por reglas de calidad en código, un selector con otro modelo y una revisión de datos antes de llegar al chat; si ninguno convence, se calla.
+- **Respuestas con datos reales**: `!dios_fua` y las menciones consultan IGDB antes de contestar, así que no inventan fechas, estudios ni países.
+- **Memoria entre streams**: al acabar el directo, la IA resume lo ocurrido; los últimos resúmenes y el lore del canal (aprobado por un mod) entran en el contexto.
+- **Trivia, alertas y comandos de stream**: trivia por juego con pistas y ranking, subs, raids, follows, hype train y predicciones con plantillas fijas, y comandos como `!muertes`, `!boss`, `!quemeperdi`, `!clip` o `!so`.
+- **Controles en vivo**: `!fua_callate <min>` y `!fua_modo reactivo|normal` para que el streamer lo silencie o lo deje solo reactivo.
+- **Privacidad por diseño**: datos por ID de Twitch, caducidad automática y borrado a petición.
 
-- **Asistente con IA (`!dios_fua`)**: responde preguntas a través de Groq, mantiene una conversación corta por usuario y puede consultar datos de videojuegos en IGDB mediante una herramienta (*tool calling*).
-- **Memoria entre streams**: al terminar el directo, la IA resume lo ocurrido y lo guarda en Supabase; los últimos resúmenes se inyectan en el contexto de las respuestas siguientes. También guarda hechos por usuario y un "lore" del canal (chistes internos, temas a evitar) que se aprende y se puede aprobar o borrar con `!lore`.
-- **Presencia proactiva**: un co-host que comenta de forma espontánea (con probabilidad, cooldown y tope por hora), mensajes cuando el chat lleva rato en silencio, respuestas a menciones o frases naturales, y un tono que cambia según lo que pasa en el stream (racha de muertes, raid, victoria, BRB).
-- **Reacción al chat**: detecta picos de palabras clave, spam de emotes y mayúsculas colectivas; en el primer caso crea un marker en el VOD y narra el momento.
-- **Trivia**: preguntas generadas por IA según el juego actual, con pistas, coincidencia difusa de respuestas, dificultad adaptativa y ranking. Si Groq falla, usa un banco estático.
-- **Alertas en tiempo real vía EventSub**: subs, bits, raids, follows, hype train, predicciones, encuestas y canjes, con mensajes generados por IA.
-- **Comandos de stream**: `!muertes`, `!boss` (ver / `+N` / `-N` / `reset` / `<juego>`), `!score`, `!clip`, `!marker`, `!so`, `!brb`, `!silencio`, `!quemeperdi`, `!juego`, `!uptime`, etc. (lista completa en [docs/FUNCIONALIDADES.md](docs/FUNCIONALIDADES.md)).
-- **Privacidad**: el chat completo se guarda 24 h; después solo queda un registro de calidad de 30 días con los nombres anónimos (`usuario1`…). Los datos por usuario van por ID de Twitch y caducan (90 días los hechos, 1 año la ficha y los contadores). Cualquiera puede borrar lo suyo con `!fua_olvidame` (los mods, con `!fua_olvidar @usuario`) y `!privacidad` lo resume en el chat. Detalle y base legal en [`docs/aviso-privacidad.md`](docs/aviso-privacidad.md).
+## Ejemplos de mensajes
 
-## Tecnologías utilizadas
+```text
+Mención con datos del directo
+  espectador1: @dios_fua que me perdi
+  Dios_Fua:    @espectador1 Te has perdido la última muerte de Manu, lleva 12 hoy. ¡Prepárate, que el próximo FUA viene pronto!
 
-- Node.js 22+ (JavaScript CommonJS, sin paso de compilación)
-- [tmi.js](https://github.com/tmijs/tmi.js) para el chat IRC de Twitch
-- Twitch Helix API y EventSub (webhooks)
-- [Groq](https://groq.com) (`groq-sdk`) con modelos `openai/gpt-oss`
-- Supabase (PostgreSQL) con `@supabase/supabase-js`; npoint.io como almacenamiento alternativo
-- IGDB API (datos de videojuegos, propiedad de Twitch; atribución «Datos: IGDB.com» en `!juego`)
-- `node:test` para los tests
-- Render (plan gratuito) para el despliegue
+!dios_fua con datos de IGDB (caso del eval `phantom-blade-pais`)
+  espectador1: !dios_fua quien desarrollo el phantom blade 0? japoneses o chinos?
+  Dios_Fua:    @espectador1 Lo desarrolló S-Game, una empresa china.
 
-## Aspectos técnicos destacados
+Muerte y comentario del cohost
+  streamer:    !muertes +1
+  Dios_Fua:    💀 Muerte #1 en este stream 😅
+  Dios_Fua:    Primera caída oficial y ya estamos buscando excusas con los remakes. parlus1Kelokekelowa
 
-- **OAuth de Twitch**: el token del streamer se obtiene con el flujo de autorización de código en `/auth/broadcaster` → `/auth/callback`, con parámetro `state` aleatorio de un solo uso y con caducidad contra CSRF. Se guarda en Supabase, se renueva automáticamente al recibir un 401 y se reutiliza al reiniciar. Hay dos tokens con usos separados: el *App Access Token* solo gestiona las suscripciones de EventSub y el token del streamer hace las llamadas en nombre del canal.
-- **EventSub con verificación HMAC**: el endpoint `POST /eventsub` valida la firma HMAC-SHA256 con `crypto.timingSafeEqual`, rechaza mensajes con más de 10 minutos de antigüedad (anti-replay), deduplica por ID de mensaje, responde 204 de inmediato y procesa el evento después para cumplir el plazo de Twitch.
-- **Supabase**: tablas con Row Level Security activado y **sin políticas**; el bot accede con la clave de servicio (`service_role`) y nunca con la anónima. Esquema versionado en `supabase/migrations/`. Si no hay Supabase configurado, `storage.js` usa npoint.io y migra los datos cuando se configura después.
-- **Control de ritmo del IRC**: una cola FIFO envuelve `client.say()` (máx. 18 mensajes/30 s, 1,1 s entre mensajes) para no ser limitado por Twitch, y se vacía de forma ordenada al recibir SIGTERM durante un deploy. Un watchdog reconecta el chat si se cae.
-- **Resiliencia con Groq**: reintentos, límite global y por usuario de peticiones por minuto, y cadena de modelos de reserva cuando un modelo se retira (404). Gestiona los modelos de razonamiento (`reasoning_effort`) para que no agoten los tokens sin devolver texto.
-- **Seguridad frente a *prompt injection***: el texto del chat se sanea antes de llegar al modelo, y los datos de usuario que entran en los prompts pasan por listas blancas y temas vetados.
-- **Diseño testeable**: la lógica de decisión (detección de patrones, modos de personalidad, narrativa, coincidencia de juegos, rate limit, sub-contexto) está en funciones puras con tests.
-- **Tests**: 260 tests en 49 suites con `node:test`, todos pasando (`npm test`). Cubren la memoria y el lore, la narrativa y los modos, los patrones de respuesta natural, el filtro, el rate limit, el fallback de modelos de Groq, la trivia y la verificación de EventSub. Los flujos con entrada/salida (por ejemplo, el co-host) no tienen test.
-- **Despliegue declarativo**: `render.yaml` describe el servicio; un self-ping a `/health` cada 10 minutos evita que el plan gratuito lo duerma, y `npm run check:eventsub` detecta suscripciones apuntando a una URL antigua.
+Cohost y reacción del chat
+  Dios_Fua:    Primera caída y el chat ya está haciendo colecta para comprarle manos nuevas a Manu.
+  espectador2: JAJAJAJAJ
 
-## Instalación y ejecución en local
+  Dios_Fua:    ¡Pao mandando a Manu a rezar es el mejor resumen de este directo!
+  espectador3: Dios fua es el mejor jajajja
 
-Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicación registrada en la consola de desarrolladores de Twitch y una clave de Groq. Supabase es opcional; IGDB usa el mismo CLIENT_ID y secret de Twitch.
+  Dios_Fua:    Doce muertes y el chat ya os quiere cobrar impuestos por revivir.
+  espectador4: El dios fua es el estado ahora
 
-1. Clona el repositorio e instala las dependencias:
-   ```bash
-   git clone https://github.com/perezlopezalej/parlusorum-bot
-   cd parlusorum-bot
-   npm install
-   ```
-2. Copia la plantilla de variables y rellénala (nunca subas `.env` al repositorio):
-   ```bash
-   cp .env.example .env
-   ```
-   Obligatorias: `BOT_USERNAME`, `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `CHANNEL`, `GROQ_API_KEY`, `BROADCASTER_TOKEN`, `EVENTSUB_SECRET` (mínimo 10 caracteres). El resto está documentado en `.env.example`.
-3. (Opcional) Genera el token del bot con `npm run bot-token`. El token del streamer se puede obtener visitando `/auth/broadcaster` con el bot en marcha.
-4. (Opcional, recomendado) Crea un proyecto en Supabase, define `SUPABASE_URL` y `SUPABASE_KEY` (clave de servicio) y ejecuta en el SQL Editor los ficheros de `supabase/migrations/` en orden (`000` a `010`; la `011` es destructiva y se ejecuta después de comprobar la `010`; `000` crea el esquema base y debe ir primero). Sin Supabase, el bot usa `NPOINT_BIN_ID` como alternativa.
-5. Para recibir alertas de EventSub en local, expón el puerto con un túnel (por ejemplo ngrok) y define `PUBLIC_URL` con su URL HTTPS.
-6. Arranca el bot:
-   ```bash
-   npm start      # producción
-   npm run dev    # desarrollo con recarga automática
-   ```
-7. Ejecuta los tests:
-   ```bash
-   npm test
-   ```
+Trivia
+  streamer:    !trivia
+  Dios_Fua:    🧠 TRIVIA: ¿Qué estudio desarrolló "Phantom Blade Zero"? (30s — habrá pistas si nadie responde)
+  Dios_Fua:    💡 Pista 1: 6 letras
+  streamer:    S-game
+  Dios_Fua:    🎉 ¡@streamer ha acertado! 🏆 Ya es el nº 2 del ranking con 3 victorias. 💡 El juego fue desarrollado por el estudio S-Game.
 
-## Despliegue en Render
+Hook ante un silencio
+  Dios_Fua:    ¿Sois más de cooperativo o en solitario? 💬
 
-1. En Render: **New → Blueprint** y selecciona el repositorio; se lee `render.yaml` (plan gratuito, región Frankfurt, `npm ci` / `npm start`, health check en `/health`).
-2. Rellena en el formulario las variables marcadas como secretas (las mismas de `.env.example`). `RENDER_EXTERNAL_URL` la inyecta Render y se usa como base del callback de EventSub.
-3. Cada push a `main` despliega automáticamente. Tras desplegar, comprueba las suscripciones con `npm run check:eventsub`.
+!quemeperdi
+  Dios_Fua:    📜 Llevamos 62 min de Hell Is Us con 5 muertes. El FUA sigue vivo, el streamer no tanto 💀
+```
+
+> Hueco para una captura real del chat (los ejemplos de arriba son del chat real, con los nicks de los espectadores sustituidos): `docs/img/chat.png` (aún sin añadir).
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+  T[Twitch IRC] --> I
+  E[Twitch EventSub] --> I
+  I["index.js<br/>HTTP + cola IRC"] --> H["Handlers<br/>commands · ai · games · alerts · timers"]
+  H --> R["Router de IA<br/>cupo por modelo"]
+  R --> G["Groq<br/>gpt-oss-120b · gpt-oss-20b · qwen"]
+  H --> D["IGDB"]
+  H --> S["Supabase"]
+  H --> I
+```
+
+Un mensaje generado por IA no sale directamente al chat:
+
+```mermaid
+flowchart LR
+  C["Contexto<br/>chat, juego, memoria"] --> P["Prompt por tipo<br/>style.js"]
+  P --> M["Generación<br/>2 candidatos"]
+  M --> Q["Reglas en código<br/>src/ai/quality/"]
+  Q --> K["Selector<br/>modelo de otra familia"]
+  K --> F["Revisión de datos<br/>y de sentido"]
+  F --> O["Cola IRC"]
+  O --> W[Chat]
+  Q -. rechazo .-> X["Reintento en positivo<br/>o silencio"]
+  K -. ninguno vale .-> X
+  F -. descarta .-> X
+```
+
+## Decisiones técnicas
+
+| Decisión | Alternativa descartada | Motivo |
+|---|---|---|
+| Solo Groq, con tres modelos y reservas cruzadas | Gemini como proveedor secundario | Sus términos no permiten el nivel gratuito para usuarios del EEE; los tres modelos de Groq tienen cupo propio |
+| Router con cupo real por modelo (cabeceras `x-ratelimit-*`) | Un modelo para todo | Un directo de 6 h no cabe en los 200.000 tokens diarios de un solo modelo |
+| El selector usa un modelo de otra familia que el generador | Que el mismo modelo se autoevalúe | Un modelo tiende a aprobar sus propios errores |
+| Las prohibiciones viven en código (`src/ai/quality/`), no en el prompt | Listas de «no digas…» en el prompt | Citar lo prohibido lo introduce en el texto; el código lo rechaza sin ambigüedad |
+| IGDB como única fuente de datos factuales y ficha antes del modelo | Dejar que el modelo recuerde datos de juegos | Evita fechas, estudios y países inventados |
+| Plantillas fijas donde la IA no aporta (highlight, caps, encuestas) | IA en todos los mensajes | Gasta cupo y arriesga errores sin ganar nada |
+| Datos por `user_id` con caducidad | Guardar nicks y mensajes sin límite | Minimiza datos personales; el nick es solo un atributo del usuario |
+| Cola IRC propia y envío opcional por la API de chat | `client.say()` directo | Respeta los límites de Twitch y permite la insignia de Chat Bot |
+| Render gratuito con self-ping y watchdog | Servicio de pago | Coste cero; el self-ping evita que se duerma y el watchdog reconecta el IRC |
+| CommonJS sin paso de compilación | TypeScript | Despliegue y depuración sencillos para un proyecto de un solo autor |
+
+## Cómo se prueba
+
+- `npm test` ejecuta con `node:test` toda la suite (el recuento actual lo muestra la CI): reglas de calidad, router y cupo, EventSub, privacidad, trivia, comandos y la API pública de los módulos (`test/api-fachadas.test.js`). Las frases reales del bot que se resuelven solo con reglas están en `test/fixtures/frases-reales.json`.
+- `npm run lint` pasa ESLint; la CI de GitHub Actions ejecuta lint y tests en cada push.
+- `npm run eval` lanza una batería con la IA real (Groq e IGDB) sobre los handlers reales; gasta cupo, así que no va en la CI. Los casos están en `test/eval-cases.json` y el informe sale en `logs/eval.txt`.
+- Las reacciones del chat a los mensajes del bot se calibran con chatlogs etiquetados a mano (`test/fixtures/reacciones-etiquetadas.json`).
+
+## Privacidad
+
+| Dato | Se conserva |
+|---|---|
+| Chat completo (`chat_log`) | 24 horas |
+| Registro de calidad (mensajes del bot con contexto, nicks seudonimizados) | 30 días |
+| Hechos por usuario | 90 días (contadores: 1 año sin actividad) |
+| Ficha de usuario | 1 año sin actividad |
+
+Cualquiera puede borrar lo suyo con `!fua_olvidame`; los mods, con `!fua_olvidar @usuario`; `!privacidad` lo resume en el chat. Todo se identifica por el ID de Twitch, no por el nick. Texto completo y base legal: [docs/aviso-privacidad.md](docs/aviso-privacidad.md).
+
+## Puesta en marcha
+
+Requisitos: Node.js 22+, una cuenta de Twitch para el bot, una aplicación en la consola de desarrolladores de Twitch y una clave de Groq. Supabase es opcional (sin ella, `NPOINT_BIN_ID`); IGDB usa el mismo `CLIENT_ID` y secreto de Twitch.
+
+```bash
+git clone https://github.com/perezlopezalej/parlusorum-bot
+cd parlusorum-bot
+npm install
+cp .env.example .env     # nunca subas .env al repositorio
+npm run bot-token        # token del bot (opcional)
+npm start                # o npm run dev, con recarga
+```
+
+- Variables obligatorias: `BOT_USERNAME`, `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `CHANNEL`, `GROQ_API_KEY`, `BROADCASTER_TOKEN`, `EVENTSUB_SECRET` (mínimo 10 caracteres). El resto está en `.env.example`.
+- El token del streamer se obtiene visitando `/auth/broadcaster` con el bot en marcha.
+- Supabase: ejecuta en el SQL Editor los ficheros de `supabase/migrations/` en orden (`000` a `010`; la `011` es destructiva y va después de comprobar la `010`).
+- Para EventSub en local, expón el puerto con un túnel (por ejemplo ngrok) y define `PUBLIC_URL`.
+- Despliegue en Render: **New → Blueprint** sobre el repositorio (lee `render.yaml`), rellena las variables secretas y cada push a `main` despliega. Después, `npm run check:eventsub` comprueba las suscripciones.
+
+## Estructura del repositorio
+
+```
+index.js            arranque: validación de entorno, HTTP (/health, /eventsub, /auth), cola IRC, watchdog
+src/ai/             IA: handler.js (fachada) y módulos por función, style.js (prompts), quality/ (reglas),
+                    factcheck.js, pick-best.js, game-sheet.js, reactions.js
+src/commands/       despacho de comandos, cooldowns, permisos y ayuda
+src/games/          trivia por juego y ranking
+src/alerts/         subs, bits, raids, follows, lurkers y bienvenida
+src/timers/         mensajes recurrentes y comentario IA
+src/twitch/         Helix, IGDB, token de aplicación y envío por la API de chat
+src/memory, lore/   resúmenes entre streams y lore del canal
+src/privacy/        caducidad, olvido de usuarios, registro de calidad
+src/utils/          estado, router de IA, almacenamiento, filtros, narrativa, logger
+config/             textos, plantillas, ejemplos de estilo y lore editables sin tocar código
+supabase/           migraciones SQL (000-011)
+test/               node:test, fixtures y casos del eval
+docs/               arquitectura de la IA, privacidad, presupuesto de Groq, auditoría y archivo
+```
 
 ## Retos y aprendizajes
 
-**Evitar que la IA se invente cosas.** Al principio, el bot respondía con datos falsos sobre
-videojuegos (fechas, estudios, títulos que no existían). Lo resolví dándole a la IA una
-herramienta, `buscar_juego`, que consulta IGDB, y añadiendo una comprobación de
-similitud para descartar coincidencias falsas. Aprendí que con un LLM no basta con mejorar el
-prompt: hay que darle fuentes de datos reales.
+**Evitar que la IA se invente cosas.** El bot respondía con datos falsos sobre videojuegos. Lo resolví dándole a la IA datos reales de IGDB (primero como herramienta y ahora como ficha previa), con una comprobación de coincidencia para descartar juegos que no son el pedido. Con un LLM no basta con mejorar el prompt: hay que darle fuentes y comprobar la salida en código.
 
-**No depender de un único modelo de IA.** Groq retira modelos cada cierto tiempo, y si el
-modelo que usaba el bot desaparecía, toda la IA dejaba de funcionar. Implementé una cadena de
-modelos de reserva configurable (`GROQ_MODEL_FALLBACKS`): si un modelo devuelve "no
-encontrado" o "retirado", el bot pasa al siguiente y deja un aviso en el log.
+**No depender de un único modelo ni de un único cupo.** Groq retira modelos y limita tokens por modelo. El router reparte los tipos de mensaje entre tres modelos, salta al siguiente ante un 429 o un 5xx y deja callar a los mensajes espontáneos cuando no hay cupo en vez de bajar la calidad.
 
-**Que el bot participe sin saturar el chat.** El modo cohost, la trivia, las alertas y las
-respuestas automáticas podían pisarse entre sí. Diseñé un sistema de disparadores con límites
-por hora, turnos entre comportamientos y reacciones a los silencios del chat, para que el bot
-parezca un participante más y no un spammer.
+**Que el bot participe sin saturar el chat.** Cohost, trivia, alertas y respuestas podían pisarse. Hay topes por hora, pausas entre comportamientos, un modo «reactivo» y un control de silencio para el streamer.
 
-**Seguridad y despliegue.** Llegué a subir credenciales al repositorio, así que tuve que
-rotarlas todas. También protegí Supabase con RLS y acceso solo desde el servidor, y corregí
-un fallo del watchdog que creaba conexiones IRC duplicadas en Render. Ahora los secretos van
-siempre en variables de entorno, con un `.env.example` documentado.
+**Seguridad y despliegue.** Subí credenciales al repositorio una vez y tuve que rotarlas todas. Ahora los secretos van solo en variables de entorno, Supabase usa RLS sin políticas y clave de servicio, y un fallo del watchdog que duplicaba conexiones IRC en Render está corregido y probado.
 
-Ideas sugeridas a partir del código:
-- Coordinar varios comportamientos automáticos (co-host, hooks de silencio, respuestas a menciones) para que el bot no sature ni se pise con el chat, usando cooldowns, topes por hora y turnos por pausa.
-- Mantener la IA estable cuando el proveedor cambia: Groq retiró modelos y obligó a añadir modelos de reserva y a manejar los modelos de razonamiento.
-- Operar en un plan gratuito: evitar que el servicio se duerma, no perder mensajes pendientes en cada deploy y mantener fresco el token de OAuth sin intervención manual.
+## Limitaciones y siguientes pasos
+
+- Las últimas fases (privacidad, router con cupo real, envío por API de chat) aún no se han probado en un directo real; la lista está en [PROGRESS.md](PROGRESS.md).
+- Los contadores de cupo del router viven en memoria: un reinicio los pone a cero.
+- El bot no ve ni oye el directo; solo lee el chat y los eventos de Twitch.
 
 ## Autor
 
