@@ -622,11 +622,10 @@ function createEventSubHandler(client, channel, deps) {
       }
 
       if (type === 'channel.prediction.end') {
-        const { winning_outcome_id, outcomes, title } = event || {};
+        const { winning_outcome_id, outcomes } = event || {};
         clearActivePrediction();
         const ganadorPred = (outcomes || []).find(o => o.id === winning_outcome_id);
         if (ganadorPred) {
-          const totalPuntos = ganadorPred.channel_points || 0;
           const numGanadores = ganadorPred.top_predictors?.length ?? 0;
           logger.info(`🏆 Predicción terminada: ganó "${ganadorPred.title}"`);
           throttleSay(client, channel, truncate(template('prediction_end', { winner: ganadorPred.title, winners: numGanadores > 0 ? `¡${numGanadores} acertaron!` : '' })));
@@ -641,7 +640,7 @@ function createEventSubHandler(client, channel, deps) {
       }
 
       if (type === 'channel.poll.end') {
-        const { title, choices } = event || {};
+        const { choices } = event || {};
         if (choices && choices.length > 0) {
           const ganadorPoll = choices.reduce((a, b) => (b.votes > a.votes ? b : a));
           const totalVotos = choices.reduce((sum, c) => sum + c.votes, 0);

@@ -136,7 +136,7 @@ const ALERT_TASKS = {
   prediccion: 'Cuenta el evento de la plataforma con la energía y la guasa de Dios Fua.',
 };
 
-function buildSummaryPrompt({ streamer = 'ParLusorum', game, durationMinutes, deathCount, peakViewers, topCommands, chatSample, examples = pickStyleExamples('resumen', 3) }) {
+function buildSummaryPrompt({ game, durationMinutes, deathCount, peakViewers, topCommands, chatSample, examples = pickStyleExamples('resumen', 3) }) {
   const datos = [
     `Juego: ${game || 'no definido'}`,
     `Duración: ${durationMinutes} minutos`,

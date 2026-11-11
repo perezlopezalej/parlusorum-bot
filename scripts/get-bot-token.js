@@ -16,7 +16,7 @@ const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 // user:write:chat + user:bot permiten enviar por la API Send Chat Message con token de aplicación (insignia de Chat Bot)
 const SCOPES = 'chat:read chat:edit user:write:chat user:bot';
 
-const { CLIENT_ID, CLIENT_SECRET, SUPABASE_URL, SUPABASE_KEY } = process.env;
+const { CLIENT_ID, CLIENT_SECRET } = process.env;
 const missing = ['CLIENT_ID', 'CLIENT_SECRET', 'SUPABASE_URL', 'SUPABASE_KEY'].filter(v => !process.env[v]);
 if (missing.length) {
   console.error(`❌ Faltan variables de entorno: ${missing.join(', ')}`);

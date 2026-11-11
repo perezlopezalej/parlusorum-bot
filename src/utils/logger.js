@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 
 const LOG_DIR = require('path').join(__dirname, '../../logs');
 const LOG_FILE = require('path').join(LOG_DIR, 'bot.log');

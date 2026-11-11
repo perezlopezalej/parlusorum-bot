@@ -182,19 +182,6 @@ function streakAllowed({ now = Date.now(), lastSharedAt = 0, sharedStamps = [], 
   return !hourlyCapReached(sharedStamps, max, now);
 }
 
-// Segundo intento del cohost libre tras un SKIP: un ángulo concreto con datos reales del stream para que tenga de qué hablar.
-// `pick` (0-1) elige entre los ángulos disponibles (inyectable para tests).
-function freeAngleNote({ minutes = 0, bosses = 0, game = '', deathCount = 0, canCiteDeaths = true, pick = Math.random } = {}) {
-  const options = [];
-  if (minutes >= 30) options.push(`el rato que llevan de directo (${approxDuration(minutes)}, sin cifras exactas)`);
-  if (bosses > 0) options.push(`los ${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy`);
-  if (deathCount > 0 && canCiteDeaths) options.push(`las caídas de Manu hoy (${deathCount} anotadas)`);
-  if (game) options.push(`lo que se ve en pantalla en ${game}, sin inventar datos del juego`);
-  options.push('una broma del lore del canal');
-  const choice = options[Math.min(options.length - 1, Math.floor(pick() * options.length))];
-  return `\nNo hay un tema claro en el chat, pero ahora NO respondas SKIP: habla de ${choice}. Una sola idea, frase sencilla, sin preguntas al chat.`;
-}
-
 // Tema concreto de cada intento del cohost libre, elegido por el código y rotando (nunca el mismo dos veces seguidas):
 // con "habla de lo que veas" el modelo respondía SKIP en 31 de 35 intentos. `last` = id del tema anterior.
 // → { id, note } con note listo para el prompt.

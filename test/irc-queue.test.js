@@ -43,7 +43,7 @@ describe('cola IRC', () => {
 
   test('un say() que nunca contesta no deja la cola parada', async () => {
     let first = true;
-    const { client, sent } = makeClient({ sayImpl: msg => { if (first) { first = false; return new Promise(() => {}); } } });
+    const { client, sent } = makeClient({ sayImpl: () => { if (first) { first = false; return new Promise(() => {}); } } });
     client.say('#c', 'colgado');
     client.say('#c', 'siguiente');
     await until(() => sent.length >= 1);

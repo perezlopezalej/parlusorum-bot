@@ -16,7 +16,6 @@ api.getGameInfo = async () => null;
 const router = require('../src/utils/ai-router');
 const state = require('../src/utils/state');
 const style = require('../src/ai/style');
-const quality = require('../src/ai/quality');
 const ai = require('../src/ai/handler');
 
 const FORBIDDEN_IN_PROMPT = [
@@ -25,7 +24,7 @@ const FORBIDDEN_IN_PROMPT = [
   /PROHIBIDO|NUNCA|\bNO\b|TU INTENTO ANTERIOR|RECHAZADO|YA DIJISTE|NO repetir/,
 ];
 
-let sent, prompts, replies;
+let sent, prompts;
 const client = { say: (ch, msg) => { sent.push(msg); } };
 function stubModels(fn) {
   const t = async p => { prompts.push(p.messages); return fn(p); };
@@ -35,7 +34,7 @@ const json = (...c) => ({ choices: [{ message: { content: JSON.stringify({ candi
 const text = c => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
 
 beforeEach(() => {
-  sent = []; prompts = []; replies = [];
+  sent = []; prompts = [];
   state.resetAiBlocks(); state.resetAiUsage();
   state.setStreamIsLive(true);
   state.setStreamStartedAt(Date.now() - 47 * 60000);

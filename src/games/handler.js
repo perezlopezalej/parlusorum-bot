@@ -395,7 +395,7 @@ async function handleTop(client, channel) {
   client.say(channel, truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${winsText(r.count)})`).join(' · ')));
 }
 
-function handle(client, channel, tags, command, args) {
+function handle(client, channel, tags, command) {
   switch (command) {
     case 'trivia':
       handleTrivia(client, channel).catch(err => logger.error(`Trivia: ${err.message}`));

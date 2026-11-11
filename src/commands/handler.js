@@ -1,8 +1,8 @@
 const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths, saveSessionBosses, getSessionsDeathsByGame, getSessionsBossesByGame, getCurrentSessionId } = require('../utils/supabase');
 const { loadUsers } = require('../utils/storage');
 const { MAX_DEATHS_ADD, gameTotalReply, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
-const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
-const { setMuteUntil, getMuteUntil, setBotMode, getBotMode, setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent, getPlayer, setPlayer } = require('../utils/state');
+const { getCurrentGame, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
+const { setMuteUntil, setBotMode, getBotMode, setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent, getPlayer, setPlayer } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');

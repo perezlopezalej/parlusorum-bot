@@ -114,7 +114,7 @@ function mentionSpan(words, botNames) {
 }
 
 // true si el mensaje habla CON el bot; false si habla DE él en tercera persona
-function isAddressedToBot(message, tags = {}, botNames = []) {
+function isAddressedToBot(message, _tags = {}, botNames = []) {
   const text = normalize(message);
   if (text.split(/\s+/).some(w => w.startsWith('@') && isDirectMention(w, botNames))) return true;
   const words = text.split(/[^a-z]+/).filter(Boolean).map(squash);

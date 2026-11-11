@@ -22,7 +22,6 @@ const MAX_USERS_STORED = 50;
 const MAX_PROMPT_CHARS = 500; // tope del lore aprendido inyectado en el prompt
 const CACHE_TTL = 10 * 60 * 1000;
 const KINDS = ['meme', 'frase', 'apodo', 'chiste', 'enemigo'];
-const PERSON_KINDS = new Set(['apodo']);
 const BOT_NAME = (process.env.BOT_USERNAME || 'dios_fua').toLowerCase();
 
 function norm(text) {
@@ -256,7 +255,6 @@ async function onStreamEndLore(memory) {
     const nickToId = getLoreSampleIds();
     // channel_lore.users guarda user_id, no nicks (privacidad); quien no tiene id no se cuenta
     const idsOf = nicks => [...nicks].map(n => nickToId.get(n)).filter(Boolean);
-    const chatters = new Set(lines.map(l => l.user));
     const playedGames = await loadPlayedGames();
 
     // 1. Lore ya conocido: contar apariciones reales en el chat y decaer lo que no sale
@@ -325,8 +323,6 @@ async function onStreamEndLore(memory) {
       if (await isGameTerm(term, playedGames)) continue;
 
       const kind = KINDS.includes(c.kind) ? c.kind : 'meme';
-      const aboutPerson = c.about_person === true || c.category === 'persona' || PERSON_KINDS.has(kind)
-        || term.includes('@') || isPersonTerm(key, chatters);
       const userList = idsOf(users).slice(0, MAX_USERS_STORED);
       toSave.push({
         term, term_key: key, kind,

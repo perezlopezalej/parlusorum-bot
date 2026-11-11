@@ -3,7 +3,6 @@
  * Mods y el creador tienen más margen que usuarios normales.
  */
 
-const logger = require('./logger');
 
 const MAX_RPM_GLOBAL = parseInt(process.env.AI_MAX_RPM || '30', 10);
 const MAX_RPM_USER = parseInt(process.env.AI_MAX_RPM_USER || '3', 10);    // 3 por minuto usuario normal

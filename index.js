@@ -212,7 +212,7 @@ setInterval(() => {
   connectChat();
 }, 5 * 60 * 1000);
 
-client.on('connected', async (addr, port) => {
+client.on('connected', async () => {
   chatStatus.connected = true;
   chatStatus.lastConnectedAt = new Date().toISOString();
   chatStatus.retryAttempts = 0;

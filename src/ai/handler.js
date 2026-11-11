@@ -2,7 +2,7 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const identityReplies = require('../../config/identity-replies.json');
 const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { getChatterNames, getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, isReactive, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, noteMentionFua, getMentionFuaHistory, claimStartAnnouncement, resetStartAnnouncement, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const { getChatterNames, getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, isReactive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setLastCapsRageTime, getLastCapsRageTime, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, noteMentionFua, getMentionFuaHistory, claimStartAnnouncement, resetStartAnnouncement, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
 const { windowFacts, mergeBossMoments, bossInBatch, BOSS_SETTLE_MS } = require('../utils/narrative');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR, streakAllowed, STREAK_COHOST_GAP_MS, hourlyCapReached, pickFreeTopic } = require('../utils/narrative');
 const factcheck = require('./factcheck');
@@ -576,7 +576,7 @@ async function runCohost(client, channel, moment = null) {
 // Cola de eventos: se comentan todos, de uno en uno; los que esperan más de COHOST_EVENT_TTL caducan
 const EVENT_QUEUE_MAX = 6;
 const EVENT_SETTLE_MS = 3000; // deja que salga antes el mensaje propio del evento (alerta, contador...)
-let eventQueue = [];
+const eventQueue = [];
 let drainTimer = null;
 let draining = false;
 
@@ -1136,18 +1136,17 @@ async function handleQuestion(client, channel, tags, args) {
       || ((prefetched || !!toolCalls?.length) && gameText.length > 0 && !gameText.startsWith('SIN DATOS'));
     const techLeak = quality.leaksTech(answer) || ownerClaim;
     let discard = techLeak;
-    let claim = '';
-    if (!techLeak && gameTopic) ({ discard, claim } = await factcheck.evaluate(answer, gameText, { source: 'juego' }));
+    if (!techLeak && gameTopic) ({ discard } = await factcheck.evaluate(answer, gameText, { source: 'juego' }));
     // País, nacionalidad, personas y cifras solo valen si están en los datos de IGDB (el verificador de IA a veces los deja pasar)
     // Sin datos de buscar_juego (no encontrado), ni estudio ni editora ni nacionalidad: todo sería inventado
     const noGameData = !!toolCalls?.length && !/^Nombre: /m.test(gameText);
     const inventedAttr = !techLeak && (gameTopic || noGameData)
       ? (noGameData ? quality.inventedCompany(answer, gameText) : quality.unsupportedAttributes(answer, gameText))
       : '';
-    if (inventedAttr && !discard) { discard = true; claim = inventedAttr; }
+    if (inventedAttr && !discard) { discard = true; }
     // Ficha volcada en bruto (inglés, fechas ISO, campos copiados): no se envía; con datos de IGDB, un reintento y si no la plantilla
     const rawLeak = !techLeak ? leaksSheetRaw(answer, { names: [gameData?.name, gameName, ...(channelConfig.games_played || [])] }) : '';
-    if (rawLeak && !discard) { discard = true; claim = rawLeak; logger.info(`!dios_fua: respuesta con la ficha en bruto (${rawLeak})`); }
+    if (rawLeak && !discard) { discard = true; logger.info(`!dios_fua: respuesta con la ficha en bruto (${rawLeak})`); }
     // Con datos reales de IGDB, un único reintento diciéndole qué frase no estaba respaldada
     if (discard && !techLeak && /^Nombre: /m.test(gameText)) {
       messages.push({ role: 'user', content: 'Responde otra vez en español y con tus palabras, en una o dos frases, contestando directamente a lo que pregunta con la ficha; para lo que la ficha no diga, di con humor que no tienes ni idea.' });
