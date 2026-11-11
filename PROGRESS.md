@@ -4,7 +4,7 @@ Estado actual del bot de parlusorum. Se actualiza al terminar cada tarea. El his
 
 ## Estado actual
 
-- Rama `refactor/mantenimiento` (sobre `main`). 910 tests en verde, `npm run lint` limpio, CI con lint + tests.
+- Rama `refactor/mantenimiento` (sobre `main`). 910 tests en verde, `npm run lint` y `npm run format:check` limpios, CI con lint, formato y tests. Todo el repo está formateado con Prettier (commit `dcbc452` en `.git-blame-ignore-revs`).
 - Solo Groq (gpt-oss-120b, gpt-oss-20b y qwen3.8-27b con reservas cruzadas), IGDB como única fuente de datos de juegos, privacidad por `user_id` con caducidad, envío por IRC (API de chat lista tras `CHAT_SEND=api`).
 - **Ninguna de las fases A, B1, B2 y C se ha probado todavía en un directo real** (ver «Pendiente de probar»).
 

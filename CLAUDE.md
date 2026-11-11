@@ -12,7 +12,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 - No hacer commit ni push salvo que se pida.
 - Las tareas nuevas empiezan en solo lectura salvo que se indique lo contrario.
 - Salidas largas a un fichero en `logs/` y resumen corto en el chat.
-- Tras cualquier cambio de código, ejecutar `npm test` y `npm run lint`; no dar la tarea por terminada si algo falla.
+- Tras cualquier cambio de código, ejecutar `npm test`, `npm run lint` y `npm run format:check` (si falla el formato, `npm run format`); no dar la tarea por terminada si algo falla.
 - Si se añade una función pura nueva, añadirle su test en `test/`.
 - Antes de desplegar cambios en prompts o filtros (`style.js`, `src/ai/quality/`, `factcheck.js`, `patterns.js`), ejecutar `npm run eval` (casos en `test/eval-cases.json`, informe en `logs/eval.txt`).
 - Al terminar cada tarea, actualizar `PROGRESS.md` (Hecho / Pendiente de probar en directo / Ideas futuras).
@@ -24,6 +24,7 @@ Bot de Twitch del canal "parlusorum": comandos, IA con Groq, trivia, alertas, ti
 npm start | npm run dev      # producción | --watch
 npm test                     # node --test sobre test/**/*.test.js
 npm run lint | lint:fix      # ESLint 9 (también en la CI)
+npm run format | format:check  # Prettier (comillas simples, 120 columnas; también en la CI)
 npm run check:eventsub       # lista suscripciones EventSub y marca callbacks obsoletos
 npm run eval                 # batería con la IA REAL (gasta Groq/IGDB; no va en npm test ni en la CI)
 npm run backup | chatlog | forget -- <login> [--dry-run] | bot-token
