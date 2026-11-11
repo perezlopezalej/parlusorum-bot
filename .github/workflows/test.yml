@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    name: Lint y tests
+    name: Lint, formato y tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
