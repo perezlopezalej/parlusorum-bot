@@ -10,12 +10,18 @@ const { translateGenres } = require('../src/utils/genres');
 const { formatJuegoLine } = require('../src/commands/juego');
 
 const realFetch = global.fetch;
-afterEach(() => { global.fetch = realFetch; invalidateAppAccessToken(); });
+afterEach(() => {
+  global.fetch = realFetch;
+  invalidateAppAccessToken();
+});
 
-const ok = body => ({ ok: true, status: 200, json: async () => body });
+const ok = (body) => ({ ok: true, status: 200, json: async () => body });
 const pbz = {
-  id: 250618, name: 'Phantom Blade Zero', first_release_date: 1793232000,
-  summary: 'Soul has sixty-six days to live.', storyline: 'SPOILER',
+  id: 250618,
+  name: 'Phantom Blade Zero',
+  first_release_date: 1793232000,
+  summary: 'Soul has sixty-six days to live.',
+  storyline: 'SPOILER',
   genres: [{ name: 'Role-playing (RPG)' }, { name: "Hack and slash/Beat 'em up" }],
   involved_companies: [
     { developer: true, publisher: true, company: { name: 'S-Game', country: 156 } },
@@ -58,11 +64,16 @@ describe('sin credenciales', () => {
     const id = process.env.CLIENT_ID;
     delete process.env.CLIENT_ID;
     let called = false;
-    global.fetch = async () => { called = true; return ok([]); };
+    global.fetch = async () => {
+      called = true;
+      return ok([]);
+    };
     try {
       await assert.rejects(igdb.searchGame('Algo'), /sin CLIENT_ID/);
       assert.equal(called, false);
-    } finally { process.env.CLIENT_ID = id; }
+    } finally {
+      process.env.CLIENT_ID = id;
+    }
   });
 });
 
@@ -111,7 +122,7 @@ describe('searchGame', () => {
   });
   test('"phantom blade 0" devuelve la edición: se piden los datos del juego base', async () => {
     const edition = { name: 'Phantom Blade Zero: Digital Deluxe Edition', version_parent: 250618 };
-    const calls = mock(n => ok(n === 1 ? [edition] : [pbz]));
+    const calls = mock((n) => ok(n === 1 ? [edition] : [pbz]));
     const info = await igdb.searchGame('phantom blade 0');
     assert.equal(info.name, 'Phantom Blade Zero');
     assert.match(calls[1].body, /where id = 250618/);
@@ -130,14 +141,17 @@ describe('searchGame', () => {
   });
   test('límite de IGDB: ≥ 250 ms entre peticiones aunque salgan a la vez', async () => {
     const starts = [];
-    global.fetch = async url => {
+    global.fetch = async (url) => {
       if (String(url).includes('id.twitch.tv')) return ok({ access_token: 'tok' });
       starts.push(Date.now());
       return ok([]);
     };
     await Promise.all([igdb.searchGame('uno'), igdb.searchGame('dos'), igdb.searchGame('tres')]);
     assert.equal(starts.length, 3);
-    assert.ok(starts[1] - starts[0] >= 250 && starts[2] - starts[1] >= 250, `separación: ${starts[1] - starts[0]}, ${starts[2] - starts[1]}`);
+    assert.ok(
+      starts[1] - starts[0] >= 250 && starts[2] - starts[1] >= 250,
+      `separación: ${starts[1] - starts[0]}, ${starts[2] - starts[1]}`,
+    );
   });
 });
 
@@ -152,7 +166,10 @@ describe('formatJuegoLine (!juego)', () => {
   const info = igdb.mapGame(pbz);
   test('géneros en español, año, desarrolladora y atribución de IGDB; sin nota', () => {
     const line = formatJuegoLine('Phantom Blade Zero', 'Primer directo', info);
-    assert.equal(line, '🎮 Phantom Blade Zero (2026) — Rol, Acción — Desarrolladora: S-Game | "Primer directo" · Datos: IGDB.com');
+    assert.equal(
+      line,
+      '🎮 Phantom Blade Zero (2026) — Rol, Acción — Desarrolladora: S-Game | "Primer directo" · Datos: IGDB.com',
+    );
     assert.doesNotMatch(line, /⭐|\/5/);
   });
   test('sin datos útiles → null (línea simple)', () => {
@@ -162,7 +179,8 @@ describe('formatJuegoLine (!juego)', () => {
 });
 
 describe('país de IGDB en el filtro de atributos', () => {
-  const data = 'Nombre: Phantom Blade Zero\nDesarrolladora: S-Game\nPaís de la desarrolladora: China\nGéneros: Role-playing (RPG)';
+  const data =
+    'Nombre: Phantom Blade Zero\nDesarrolladora: S-Game\nPaís de la desarrolladora: China\nGéneros: Role-playing (RPG)';
   test('con país en los datos, decir china es válido', () => {
     assert.equal(q.unsupportedAttributes('S-Game es un estudio chino', data), '');
     assert.equal(q.inventedCompany('La desarrolladora es S-Game, china', data), '');
@@ -171,10 +189,15 @@ describe('país de IGDB en el filtro de atributos', () => {
     assert.ok(q.unsupportedAttributes('S-Game es un estudio japonés', data));
   });
   test('sin país en los datos, no puede decir china', () => {
-    assert.ok(q.unsupportedAttributes('S-Game es un estudio chino', 'Nombre: Phantom Blade Zero\nDesarrolladora: S-Game'));
+    assert.ok(
+      q.unsupportedAttributes('S-Game es un estudio chino', 'Nombre: Phantom Blade Zero\nDesarrolladora: S-Game'),
+    );
   });
   test('países en español respaldados: Estados Unidos y Reino Unido', () => {
-    assert.equal(q.unsupportedAttributes('El estudio es estadounidense', 'País de la desarrolladora: Estados Unidos'), '');
+    assert.equal(
+      q.unsupportedAttributes('El estudio es estadounidense', 'País de la desarrolladora: Estados Unidos'),
+      '',
+    );
     assert.equal(q.unsupportedAttributes('El estudio es británico', 'País de la desarrolladora: Reino Unido'), '');
   });
   test('IGDB cuenta como fuga técnica y como cita de fuente', () => {
@@ -198,7 +221,14 @@ describe('búsqueda: casos reales de la comparativa', () => {
 
   test('Hell is Us: entre varios resultados elige el nombre completo, no "Hell-Hell"', () => {
     assert.equal(igdb.pickBest('Hell is Us', [hellHell, hellIsUs]).name, 'Hell Is Us');
-    assert.equal(igdb.pickBest('Hell is Us', [hellHell, { id: 3, name: 'Hell Is Us: Deluxe Edition', version_parent: 1 }, hellIsUs]).name, 'Hell Is Us');
+    assert.equal(
+      igdb.pickBest('Hell is Us', [
+        hellHell,
+        { id: 3, name: 'Hell Is Us: Deluxe Edition', version_parent: 1 },
+        hellIsUs,
+      ]).name,
+      'Hell Is Us',
+    );
   });
   test('Hell is Us: si solo sale "Hell-Hell" no se da por bueno', async () => {
     mockSeq(() => [hellHell]);
@@ -211,7 +241,7 @@ describe('búsqueda: casos reales de la comparativa', () => {
     assert.notEqual(classifyGameMatch('Hell ... ...', info.name), 'match');
   });
   test('phantom blade 0: si la primera búsqueda falla reintenta con "zero"', async () => {
-    const bodies = mockSeq(n => (n === 1 ? [] : [pbz]));
+    const bodies = mockSeq((n) => (n === 1 ? [] : [pbz]));
     const info = await igdb.searchGame('phantom blade 0');
     assert.equal(info.name, 'Phantom Blade Zero');
     assert.match(bodies[0], /search "phantom blade 0"/);
@@ -219,7 +249,7 @@ describe('búsqueda: casos reales de la comparativa', () => {
   });
   test('phantom blade 0: la edición que sale primero se resuelve al juego base', async () => {
     const edition = { name: 'Phantom Blade Zero: Digital Deluxe Edition', version_parent: 250618 };
-    const bodies = mockSeq(n => (n === 1 ? [edition] : [pbz]));
+    const bodies = mockSeq((n) => (n === 1 ? [edition] : [pbz]));
     assert.equal((await igdb.searchGame('phantom blade 0')).name, 'Phantom Blade Zero');
     assert.equal(bodies.length, 2);
   });

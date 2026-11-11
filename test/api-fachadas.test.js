@@ -100,7 +100,7 @@ const QUALITY = [
   'vetAuto',
   'wordListProblem',
   'wrongDayPart',
-  'wrongWeekday'
+  'wrongWeekday',
 ];
 
 test('src/ai/quality exporta exactamente su API pública', () => {
@@ -141,7 +141,7 @@ const HANDLER = [
   'restoreCooldowns',
   'runCohost',
   'startEventCohost',
-  'updateLastChatTime'
+  'updateLastChatTime',
 ];
 
 test('src/ai/handler exporta exactamente su API pública', () => {

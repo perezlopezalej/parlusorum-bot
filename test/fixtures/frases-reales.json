@@ -142,9 +142,7 @@
     "id": "f-manu-lleva-caidas-repetida",
     "filter": "cohost",
     "deaths": 16,
-    "usedStructures": [
-      "lleva-caidas"
-    ],
+    "usedStructures": ["lleva-caidas"],
     "input": "Manu lleva 16 caídas y el FUA ya se está preparando para la próxima, ¡a ver si sube de nivel!",
     "note": "Caso real 02-11: la fórmula 'Manu lleva X caídas y el FUA…' se repitió 6 veces; ya usada en este stream.",
     "expect": {
@@ -216,9 +214,7 @@
     "id": "f-genero-repetido",
     "filter": "timer_ia",
     "deaths": 47,
-    "recent": [
-      "Cuatro horas y media dándolo todo en este juego de rol y acción sin bajar los brazos."
-    ],
+    "recent": ["Cuatro horas y media dándolo todo en este juego de rol y acción sin bajar los brazos."],
     "input": "Seis horas y once minutos de directo con cuarenta y siete muertes a cuestas en este juego de rol y acción. El FUA ya merece nómina fija.",
     "note": "Caso real 03/04-11 (timer_ia): repite el género 'juego de rol y acción' en cada mensaje.",
     "expect": {
@@ -238,9 +234,7 @@
   {
     "id": "f-apertura-repetida",
     "filter": "timer_ia",
-    "recent": [
-      "Cuatro horas y media dándolo todo, el FUA no descansa."
-    ],
+    "recent": ["Cuatro horas y media dándolo todo, el FUA no descansa."],
     "input": "Seis horas y once minutos y el FUA sigue ahí.",
     "note": "Caso real 03/04-11 (timer_ia): todos los mensajes abrían con el tiempo de directo.",
     "expect": {

@@ -5,12 +5,21 @@
 const { excludedNames } = require('../utils/ai-pseudonym');
 
 const MIN_NAME_LEN = 3;
-const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Nicks válidos para sustituir: ≥3 letras, sin espacios, sin los excluidos; los más largos primero
 function cleanNicks(nicks, exclude = excludedNames(), minLen = MIN_NAME_LEN) {
-  return [...new Set((nicks || []).map(n => String(n || '').replace(/^@/, '').trim().toLowerCase()))]
-    .filter(n => n.length >= minLen && !/\s/.test(n) && !exclude.has(n))
+  return [
+    ...new Set(
+      (nicks || []).map((n) =>
+        String(n || '')
+          .replace(/^@/, '')
+          .trim()
+          .toLowerCase(),
+      ),
+    ),
+  ]
+    .filter((n) => n.length >= minLen && !/\s/.test(n) && !exclude.has(n))
     .sort((a, b) => b.length - a.length);
 }
 

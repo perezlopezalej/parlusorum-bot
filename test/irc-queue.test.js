@@ -3,13 +3,19 @@ const assert = require('node:assert/strict');
 const { wrapClientSay, _testHooks } = require('../src/utils/irc-ratelimit');
 const state = require('../src/utils/state');
 
-const wait = ms => new Promise(r => setTimeout(r, ms));
-const until = async (fn, ms = 2000) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await wait(5); };
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (fn, ms = 2000) => {
+  const t = Date.now();
+  while (!fn() && Date.now() - t < ms) await wait(5);
+};
 
 function makeClient({ sayImpl, open = true } = {}) {
   const sent = [];
   const client = {
-    say: async (ch, msg) => { if (sayImpl) await sayImpl(msg); sent.push(msg); },
+    say: async (ch, msg) => {
+      if (sayImpl) await sayImpl(msg);
+      sent.push(msg);
+    },
     readyState: () => (open ? 'OPEN' : 'CLOSED'),
   };
   wrapClientSay(client);
@@ -43,7 +49,14 @@ describe('cola IRC', () => {
 
   test('un say() que nunca contesta no deja la cola parada', async () => {
     let first = true;
-    const { client, sent } = makeClient({ sayImpl: () => { if (first) { first = false; return new Promise(() => {}); } } });
+    const { client, sent } = makeClient({
+      sayImpl: () => {
+        if (first) {
+          first = false;
+          return new Promise(() => {});
+        }
+      },
+    });
     client.say('#c', 'colgado');
     client.say('#c', 'siguiente');
     await until(() => sent.length >= 1);
@@ -52,7 +65,14 @@ describe('cola IRC', () => {
 
   test('un say() que lanza no impide enviar los siguientes', async () => {
     let first = true;
-    const { client, sent } = makeClient({ sayImpl: async () => { if (first) { first = false; throw new Error('boom'); } } });
+    const { client, sent } = makeClient({
+      sayImpl: async () => {
+        if (first) {
+          first = false;
+          throw new Error('boom');
+        }
+      },
+    });
     client.say('#c', 'falla');
     client.say('#c', 'sigue');
     await until(() => sent.length >= 1);

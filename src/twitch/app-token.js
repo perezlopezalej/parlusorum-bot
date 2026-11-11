@@ -15,8 +15,8 @@ async function getAppAccessToken() {
       body: new URLSearchParams({
         client_id: process.env.CLIENT_ID,
         client_secret: process.env.CLIENT_SECRET,
-        grant_type: 'client_credentials'
-      })
+        grant_type: 'client_credentials',
+      }),
     });
     const data = await res.json();
     if (data.access_token) {

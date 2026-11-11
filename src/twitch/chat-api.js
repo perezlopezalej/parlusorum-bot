@@ -18,10 +18,21 @@ let disabledUntil = 0;
 let deps = { fetch: (...a) => fetch(...a), now: () => Date.now() };
 
 // Solo para tests
-function _setDeps(d) { deps = { ...deps, ...d }; botUserId = d.botUserId !== undefined ? d.botUserId : botUserId; if (d.reset) { disabledUntil = 0; } }
+function _setDeps(d) {
+  deps = { ...deps, ...d };
+  botUserId = d.botUserId !== undefined ? d.botUserId : botUserId;
+  if (d.reset) {
+    disabledUntil = 0;
+  }
+}
 
 class ChatApiError extends Error {
-  constructor(message, { status, auth = false } = {}) { super(message); this.name = 'ChatApiError'; this.status = status; this.auth = auth; }
+  constructor(message, { status, auth = false } = {}) {
+    super(message);
+    this.name = 'ChatApiError';
+    this.status = status;
+    this.auth = auth;
+  }
 }
 
 async function helix(path, { method = 'GET', body, retry = true } = {}) {
@@ -29,10 +40,17 @@ async function helix(path, { method = 'GET', body, retry = true } = {}) {
   if (!token) throw new ChatApiError('sin app token');
   const res = await deps.fetch(`${HELIX}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, 'Client-Id': process.env.CLIENT_ID, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Client-Id': process.env.CLIENT_ID,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 401 && retry) { invalidateAppAccessToken(); return helix(path, { method, body, retry: false }); }
+  if (res.status === 401 && retry) {
+    invalidateAppAccessToken();
+    return helix(path, { method, body, retry: false });
+  }
   return res;
 }
 
@@ -50,18 +68,26 @@ async function resolveBotUserId() {
 // Devuelve { sent: true, id } | { sent: false, reason } (Twitch lo recibió pero lo descartó: automod, duplicado...).
 // Lanza ChatApiError si no se pudo usar la API (el llamador recurre a IRC).
 async function sendChatMessage(message, { replyTo } = {}) {
-  if (deps.now() < disabledUntil) throw new ChatApiError('API desactivada temporalmente por autorización', { auth: true });
+  if (deps.now() < disabledUntil)
+    throw new ChatApiError('API desactivada temporalmente por autorización', { auth: true });
   const sender = await resolveBotUserId();
   const res = await helix('/chat/messages', {
     method: 'POST',
-    body: { broadcaster_id: String(channelConfig.broadcaster_id), sender_id: String(sender), message: String(message).slice(0, 500), ...(replyTo ? { reply_parent_message_id: replyTo } : {}) },
+    body: {
+      broadcaster_id: String(channelConfig.broadcaster_id),
+      sender_id: String(sender),
+      message: String(message).slice(0, 500),
+      ...(replyTo ? { reply_parent_message_id: replyTo } : {}),
+    },
   });
   if (res.status === 429) throw new ChatApiError('límite de la API de chat', { status: 429 });
   if (!res.ok) {
     const auth = [400, 401, 403].includes(res.status);
     if (auth) {
       disabledUntil = deps.now() + DISABLE_ON_AUTH_MS;
-      logger.warn(`Chat API: HTTP ${res.status}; faltan permisos (bot: user:write:chat + user:bot; canal: channel:bot o bot moderador). Uso IRC ${DISABLE_ON_AUTH_MS / 60000} min.`);
+      logger.warn(
+        `Chat API: HTTP ${res.status}; faltan permisos (bot: user:write:chat + user:bot; canal: channel:bot o bot moderador). Uso IRC ${DISABLE_ON_AUTH_MS / 60000} min.`,
+      );
     }
     throw new ChatApiError(`HTTP ${res.status}`, { status: res.status, auth });
   }

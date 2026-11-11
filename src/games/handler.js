@@ -3,8 +3,22 @@ const { aiChat } = require('../utils/ai-router');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
 const { canMakeRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
-const { setTriviaActive, getTriviaStats, registrarAcierto, registrarFallo, bumpTriviaStreak, getTriviaTopCache, setTriviaTopCache, invalidateTriviaTopCache } = require('../utils/state');
-const { incrementUserCounter, getCounterLeaderboard, getRecentSessionDeaths, getLoreRows } = require('../utils/supabase');
+const {
+  setTriviaActive,
+  getTriviaStats,
+  registrarAcierto,
+  registrarFallo,
+  bumpTriviaStreak,
+  getTriviaTopCache,
+  setTriviaTopCache,
+  invalidateTriviaTopCache,
+} = require('../utils/state');
+const {
+  incrementUserCounter,
+  getCounterLeaderboard,
+  getRecentSessionDeaths,
+  getLoreRows,
+} = require('../utils/supabase');
 const { touchesAvoidedTopic } = require('../lore/handler');
 const { sanitizeForAI } = require('../utils/filter');
 const { buildChannelQuestion } = require('./channel-questions');
@@ -48,7 +62,10 @@ const triviaQuestions = [
   { question: '¿ParLusorum es un streamer o una pareja de streamers?', answer: 'pareja' },
   { question: '¿En qué juego cooperativo han jugado juntos ParLusorum?', answer: 'it takes two' },
   { question: '¿De qué mitología trata Black Myth: Wukong?', answer: 'china' },
-  { question: '¿Cómo se llama el juego de supervivencia post-apocalíptico que han jugado en el canal?', answer: 'the last of us part ii remastered' },
+  {
+    question: '¿Cómo se llama el juego de supervivencia post-apocalíptico que han jugado en el canal?',
+    answer: 'the last of us part ii remastered',
+  },
 ];
 
 let activeTriviaQuestion = null;
@@ -66,7 +83,11 @@ const RECENT_PER_GAME = 15;
 const recentQuestions = new Map(); // game -> [question]
 
 function questionWords(text) {
-  return new Set(normalizeAnswer(text).split(' ').filter(w => w.length > 2));
+  return new Set(
+    normalizeAnswer(text)
+      .split(' ')
+      .filter((w) => w.length > 2),
+  );
 }
 
 function isSimilarQuestion(a, b) {
@@ -79,7 +100,7 @@ function isSimilarQuestion(a, b) {
 }
 
 function isRecentQuestion(game, question) {
-  return (recentQuestions.get(game) || []).some(r => isSimilarQuestion(r, question));
+  return (recentQuestions.get(game) || []).some((r) => isSimilarQuestion(r, question));
 }
 
 function rememberQuestion(game, question) {
@@ -94,17 +115,24 @@ const CHANNEL_QUESTION_CHANCE = 0.25;
 const CHANNEL_KEY = '__canal__';
 
 async function getChannelQuestion() {
-  const [sessions, [champion], loreRows] = await Promise.all([getRecentSessionDeaths(50), getTop(1), getLoreRows(['active'])]);
+  const [sessions, [champion], loreRows] = await Promise.all([
+    getRecentSessionDeaths(50),
+    getTop(1),
+    getLoreRows(['active']),
+  ]);
   const lore = loreRows
-    .map(r => ({ kind: r.kind, term: sanitizeForAI(r.term) }))
-    .filter(r => r.term && !touchesAvoidedTopic(r.term));
-  const picked = buildChannelQuestion({ sessions, champion, lore }, { isRecent: question => isRecentQuestion(CHANNEL_KEY, question) });
+    .map((r) => ({ kind: r.kind, term: sanitizeForAI(r.term) }))
+    .filter((r) => r.term && !touchesAvoidedTopic(r.term));
+  const picked = buildChannelQuestion(
+    { sessions, champion, lore },
+    { isRecent: (question) => isRecentQuestion(CHANNEL_KEY, question) },
+  );
   if (!picked) return null;
   rememberQuestion(CHANNEL_KEY, picked.question);
   return { ...picked, aliases: picked.aliases || [], pistas: buildHints(picked.answer), game: null, ts: Date.now() };
 }
 
-const winsText = n => `${n} ${n === 1 ? 'victoria' : 'victorias'}`;
+const winsText = (n) => `${n} ${n === 1 ? 'victoria' : 'victorias'}`;
 
 // --- Normalización, similitud y pistas ---
 const ARTICLES = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'the', 'a', 'an']);
@@ -112,27 +140,55 @@ const CONNECTORS = new Set(['de', 'del', 'y', 'en']);
 const SIMILARITY_THRESHOLD = 0.85;
 
 function normalizeAnswer(text) {
-  const words = String(text || '').toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const words = String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/).filter(Boolean);
-  const noArticles = words.filter(w => !ARTICLES.has(w));
+    .split(/\s+/)
+    .filter(Boolean);
+  const noArticles = words.filter((w) => !ARTICLES.has(w));
   const base = noArticles.length ? noArticles : words;
   // Conectores solo se ignoran en respuestas de varias palabras
-  const noConnectors = base.length > 1 ? base.filter(w => !CONNECTORS.has(w)) : base;
+  const noConnectors = base.length > 1 ? base.filter((w) => !CONNECTORS.has(w)) : base;
   return (noConnectors.length ? noConnectors : base).join(' ');
 }
 
-const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const MONTHS = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
 
 // Devuelve { d, m, y } si el texto es una fecha completa ("22 de junio de 2023", "22 junio 2023", "22/06/2023", "2023-06-22")
 function parseDate(text) {
-  const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  const t = String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim();
   let d, m, y, r;
-  if ((r = t.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/))) { y = +r[1]; m = +r[2]; d = +r[3]; }
-  else if ((r = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/))) { d = +r[1]; m = +r[2]; y = +r[3]; }
-  else if ((r = t.match(/^(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})$/))) {
-    d = +r[1]; m = MONTHS.indexOf(r[2]) + 1; y = +r[3];
+  if ((r = t.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/))) {
+    y = +r[1];
+    m = +r[2];
+    d = +r[3];
+  } else if ((r = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/))) {
+    d = +r[1];
+    m = +r[2];
+    y = +r[3];
+  } else if ((r = t.match(/^(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})$/))) {
+    d = +r[1];
+    m = MONTHS.indexOf(r[2]) + 1;
+    y = +r[3];
   } else return null;
   return m >= 1 && m <= 12 && d >= 1 && d <= 31 ? { d, m, y } : null;
 }
@@ -152,7 +208,7 @@ function levenshtein(a, b) {
 }
 
 function isAnswerMatch(message, answer, aliases = []) {
-  return [answer, ...aliases].some(a => isSingleMatch(message, a));
+  return [answer, ...aliases].some((a) => isSingleMatch(message, a));
 }
 
 function isSingleMatch(message, answer) {
@@ -177,7 +233,9 @@ function buildHints(answer) {
   const words = String(answer).trim().split(/\s+/).filter(Boolean);
   const letters = words.join('').length;
   const unit = /^\d+$/.test(words.join('')) ? ['cifra', 'cifras'] : ['letra', 'letras'];
-  const hints = [`${words.length > 1 ? `${words.length} palabras, ` : ''}${letters} ${letters === 1 ? unit[0] : unit[1]}`];
+  const hints = [
+    `${words.length > 1 ? `${words.length} palabras, ` : ''}${letters} ${letters === 1 ? unit[0] : unit[1]}`,
+  ];
   if (letters >= 5) {
     const first = words[0][0].toUpperCase();
     const mask = words.map((w, i) => (i === 0 ? first + '_'.repeat(w.length - 1) : '_'.repeat(w.length))).join(' ');
@@ -204,11 +262,13 @@ async function handleTrivia(client, channel) {
 }
 
 async function startTrivia(client, channel) {
-
   let q = null;
 
   if (Math.random() < CHANNEL_QUESTION_CHANCE) {
-    q = await getChannelQuestion().catch(err => { logger.warn(`Trivia canal: ${err.message}`); return null; });
+    q = await getChannelQuestion().catch((err) => {
+      logger.warn(`Trivia canal: ${err.message}`);
+      return null;
+    });
   }
 
   if (!q && canMakeRequest()) {
@@ -216,9 +276,12 @@ async function startTrivia(client, channel) {
       const gameInfo = await getCurrentGame();
       const game = gameInfo?.game;
       if (game) {
-        if (lastGeneratedQuestion && lastGeneratedQuestion.game === game &&
-            Date.now() - lastGeneratedQuestion.ts < GENERATED_TTL &&
-            !isRecentQuestion(game, lastGeneratedQuestion.question)) {
+        if (
+          lastGeneratedQuestion &&
+          lastGeneratedQuestion.game === game &&
+          Date.now() - lastGeneratedQuestion.ts < GENERATED_TTL &&
+          !isRecentQuestion(game, lastGeneratedQuestion.question)
+        ) {
           q = lastGeneratedQuestion;
         } else {
           const stats = getTriviaStats();
@@ -232,40 +295,59 @@ async function startTrivia(client, channel) {
           const gi = await getGameInfo(game, { detail: true });
           if (gi?.description && gi.description.length >= 80 && (gi.developers || gi.released)) {
             const recientes = recentQuestions.get(game) || [];
-            const evitar = recientes.length ? `\nNO repitas ni imites estas preguntas ya hechas:\n- ${recientes.join('\n- ')}` : '';
+            const evitar = recientes.length
+              ? `\nNO repitas ni imites estas preguntas ya hechas:\n- ${recientes.join('\n- ')}`
+              : '';
             const datos = [
               `Nombre: ${gi.name}`,
               gi.released ? `Fecha de salida: ${gi.released}` : null,
               gi.developers ? `Desarrolladora: ${gi.developers}` : null,
               gi.genres ? `Géneros: ${gi.genres}` : null,
-              `Descripción (puede estar en inglés): ${gi.description}`
-            ].filter(Boolean).join('\n');
+              `Descripción (puede estar en inglés): ${gi.description}`,
+            ]
+              .filter(Boolean)
+              .join('\n');
             const response = await aiChat('trivia', {
               max_tokens: 500,
               reasoning_effort: 'low',
-              tools: [{
-                type: 'function',
-                function: {
-                  name: 'generate_trivia',
-                  description: 'Genera una pregunta de trivia sobre el juego actual usando solo los datos dados',
-                  parameters: {
-                    type: 'object',
-                    properties: {
-                      pregunta:           { type: 'string', description: 'En español, máx. 150 caracteres' },
-                      respuesta_correcta: { type: 'string', description: 'En español o nombre propio, 1-3 palabras, sin frases' },
-                      respuestas_alternativas: { type: 'array', items: { type: 'string' }, description: 'Otras respuestas válidas: nombre original en inglés, siglas o variantes habituales (puede ir vacío)' },
-                      dificultad:         { type: 'string', enum: ['facil', 'media', 'dificil'] },
-                      curiosidad:         { type: 'string', description: 'En español, máx. 120 caracteres, sacada de los datos' }
+              tools: [
+                {
+                  type: 'function',
+                  function: {
+                    name: 'generate_trivia',
+                    description: 'Genera una pregunta de trivia sobre el juego actual usando solo los datos dados',
+                    parameters: {
+                      type: 'object',
+                      properties: {
+                        pregunta: { type: 'string', description: 'En español, máx. 150 caracteres' },
+                        respuesta_correcta: {
+                          type: 'string',
+                          description: 'En español o nombre propio, 1-3 palabras, sin frases',
+                        },
+                        respuestas_alternativas: {
+                          type: 'array',
+                          items: { type: 'string' },
+                          description:
+                            'Otras respuestas válidas: nombre original en inglés, siglas o variantes habituales (puede ir vacío)',
+                        },
+                        dificultad: { type: 'string', enum: ['facil', 'media', 'dificil'] },
+                        curiosidad: {
+                          type: 'string',
+                          description: 'En español, máx. 120 caracteres, sacada de los datos',
+                        },
+                      },
+                      required: ['pregunta', 'respuesta_correcta', 'dificultad', 'curiosidad'],
                     },
-                    required: ['pregunta', 'respuesta_correcta', 'dificultad', 'curiosidad']
-                  }
-                }
-              }],
+                  },
+                },
+              ],
               tool_choice: { type: 'function', function: { name: 'generate_trivia' } },
-              messages: [{
-                role: 'user',
-                content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nUsa EXCLUSIVAMENTE estos datos: la pregunta, la respuesta y la curiosidad deben salir SOLO de ellos; no añadas nada de tu memoria.\nRedacta SIEMPRE en español (traduce lo que esté en inglés): la pregunta y la respuesta principal en español; en respuestas_alternativas pon el nombre original en inglés, siglas o variantes habituales. La respuesta debe ser de 1-3 palabras y no debe aparecer en la pregunta. Si la pregunta es sobre una fecha, pregunta preferentemente solo por el año (respuesta de 4 dígitos, fácil de escribir en el chat).\nREGLA ANTI-SPOILERS: el streamer está jugando este juego ahora mismo. La pregunta, la respuesta y la curiosidad NO pueden revelar giros de la trama, muertes de personajes, identidades secretas ni el final, aunque aparezcan en los datos. Céntrate en datos del juego: estudio, año, género, mecánicas, ambientación y personajes principales tal como se presentan al inicio.${dificultadHint}${evitar}\n\nDATOS:\n${datos}`
-              }]
+              messages: [
+                {
+                  role: 'user',
+                  content: `Genera una pregunta de trivia sobre el videojuego "${game}" para un chat de Twitch.\nUsa EXCLUSIVAMENTE estos datos: la pregunta, la respuesta y la curiosidad deben salir SOLO de ellos; no añadas nada de tu memoria.\nRedacta SIEMPRE en español (traduce lo que esté en inglés): la pregunta y la respuesta principal en español; en respuestas_alternativas pon el nombre original en inglés, siglas o variantes habituales. La respuesta debe ser de 1-3 palabras y no debe aparecer en la pregunta. Si la pregunta es sobre una fecha, pregunta preferentemente solo por el año (respuesta de 4 dígitos, fácil de escribir en el chat).\nREGLA ANTI-SPOILERS: el streamer está jugando este juego ahora mismo. La pregunta, la respuesta y la curiosidad NO pueden revelar giros de la trama, muertes de personajes, identidades secretas ni el final, aunque aparezcan en los datos. Céntrate en datos del juego: estudio, año, género, mecánicas, ambientación y personajes principales tal como se presentan al inicio.${dificultadHint}${evitar}\n\nDATOS:\n${datos}`,
+                },
+              ],
             });
             const choice = response.choices[0];
             if (choice?.finish_reason === 'length') logger.warn('Trivia Groq: respuesta cortada por max_tokens');
@@ -276,7 +358,9 @@ async function startTrivia(client, channel) {
               logger.info('Trivia Groq: pregunta repetida, uso banco estático');
             } else if (args.pregunta && answer && !normalizeAnswer(args.pregunta).includes(normalizeAnswer(answer))) {
               const aliases = (Array.isArray(args.respuestas_alternativas) ? args.respuestas_alternativas : [])
-                .map(a => String(a || '').trim()).filter(Boolean).slice(0, 6);
+                .map((a) => String(a || '').trim())
+                .filter(Boolean)
+                .slice(0, 6);
               q = {
                 question: truncate(args.pregunta, 200),
                 answer: answer.toLowerCase(),
@@ -284,7 +368,7 @@ async function startTrivia(client, channel) {
                 pistas: buildHints(answer),
                 curiosidad: truncate(args.curiosidad || '', 150),
                 game,
-                ts: Date.now()
+                ts: Date.now(),
               };
               lastGeneratedQuestion = q;
             }
@@ -313,7 +397,12 @@ async function startTrivia(client, channel) {
 
   const hasPistas = q.pistas.length > 0;
   const totalSecs = Math.round(TRIVIA_DURATION_MS / 1000);
-  client.say(channel, truncate(`🧠 TRIVIA: ${q.question} (${totalSecs}s${hasPistas ? ' — habrá pistas si nadie responde' : ' para responder'})`));
+  client.say(
+    channel,
+    truncate(
+      `🧠 TRIVIA: ${q.question} (${totalSecs}s${hasPistas ? ' — habrá pistas si nadie responde' : ' para responder'})`,
+    ),
+  );
   scheduleNextTriviaPhase(client, channel);
 }
 
@@ -324,21 +413,27 @@ function scheduleNextTriviaPhase(client, channel) {
   if (!q) return;
   const pistas = q.pistas || [];
 
-  triviaTimeout = setTimeout(() => {
-    if (!activeTriviaQuestion) return;
-    if (triviaHintStage < pistas.length) {
-      client.say(channel, truncate(`💡 Pista ${triviaHintStage + 1}: ${pistas[triviaHintStage]}`));
-      triviaHintStage++;
-      scheduleNextTriviaPhase(client, channel);
-    } else {
-      const curiosidadTimeout = activeTriviaQuestion.curiosidad ? ` 💡 ${activeTriviaQuestion.curiosidad}` : '';
-      client.say(channel, truncate(`⏰ ¡Tiempo! La respuesta era: ${activeTriviaQuestion.answer}${curiosidadTimeout}`));
-      activeTriviaQuestion = null;
-      triviaHintStage = 0;
-      registrarFallo();
-      setTriviaActive(false);
-    }
-  }, Math.round(TRIVIA_DURATION_MS / (pistas.length + 1)));
+  triviaTimeout = setTimeout(
+    () => {
+      if (!activeTriviaQuestion) return;
+      if (triviaHintStage < pistas.length) {
+        client.say(channel, truncate(`💡 Pista ${triviaHintStage + 1}: ${pistas[triviaHintStage]}`));
+        triviaHintStage++;
+        scheduleNextTriviaPhase(client, channel);
+      } else {
+        const curiosidadTimeout = activeTriviaQuestion.curiosidad ? ` 💡 ${activeTriviaQuestion.curiosidad}` : '';
+        client.say(
+          channel,
+          truncate(`⏰ ¡Tiempo! La respuesta era: ${activeTriviaQuestion.answer}${curiosidadTimeout}`),
+        );
+        activeTriviaQuestion = null;
+        triviaHintStage = 0;
+        registrarFallo();
+        setTriviaActive(false);
+      }
+    },
+    Math.round(TRIVIA_DURATION_MS / (pistas.length + 1)),
+  );
 }
 
 function checkTriviaAnswer(client, channel, tags, message) {
@@ -353,8 +448,9 @@ function checkTriviaAnswer(client, channel, tags, message) {
     triviaHintStage = 0;
     registrarAcierto();
     setTriviaActive(false);
-    announceWin(client, channel, username, curiosidadWin, userId)
-      .catch(err => logger.error(`Trivia ranking: ${err.message}`));
+    announceWin(client, channel, username, curiosidadWin, userId).catch((err) =>
+      logger.error(`Trivia ranking: ${err.message}`),
+    );
   }
 }
 
@@ -375,7 +471,7 @@ async function announceWin(client, channel, username, curiosidad, userId = null)
   if (wins) {
     invalidateTriviaTopCache();
     const top = await getTop(5);
-    const position = top.findIndex(r => r.userId === userId) + 1;
+    const position = top.findIndex((r) => r.userId === userId) + 1;
     const vars = { username, wins: winsText(wins), streak, position };
     if (position === 1 && wins > 1) text = fill(msgs.win_champion, vars);
     else if (streak >= 2) text = fill(msgs.win_streak, vars);
@@ -392,16 +488,19 @@ async function handleTop(client, channel) {
     return;
   }
   const medals = ['🥇', '🥈', '🥉', '4º', '5º'];
-  client.say(channel, truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${winsText(r.count)})`).join(' · ')));
+  client.say(
+    channel,
+    truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${winsText(r.count)})`).join(' · ')),
+  );
 }
 
 function handle(client, channel, tags, command) {
   switch (command) {
     case 'trivia':
-      handleTrivia(client, channel).catch(err => logger.error(`Trivia: ${err.message}`));
+      handleTrivia(client, channel).catch((err) => logger.error(`Trivia: ${err.message}`));
       return;
     case 'top':
-      handleTop(client, channel).catch(err => logger.error(`!top: ${err.message}`));
+      handleTop(client, channel).catch((err) => logger.error(`!top: ${err.message}`));
       return;
   }
 }

@@ -9,8 +9,21 @@ const { getEventSubLiveStatus } = require('./common');
 
 // --- Deteccion de highlights para stream markers ---
 const highlightKeywords = [
-  'clip', 'clipa', 'clipalo', 'marca', 'wtf', 'wow', 'fua',
-  'increible', 'brutal', 'epico', 'epica', 'locura', 'boom', 'gg', 'no puede ser'
+  'clip',
+  'clipa',
+  'clipalo',
+  'marca',
+  'wtf',
+  'wow',
+  'fua',
+  'increible',
+  'brutal',
+  'epico',
+  'epica',
+  'locura',
+  'boom',
+  'gg',
+  'no puede ser',
 ];
 
 const recentHighlightMsgs = [];
@@ -29,15 +42,15 @@ async function checkForHighlight(client, channel, message, userId) {
   if (now - lastMarkerTime < MARKER_COOLDOWN) return;
 
   const lower = message.toLowerCase();
-  if (!highlightKeywords.some(kw => lower.includes(kw))) return;
+  if (!highlightKeywords.some((kw) => lower.includes(kw))) return;
 
   recentHighlightMsgs.push({ ts: now, message, userId });
   while (recentHighlightMsgs.length > 0 && recentHighlightMsgs[0].ts < now - HIGHLIGHT_WINDOW) {
     recentHighlightMsgs.shift();
   }
 
-  if (new Set(recentHighlightMsgs.map(e => e.userId)).size >= HIGHLIGHT_THRESHOLD) {
-    const triggerMessages = recentHighlightMsgs.map(e => e.message);
+  if (new Set(recentHighlightMsgs.map((e) => e.userId)).size >= HIGHLIGHT_THRESHOLD) {
+    const triggerMessages = recentHighlightMsgs.map((e) => e.message);
     recentHighlightMsgs.length = 0;
     lastMarkerTime = now;
     addNarrativeEvent('victory', 'El chat explotó — momento épico detectado automáticamente');
@@ -48,7 +61,9 @@ async function checkForHighlight(client, channel, message, userId) {
 
     if (markerCreated) {
       saveHighlight(triggerMessages, markerResult.id, 'Momento epico detectado por el chat')
-        .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
+        .then((r) => {
+          if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`);
+        })
         .catch(() => {});
     }
     client.say(channel, truncate(template(markerCreated ? 'highlight_marker' : 'highlight')));
@@ -111,10 +126,10 @@ async function checkEmoteSpam(client, channel, tags, message) {
     }
     const entries = recentEmoteUse.get(token);
     entries.push({ user: username, ts: now });
-    const fresh = entries.filter(e => e.ts > now - EMOTE_WINDOW_MS);
+    const fresh = entries.filter((e) => e.ts > now - EMOTE_WINDOW_MS);
     recentEmoteUse.set(token, fresh);
 
-    const uniqueUsers = new Set(fresh.map(e => e.user)).size;
+    const uniqueUsers = new Set(fresh.map((e) => e.user)).size;
     if (uniqueUsers >= EMOTE_SPAM_THRESHOLD) {
       lastEmoteCommentTime = now;
       recentEmoteUse.delete(token);
@@ -126,7 +141,7 @@ async function checkEmoteSpam(client, channel, tags, message) {
   // Limpieza ocasional del mapa
   if (Math.random() < 0.03) {
     for (const [k, v] of recentEmoteUse) {
-      const fresh = v.filter(e => e.ts > now - EMOTE_WINDOW_MS);
+      const fresh = v.filter((e) => e.ts > now - EMOTE_WINDOW_MS);
       if (fresh.length === 0) recentEmoteUse.delete(k);
       else recentEmoteUse.set(k, fresh);
     }
@@ -149,9 +164,9 @@ function isCapsMessage(msg) {
   // \p{Lu} = letras mayúsculas Unicode
   // Nota: regex Unicode es ~3x más lento que ASCII pero
   // necesario para chats en español
-  const letters = [...msg].filter(c => /\p{L}/u.test(c));
+  const letters = [...msg].filter((c) => /\p{L}/u.test(c));
   if (letters.length < 8) return false;
-  return letters.filter(c => /\p{Lu}/u.test(c)).length / letters.length >= 0.7;
+  return letters.filter((c) => /\p{Lu}/u.test(c)).length / letters.length >= 0.7;
 }
 
 async function checkCapsRage(client, channel, tags, message) {
@@ -164,7 +179,7 @@ async function checkCapsRage(client, channel, tags, message) {
   capsMessages.push({ user: username, ts: now });
   while (capsMessages.length > 0 && capsMessages[0].ts < now - CAPS_WINDOW_MS) capsMessages.shift();
 
-  const uniqueUsers = new Set(capsMessages.map(e => e.user)).size;
+  const uniqueUsers = new Set(capsMessages.map((e) => e.user)).size;
   if (uniqueUsers >= CAPS_THRESHOLD) {
     lastCapsCommentTime = now;
     setLastCapsRageTime(now);

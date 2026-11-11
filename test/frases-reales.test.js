@@ -15,19 +15,34 @@ const cases = require('./fixtures/frases-reales.json');
 function verdict(c) {
   const deaths = c.deaths ?? 5;
   const ctx = {
-    deathCount: deaths, recent: c.recent || [], named: new Map(), now: c.at ? new Date(c.at).getTime() : Date.now(),
-    currentGame: c.game || 'Phantom Blade Zero', channelGames: [], usedStructures: new Set(c.usedStructures || []),
-    lastCitedDeaths: !!c.lastCitedDeaths, player: c.player || 'manu',
+    deathCount: deaths,
+    recent: c.recent || [],
+    named: new Map(),
+    now: c.at ? new Date(c.at).getTime() : Date.now(),
+    currentGame: c.game || 'Phantom Blade Zero',
+    channelGames: [],
+    usedStructures: new Set(c.usedStructures || []),
+    lastCitedDeaths: !!c.lastCitedDeaths,
+    player: c.player || 'manu',
   };
   switch (c.filter) {
-    case 'cohost': return quality.validateCohost(c.input, ctx).ok;
-    case 'timer_ia': return quality.validateTimerIA(c.input, ctx).ok;
-    case 'hook': return quality.validateHook(c.input, ctx).ok;
-    case 'mention': return quality.validateMention(c.input, { question: c.question || '', player: ctx.player, names: c.names || [] }).ok;
-    case 'inject': return !containsBlockedContent(c.input);
-    case 'shutup': return classifyMessage(c.input, {}, { botNames: ['dios_fua'] }) !== 'shutup';
-    case 'summary': return !summaryProblem(c.input);
-    default: throw new Error(`filtro desconocido: ${c.filter}`);
+    case 'cohost':
+      return quality.validateCohost(c.input, ctx).ok;
+    case 'timer_ia':
+      return quality.validateTimerIA(c.input, ctx).ok;
+    case 'hook':
+      return quality.validateHook(c.input, ctx).ok;
+    case 'mention':
+      return quality.validateMention(c.input, { question: c.question || '', player: ctx.player, names: c.names || [] })
+        .ok;
+    case 'inject':
+      return !containsBlockedContent(c.input);
+    case 'shutup':
+      return classifyMessage(c.input, {}, { botNames: ['dios_fua'] }) !== 'shutup';
+    case 'summary':
+      return !summaryProblem(c.input);
+    default:
+      throw new Error(`filtro desconocido: ${c.filter}`);
   }
 }
 

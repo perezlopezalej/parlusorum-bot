@@ -9,15 +9,22 @@ const timers = require('../config/commands.json').timers;
 
 // Mensajes reales del directo del 29-10-2026 (logs/chat-2026-10-29.txt)
 const REAL = {
-  cohostArmas: 'Los jefes están sacando armas de fuego y las espadones se están volviendo casi como escudos en esta fase.',
-  cohostFase4: 'Es perfecto que el chat esté recordando el combo esquivar‑parry; el jefe de la fase 4 solo tiene esa ventana cuando su ataque rojo aparece, así que es la clave para evitar ese daño crítico.',
-  cohostBarra: 'Manu, la clave es sincronizar el cambio de arma justo cuando la barra amarilla toca el punto crítico; así evitas el daño y mantienes el flujo.',
+  cohostArmas:
+    'Los jefes están sacando armas de fuego y las espadones se están volviendo casi como escudos en esta fase.',
+  cohostFase4:
+    'Es perfecto que el chat esté recordando el combo esquivar‑parry; el jefe de la fase 4 solo tiene esa ventana cuando su ataque rojo aparece, así que es la clave para evitar ese daño crítico.',
+  cohostBarra:
+    'Manu, la clave es sincronizar el cambio de arma justo cuando la barra amarilla toca el punto crítico; así evitas el daño y mantienes el flujo.',
   cohostTorre: 'La torre sigue dándole reto, pero con un poco de atención al detalle todo se puede sortear.',
-  cohostMuerte: 'Muerte #1 del streamer a 11 minutos, parece que el combo de enemigos está más agresivo de lo esperado.',
+  cohostMuerte:
+    'Muerte #1 del streamer a 11 minutos, parece que el combo de enemigos está más agresivo de lo esperado.',
   timerCombo: 'Curioso que el combo espada‑disparo tenga recarga tan corta, perfecto para lanzar FUAs sin pausa.',
-  timerFicha: 'Phantom Blade Zero se cree el rey del hack‑and‑slash, pero a veces parece más un tutorial de cómo tropezar con los enemigos ‒ ¡FUA y a seguir cortando!',
-  timerNota: 'Phantom Blade Zero parece que se quedó atrapado en modo “beta eternamente”, pero con cada golpe te sientes como dios fua en su trono de espadas. 3.33/5 en la ficha, ¡así que a darle FUA a esos jefes!',
-  timerCorto: 'Phantom Blade Zero se cree el rey del hack‑n‑slash y termina siendo un “cortito de nivel medio” 3.33/5… ¡pero al menos nos da buen rollo para lanzar el FUA!',
+  timerFicha:
+    'Phantom Blade Zero se cree el rey del hack‑and‑slash, pero a veces parece más un tutorial de cómo tropezar con los enemigos ‒ ¡FUA y a seguir cortando!',
+  timerNota:
+    'Phantom Blade Zero parece que se quedó atrapado en modo “beta eternamente”, pero con cada golpe te sientes como dios fua en su trono de espadas. 3.33/5 en la ficha, ¡así que a darle FUA a esos jefes!',
+  timerCorto:
+    'Phantom Blade Zero se cree el rey del hack‑n‑slash y termina siendo un “cortito de nivel medio” 3.33/5… ¡pero al menos nos da buen rollo para lanzar el FUA!',
   timerOk: '¡Otra hora de directo y el FUA sigue sin cansarse, chat!',
   hookOk: 'Cuantas muertes creeis que habra hoy? 💀',
   hookJefe: 'Phantom Blade Zero te lanza combos brutales, pero el FUA es la única arma contra esos jefes imposibles.',
@@ -32,7 +39,10 @@ describe('mecánicas y desprecio del juego en mensajes automáticos', () => {
     }
   });
   test('cohost sin juego pasa', () => {
-    assert.equal(q.validateCohost('Dos muertes seguidas y el FUA ya está haciendo estiramientos.', { deathCount: 2 }).ok, true);
+    assert.equal(
+      q.validateCohost('Dos muertes seguidas y el FUA ya está haciendo estiramientos.', { deathCount: 2 }).ok,
+      true,
+    );
   });
   test('muerte real con "combo de enemigos" se rechaza por mecánicas', () => {
     assert.match(q.validateCohost(REAL.cohostMuerte, { deathCount: 1 }).reason, /mecánicas/);
@@ -52,7 +62,10 @@ describe('mecánicas y desprecio del juego en mensajes automáticos', () => {
     assert.match(q.validateTimerIA('Qué juego tan aburrido, pero el FUA manda.', {}).reason, /desprecia/);
   });
   test('timer IA no repite ideas del stream', () => {
-    assert.equal(q.validateTimerIA('Otra hora de directo y el FUA sigue sin cansarse, chat.', { recent: [REAL.timerOk] }).ok, false);
+    assert.equal(
+      q.validateTimerIA('Otra hora de directo y el FUA sigue sin cansarse, chat.', { recent: [REAL.timerOk] }).ok,
+      false,
+    );
   });
   test('timer IA con contador a 0 no habla de muertes', () => {
     assert.equal(q.validateTimerIA('El streamer cae otra vez y el FUA lo levanta.', { deathCount: 0 }).ok, false);
@@ -96,15 +109,26 @@ describe('cohost por eventos', () => {
   const death = (k, ago) => ({ type: 'death', description: `Muerte #${k} del streamer en este stream`, ts: now - ago });
 
   test('primera muerte comenta; la segunda no', () => {
-    assert.equal(n.classifyCohostMoment(death(1, 0), { events: [death(1, 0)], deathCount: 1, now }).kind, 'first_death');
-    assert.equal(n.classifyCohostMoment(death(2, 0), { events: [death(1, 60000), death(2, 0)], deathCount: 2, now }), null);
+    assert.equal(
+      n.classifyCohostMoment(death(1, 0), { events: [death(1, 0)], deathCount: 1, now }).kind,
+      'first_death',
+    );
+    assert.equal(
+      n.classifyCohostMoment(death(2, 0), { events: [death(1, 60000), death(2, 0)], deathCount: 2, now }),
+      null,
+    );
   });
   test('racha de 3 seguidas', () => {
     const ev = [death(1, 400000), death(2, 200000), death(3, 0)];
     assert.equal(n.classifyCohostMoment(ev[2], { events: ev, deathCount: 3, now }).kind, 'streak');
   });
   test('un boss corta la racha', () => {
-    const ev = [death(1, 400000), death(2, 300000), { type: 'boss', description: 'Boss derrotado', ts: now - 200000 }, death(3, 0)];
+    const ev = [
+      death(1, 400000),
+      death(2, 300000),
+      { type: 'boss', description: 'Boss derrotado', ts: now - 200000 },
+      death(3, 0),
+    ];
     assert.equal(n.classifyCohostMoment(ev[3], { events: ev, deathCount: 3, now }), null);
   });
   test('racha fuera de ventana no cuenta', () => {
@@ -114,7 +138,10 @@ describe('cohost por eventos', () => {
   test('récord: supera el máximo anterior', () => {
     const e = death(16, 0);
     assert.equal(n.classifyCohostMoment(e, { events: [e], deathCount: 16, recordToBeat: 15, now }).kind, 'record');
-    assert.equal(n.classifyCohostMoment(death(15, 0), { events: [death(15, 0)], deathCount: 15, recordToBeat: 15, now }), null);
+    assert.equal(
+      n.classifyCohostMoment(death(15, 0), { events: [death(15, 0)], deathCount: 15, recordToBeat: 15, now }),
+      null,
+    );
   });
   test('boss, raid y explosión del chat comentan; sub (ya la agradece la alerta) y rage no', () => {
     for (const type of ['boss', 'raid', 'victory']) {
@@ -138,12 +165,23 @@ describe('cohost por eventos', () => {
     const jump = (n, total, ago = 0) => ({ type: 'death', description: `${n} muertes más`, ts: now - ago, n });
     const e0 = jump(2, 2);
     assert.equal(n.classifyCohostMoment(e0, { events: [e0], deathCount: 2, now }).kind, 'first_death');
-    const e1 = death(1, 300000), e2 = jump(2, 3);
+    const e1 = death(1, 300000),
+      e2 = jump(2, 3);
     assert.equal(n.classifyCohostMoment(e2, { events: [e1, e2], deathCount: 3, now }).kind, 'streak');
     const e3 = jump(3, 18);
-    assert.equal(n.classifyCohostMoment(e3, { events: [death(1, 60000), e3], deathCount: 18, recordToBeat: 16, now }).kind, 'record');
+    assert.equal(
+      n.classifyCohostMoment(e3, { events: [death(1, 60000), e3], deathCount: 18, recordToBeat: 16, now }).kind,
+      'record',
+    );
     const e4 = jump(2, 10);
-    assert.equal(n.classifyCohostMoment(e4, { events: [death(1, 60000), death(2, 50000), death(3, 40000), e4], deathCount: 10, now }), null);
+    assert.equal(
+      n.classifyCohostMoment(e4, {
+        events: [death(1, 60000), death(2, 50000), death(3, 40000), e4],
+        deathCount: 10,
+        now,
+      }),
+      null,
+    );
   });
   test('la racha no se repite mientras sigue por encima de 3 en la ventana', () => {
     const ev = [death(1, 400000), death(2, 300000), death(3, 200000), death(4, 0)];
@@ -169,8 +207,11 @@ describe('cohost por eventos', () => {
 
 describe('timers fijos', () => {
   test('follow como mucho cada 60 min y sin la pregunta (la cubre el hook)', () => {
-    const follow = timers.find(t => /follow/i.test(t.message));
+    const follow = timers.find((t) => /follow/i.test(t.message));
     assert.ok(follow.interval >= 60);
-    assert.equal(timers.some(t => /alguna pregunta/i.test(t.message)), false);
+    assert.equal(
+      timers.some((t) => /alguna pregunta/i.test(t.message)),
+      false,
+    );
   });
 });

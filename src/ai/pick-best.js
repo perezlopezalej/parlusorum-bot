@@ -7,7 +7,8 @@ const { canMakeAuxRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
 const { stripEmotes } = require('./factcheck');
 
-const SYSTEM = 'Eres el editor de un chat de Twitch en España. Te paso comentarios candidatos del bot Dios Fua y el contexto real del directo. Tu trabajo es ELEGIR EL MEJOR: casi siempre hay alguno que se puede enviar, y lo eliges aunque no sea perfecto ni muy gracioso. ' +
+const SYSTEM =
+  'Eres el editor de un chat de Twitch en España. Te paso comentarios candidatos del bot Dios Fua y el contexto real del directo. Tu trabajo es ELEGIR EL MEJOR: casi siempre hay alguno que se puede enviar, y lo eliges aunque no sea perfecto ni muy gracioso. ' +
   'Solo dices que ninguno vale si TODOS los candidatos tienen un fallo claro de estas tres clases: ' +
   '(1) ortografía: palabras cortadas, inventadas o mal escritas, género o número incorrectos; ' +
   '(2) sin sentido: la frase no significa nada, el sujeto y la acción no encajan o la comparación no tiene lógica; ' +
@@ -22,10 +23,21 @@ function buildPickPrompt(candidates, { dayLine = '', game = '', facts = '', chat
   const list = candidates.map((c, i) => `${i + 1}) ${stripEmotes(c)}`).join('\n');
   return [
     block('ahora', dayLine),
-    block('datos', [game ? `Juego: ${game}.` : '', facts, activity != null ? `Mensajes en el chat en los últimos 5 minutos: ${activity}.` : ''].filter(Boolean).join(' ')),
+    block(
+      'datos',
+      [
+        game ? `Juego: ${game}.` : '',
+        facts,
+        activity != null ? `Mensajes en el chat en los últimos 5 minutos: ${activity}.` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    ),
     block('chat', chat || '(sin mensajes recientes)'),
     block('candidatos', list),
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 // "{"mejor": 2}" | "2" | "mejor: 0" → número (0 = ninguno) o null si es ilegible
@@ -37,7 +49,14 @@ function parsePick(raw, max) {
   return n >= 0 && n <= max ? n : null;
 }
 
-const shuffle = n => { const a = Array.from({ length: n }, (_, i) => i); for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const shuffle = (n) => {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
 /**
  * ctx.generator: modelo que escribió los candidatos (el selector será de otra familia). ctx.order: permutación fija (tests).
@@ -48,19 +67,29 @@ async function pickBest(candidates, ctx = {}) {
   const list = (candidates || []).filter(Boolean);
   if (!list.length) return { status: 'none' };
   const order = ctx.order || shuffle(list.length); // orden al azar: el selector no favorece al primero
-  const shown = order.map(i => list[i]);
-  if (!canMakeAuxRequest()) { logger.info('Selector: sin cupo auxiliar, se usa el orden del código'); return { status: 'error' }; }
+  const shown = order.map((i) => list[i]);
+  if (!canMakeAuxRequest()) {
+    logger.info('Selector: sin cupo auxiliar, se usa el orden del código');
+    return { status: 'error' };
+  }
   try {
-    const response = await aiChat('pick', {
-      max_tokens: 600, // el modelo razona antes de contestar: con poco margen se queda sin contenido
-      temperature: 0,
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: buildPickPrompt(shown, ctx) },
-      ],
-    }, { generator: ctx.generator });
+    const response = await aiChat(
+      'pick',
+      {
+        max_tokens: 600, // el modelo razona antes de contestar: con poco margen se queda sin contenido
+        temperature: 0,
+        messages: [
+          { role: 'system', content: SYSTEM },
+          { role: 'user', content: buildPickPrompt(shown, ctx) },
+        ],
+      },
+      { generator: ctx.generator },
+    );
     const n = parsePick(response.choices[0]?.message?.content, list.length);
-    if (n === null) { logger.warn('Selector: respuesta ilegible, se usa el orden del código'); return { status: 'error' }; }
+    if (n === null) {
+      logger.warn('Selector: respuesta ilegible, se usa el orden del código');
+      return { status: 'error' };
+    }
     if (n === 0) return { status: 'none' };
     return { status: 'ok', index: order[n - 1] };
   } catch (err) {

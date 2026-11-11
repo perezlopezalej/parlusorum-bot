@@ -7,7 +7,8 @@ const { parseBossArgs, applyBossDelta, sumGameDeaths } = require('../src/command
 const state = require('../src/utils/state');
 
 // Casos reales del directo del 02-11-2026 (logs/chat-2026-11-02.txt)
-const IGDB_PHANTOM = 'Nombre: Phantom Blade Zero\nSalida: 2026-09-09\nDesarrolladora: S-Game\nGéneros: Acción, Aventura\nDescripción: Action game set in a fantasy world.';
+const IGDB_PHANTOM =
+  'Nombre: Phantom Blade Zero\nSalida: 2026-09-09\nDesarrolladora: S-Game\nGéneros: Acción, Aventura\nDescripción: Action game set in a fantasy world.';
 
 describe('!boss', () => {
   test('parseBossArgs: ver, sumar, restar, reset y juego', () => {
@@ -70,8 +71,20 @@ describe('datos inventados', () => {
 
 describe('menciones', () => {
   test('"¿Qué juego es?" se detecta; otras preguntas no', () => {
-    for (const t of ['Que juego es?', 'Dios fua que juego es?', '¿Qué juego es este?', 'a que juego juegan hoy?', 'cual es el juego de hoy?']) assert.ok(q.isCurrentGameQuestion(t), t);
-    for (const t of ['que juego es mejor, este o hades?', 'Dios fua cuantas crees que habrá?', 'me recomiendas un juego?']) assert.ok(!q.isCurrentGameQuestion(t), t);
+    for (const t of [
+      'Que juego es?',
+      'Dios fua que juego es?',
+      '¿Qué juego es este?',
+      'a que juego juegan hoy?',
+      'cual es el juego de hoy?',
+    ])
+      assert.ok(q.isCurrentGameQuestion(t), t);
+    for (const t of [
+      'que juego es mejor, este o hades?',
+      'Dios fua cuantas crees que habrá?',
+      'me recomiendas un juego?',
+    ])
+      assert.ok(!q.isCurrentGameQuestion(t), t);
   });
   test('una opinión sobre las muertes no es pregunta de juego ni del contador', () => {
     assert.ok(!q.isGameQuestion('Dios fua cuantas crees que habrá?'));
@@ -87,13 +100,23 @@ describe('menciones', () => {
 
 describe('nombre de usuario en bienvenidas y alertas', () => {
   test('insertUsername pone el nombre del código, no el de la IA', () => {
-    assert.equal(q.insertUsername('¡Bienvenido {usuario}, que tus golpes sean épicos!', 'aldairbonilla16'), '¡Bienvenido @aldairbonilla16, que tus golpes sean épicos!');
-    assert.ok(!q.insertUsername('¡Bienvenido @aldorbonilla16, a por el FUA!', 'aldairbonilla16').includes('aldorbonilla16'));
-    assert.ok(q.insertUsername('¡Bienvenido @aldorbonilla16, a por el FUA!', 'aldairbonilla16').startsWith('@aldairbonilla16 '));
+    assert.equal(
+      q.insertUsername('¡Bienvenido {usuario}, que tus golpes sean épicos!', 'aldairbonilla16'),
+      '¡Bienvenido @aldairbonilla16, que tus golpes sean épicos!',
+    );
+    assert.ok(
+      !q.insertUsername('¡Bienvenido @aldorbonilla16, a por el FUA!', 'aldairbonilla16').includes('aldorbonilla16'),
+    );
+    assert.ok(
+      q.insertUsername('¡Bienvenido @aldorbonilla16, a por el FUA!', 'aldairbonilla16').startsWith('@aldairbonilla16 '),
+    );
     assert.equal(q.insertUsername('Qué alegría verte', 'javifresco'), '@javifresco Qué alegría verte');
   });
   test('fixMentions corrige un nombre mal escrito o quita el que no existe', () => {
-    assert.equal(q.fixMentions('¡Gracias @aldorbonilla16 por el sub!', ['aldairbonilla16']), '¡Gracias @aldairbonilla16 por el sub!');
+    assert.equal(
+      q.fixMentions('¡Gracias @aldorbonilla16 por el sub!', ['aldairbonilla16']),
+      '¡Gracias @aldairbonilla16 por el sub!',
+    );
     assert.equal(q.fixMentions('Hola @Javifresco', ['javifresco']), 'Hola @javifresco');
     assert.equal(q.fixMentions('Hola @otrapersona total', ['javifresco']), 'Hola total');
   });
@@ -109,12 +132,18 @@ describe('cohost', () => {
     const t = 'Manu lleva 13 caídas y el FUA parece estar de vacaciones, ¡a ver si vuelve pronto!';
     assert.equal(q.structureKey(t), 'lleva-caidas');
     assert.equal(q.validateCohost(t, { deathCount: 13, usedStructures: new Set() }).ok, true);
-    const again = q.validateCohost('Manu lleva 16 caídas y el FUA ya se prepara para la próxima ronda.', { deathCount: 16, usedStructures: new Set(['lleva-caidas']) });
+    const again = q.validateCohost('Manu lleva 16 caídas y el FUA ya se prepara para la próxima ronda.', {
+      deathCount: 16,
+      usedStructures: new Set(['lleva-caidas']),
+    });
     assert.equal(again.ok, false);
     assert.equal(again.rule, 'estructura');
   });
   test('el timer IA tampoco repite la estructura', () => {
-    const r = q.validateTimerIA('¡Manu lleva 11 caídas y el FUA lo levanta con energía!', { deathCount: 11, usedStructures: new Set(['lleva-caidas']) });
+    const r = q.validateTimerIA('¡Manu lleva 11 caídas y el FUA lo levanta con energía!', {
+      deathCount: 11,
+      usedStructures: new Set(['lleva-caidas']),
+    });
     assert.equal(r.ok, false);
   });
   test('state recuerda las estructuras y las olvida al reiniciar el stream', () => {
@@ -127,7 +156,9 @@ describe('cohost', () => {
 
 describe('resumen final', () => {
   test('"logrando 16 muertes" se detecta y se descarta; "con 16 caídas" vale', () => {
-    assert.ok(q.achievesDeaths('ParLusorum disfrutó de una larga partida, logrando 16 muertes y enfrentando varios jefes'));
+    assert.ok(
+      q.achievesDeaths('ParLusorum disfrutó de una larga partida, logrando 16 muertes y enfrentando varios jefes'),
+    );
     assert.ok(q.achievesDeaths('consiguió 3 caídas'));
     assert.ok(!q.achievesDeaths('Cayó 16 veces pero el chat no paró'));
     assert.ok(!q.achievesDeaths('Una partida con 16 caídas y mucho FUA'));

@@ -14,39 +14,62 @@ const db = { memories: [], saved: [], lore: [], upserts: [], sample: '', session
 const groq = { reply: null, error: null, calls: 0 };
 
 stub('src/utils/supabase.js', {
-  saveStreamMemory: async m => { db.saved.push(m); },
-  getRecentStreamMemory: async () => { db.getCalls++; if (db.fail) throw new Error('db down'); return db.memories; },
+  saveStreamMemory: async (m) => {
+    db.saved.push(m);
+  },
+  getRecentStreamMemory: async () => {
+    db.getCalls++;
+    if (db.fail) throw new Error('db down');
+    return db.memories;
+  },
   endStreamSession: async () => {},
   saveUserFact: () => {},
-  getLoreRows: async statuses => db.lore.filter(r => !statuses || statuses.includes(r.status)),
-  upsertLoreRows: async rows => { db.upserts.push(rows); return true; },
+  getLoreRows: async (statuses) => db.lore.filter((r) => !statuses || statuses.includes(r.status)),
+  upsertLoreRows: async (rows) => {
+    db.upserts.push(rows);
+    return true;
+  },
   updateLoreStatus: async (id, status, from, approver) => {
-    const r = db.lore.find(x => x.id === id && from.includes(x.status));
+    const r = db.lore.find((x) => x.id === id && from.includes(x.status));
     if (!r) return null;
     db.lastApprover = approver;
     r.status = status;
     return r;
   },
-  getCurrentSessionId: () => db.sessionId
+  getCurrentSessionId: () => db.sessionId,
 });
 stub('src/utils/ai-router.js', {
   aiChat: async () => {
     groq.calls++;
     if (groq.error) throw groq.error;
     return { choices: [{ message: { content: groq.reply } }] };
-  }
+  },
 });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {}, debug() {} });
 stub('src/utils/state.js', {
   getLoreSample: () => db.sample,
   // nick → user_id de lo escrito en la muestra (en el test, "id-" + nick)
-  getLoreSampleIds: () => new Map(db.sample.split('\n').map(l => l.split(': ')[0].toLowerCase()).filter(Boolean).map(n => [n, 'id-' + n]))
+  getLoreSampleIds: () =>
+    new Map(
+      db.sample
+        .split('\n')
+        .map((l) => l.split(': ')[0].toLowerCase())
+        .filter(Boolean)
+        .map((n) => [n, 'id-' + n]),
+    ),
 });
 
 const memory = require('../src/memory/handler');
 const lore = require('../src/lore/handler');
 
-const stats = { game: 'Elden Ring', durationMinutes: 90, deathCount: 7, peakViewers: 12, topCommands: [], activeUsers: ['ana'] };
+const stats = {
+  game: 'Elden Ring',
+  durationMinutes: 90,
+  deathCount: 7,
+  peakViewers: 12,
+  topCommands: [],
+  activeUsers: ['ana'],
+};
 
 beforeEach(() => {
   Object.assign(db, { memories: [], saved: [], lore: [], upserts: [], sample: '', fail: false, getCalls: 0 });
@@ -81,8 +104,11 @@ describe('memoria entre streams: generación', () => {
 
 describe('memoria entre streams: contexto y caché', () => {
   const row = {
-    stream_date: '2026-10-01', game: 'Elden Ring', summary: 'Stream <caótico>\n{ok}',
-    highlights: ['h1', 'h2', 'h3'], recurring_phrases: ['fua total']
+    stream_date: '2026-10-01',
+    game: 'Elden Ring',
+    summary: 'Stream <caótico>\n{ok}',
+    highlights: ['h1', 'h2', 'h3'],
+    recurring_phrases: ['fua total'],
   };
 
   test('sin memorias devuelve cadena vacía', async () => {
@@ -135,17 +161,29 @@ describe('memoria entre streams: contexto y caché', () => {
 
 describe('lore aprendido', () => {
   const base = (o = {}) => ({
-    id: 1, term: 'fua total', term_key: 'fua total', kind: 'meme', status: 'pending',
-    needs_approval: false, streams_count: 1, total_count: 1, users: ['a'], users_count: 1,
-    missed_streams: 0, last_stream_id: 'old', ...o
+    id: 1,
+    term: 'fua total',
+    term_key: 'fua total',
+    kind: 'meme',
+    status: 'pending',
+    needs_approval: false,
+    streams_count: 1,
+    total_count: 1,
+    users: ['a'],
+    users_count: 1,
+    missed_streams: 0,
+    last_stream_id: 'old',
+    ...o,
   });
   const chat = ['b: fua total!', 'c: FUA total jaja', 'd: otra cosa'].join('\n');
   const saved = () => db.upserts.flat();
 
   test('con >=2 streams y >=3 usuarios queda pendiente de aprobar: nunca pasa a active solo', async () => {
-    db.lore = [base()]; db.sample = chat; groq.reply = '[]';
+    db.lore = [base()];
+    db.sample = chat;
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
-    const r = saved().find(x => x.term_key === 'fua total');
+    const r = saved().find((x) => x.term_key === 'fua total');
     assert.equal(r.status, 'pending');
     assert.equal(r.needs_approval, true);
     assert.equal(r.streams_count, 2);
@@ -153,51 +191,67 @@ describe('lore aprendido', () => {
   });
 
   test('channel_lore.users guarda user_id, no nicks', async () => {
-    db.lore = [base({ users: [] , users_count: 0 })]; db.sample = chat; groq.reply = '[]';
+    db.lore = [base({ users: [], users_count: 0 })];
+    db.sample = chat;
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
-    const r = saved().find(x => x.term_key === 'fua total');
+    const r = saved().find((x) => x.term_key === 'fua total');
     assert.deepEqual(r.users.sort(), ['id-b', 'id-c']);
   });
 
   test('un activo sin aprobador (anterior a B2) vuelve a pendiente', async () => {
-    db.lore = [base({ status: 'active' })]; db.sample = chat; groq.reply = '[]';
+    db.lore = [base({ status: 'active' })];
+    db.sample = chat;
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].status, 'pending');
   });
 
   test('un activo aprobado por un mod sigue activo', async () => {
-    db.lore = [base({ status: 'active', approved_by: 'Pao' })]; db.sample = chat; groq.reply = '[]';
+    db.lore = [base({ status: 'active', approved_by: 'Pao' })];
+    db.sample = chat;
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].status, 'active');
   });
 
   test('no promociona con pocos usuarios', async () => {
-    db.lore = [base({ users: [], users_count: 0 })]; db.sample = 'b: fua total'; groq.reply = '[]';
+    db.lore = [base({ users: [], users_count: 0 })];
+    db.sample = 'b: fua total';
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].status, 'pending');
   });
 
   test('pendiente de aprobación (needs_approval) no se promociona sola', async () => {
-    db.lore = [base({ needs_approval: true })]; db.sample = chat; groq.reply = '[]';
+    db.lore = [base({ needs_approval: true })];
+    db.sample = chat;
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].status, 'pending');
   });
 
   test('mismo stream no suma streams_count dos veces', async () => {
-    db.lore = [base({ last_stream_id: 's1' })]; db.sample = chat; groq.reply = '[]';
+    db.lore = [base({ last_stream_id: 's1' })];
+    db.sample = chat;
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].streams_count, 1);
   });
 
   test('decaimiento: suma missed_streams cuando no aparece', async () => {
-    db.lore = [base({ status: 'active', approved_by: 'mod', missed_streams: 2 })]; db.sample = 'b: hola'; groq.reply = '[]';
+    db.lore = [base({ status: 'active', approved_by: 'mod', missed_streams: 2 })];
+    db.sample = 'b: hola';
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].missed_streams, 3);
     assert.equal(saved()[0].status, 'active');
   });
 
   test('archivado al llegar a 8 streams sin aparecer', async () => {
-    db.lore = [base({ status: 'active', missed_streams: 7 })]; db.sample = 'b: hola'; groq.reply = '[]';
+    db.lore = [base({ status: 'active', missed_streams: 7 })];
+    db.sample = 'b: hola';
+    groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].status, 'archived');
   });
@@ -214,7 +268,7 @@ describe('lore aprendido', () => {
     groq.reply = JSON.stringify([
       { term: 'el gran pollo', kind: 'apodo' },
       { term: 'no existe en chat', kind: 'meme' },
-      { term: 'dios porno', kind: 'meme' }
+      { term: 'dios porno', kind: 'meme' },
     ]);
     await lore.onStreamEndLore({});
     const rows = saved();
@@ -225,7 +279,9 @@ describe('lore aprendido', () => {
   });
 
   test('si falla la IA aún actualiza el lore existente (degradación sin IA)', async () => {
-    db.lore = [base({ status: 'active', approved_by: 'mod' })]; db.sample = 'b: hola'; groq.error = new Error('down');
+    db.lore = [base({ status: 'active', approved_by: 'mod' })];
+    db.sample = 'b: hola';
+    groq.error = new Error('down');
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].missed_streams, 1);
   });
@@ -235,7 +291,7 @@ describe('lore aprendido', () => {
       base({ id: 1, term: 'bueno', status: 'active' }),
       base({ id: 2, term: 'muerto', status: 'active', missed_streams: 8 }),
       base({ id: 3, term: 'porno', status: 'active' }),
-      base({ id: 4, term: 'pendiente', status: 'pending' })
+      base({ id: 4, term: 'pendiente', status: 'pending' }),
     ];
     const ctx = await lore.getLoreContext();
     assert.match(ctx, /"bueno" \(meme\)/);
@@ -247,7 +303,7 @@ describe('lore aprendido', () => {
   test('getLoreContext ordena por peso (el decaído va después)', async () => {
     db.lore = [
       base({ id: 1, term: 'viejo', status: 'active', missed_streams: 6 }),
-      base({ id: 2, term: 'nuevo', status: 'active' })
+      base({ id: 2, term: 'nuevo', status: 'active' }),
     ];
     const ctx = await lore.getLoreContext();
     assert.ok(ctx.indexOf('nuevo') < ctx.indexOf('viejo'));

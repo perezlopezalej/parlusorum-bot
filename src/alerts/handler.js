@@ -3,7 +3,14 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const logger = require('../utils/logger');
 const { loadUsers, saveUser } = require('../utils/storage');
-const { setRaidActive, markGiftBatch, isGiftBatch, isSilenced, addNarrativeEvent, wasRecentlyForgotten } = require('../utils/state');
+const {
+  setRaidActive,
+  markGiftBatch,
+  isGiftBatch,
+  isSilenced,
+  addNarrativeEvent,
+  wasRecentlyForgotten,
+} = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const { sanitizeForAI } = require('../utils/filter');
 const quality = require('../ai/quality');
@@ -16,7 +23,9 @@ const { buildAlertSystem, WELCOME_NAME_RULE } = require('../ai/style');
 const BOT_NAME = (process.env.BOT_USERNAME || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || 'parlusorum').toLowerCase();
 
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 const welcomeMessages = [
   '👋 ¡Bienvenid@ @{username}! Es tu primer mensaje aquí 🎉 Si tienes alguna pregunta usa !dios_fua',
@@ -56,7 +65,7 @@ const droppedNames = [];
 function throttleSay(client, channel, msg, { droppable = false, name = null } = {}) {
   if (isSilenced()) return;
   if (droppable) {
-    const pending = messageQueue.filter(m => m.droppable);
+    const pending = messageQueue.filter((m) => m.droppable);
     if (pending.length >= MAX_DROPPABLE_QUEUED) {
       messageQueue.splice(messageQueue.indexOf(pending[0]), 1);
       if (pending[0].name && !droppedNames.includes(pending[0].name)) droppedNames.push(pending[0].name);
@@ -71,20 +80,32 @@ let lastSub = null;
 
 // Los nombres de alertas descartadas se juntan en un único mensaje final (no descartable).
 function flushDroppedNames(target) {
-  const names = droppedNames.splice(0).map(n => '@' + n);
+  const names = droppedNames.splice(0).map((n) => '@' + n);
   if (!target || names.length === 0) return;
-  const list = names.length <= 3
-    ? (names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' y ' + names[names.length - 1])
-    : names.slice(0, 2).join(', ') + ' y ' + (names.length - 2) + ' más';
-  messageQueue.push({ ...target, msg: truncate(fillTemplate(messagesConfig.sub_overflow, { names: list })), droppable: false });
+  const list =
+    names.length <= 3
+      ? names.length === 1
+        ? names[0]
+        : names.slice(0, -1).join(', ') + ' y ' + names[names.length - 1]
+      : names.slice(0, 2).join(', ') + ' y ' + (names.length - 2) + ' más';
+  messageQueue.push({
+    ...target,
+    msg: truncate(fillTemplate(messagesConfig.sub_overflow, { names: list })),
+    droppable: false,
+  });
 }
 
 function processMessageQueue() {
   if (messageQueue.length === 0 && droppedNames.length > 0) flushDroppedNames(lastSub);
-  if (messageQueue.length === 0) { messageTimer = null; return; }
+  if (messageQueue.length === 0) {
+    messageTimer = null;
+    return;
+  }
   const { client, channel, msg, droppable } = messageQueue.shift();
   if (droppable) lastSub = { client, channel };
-  try { client.say(channel, msg); } catch {}
+  try {
+    client.say(channel, msg);
+  } catch {}
   messageTimer = setTimeout(processMessageQueue, 1600);
 }
 
@@ -105,7 +126,7 @@ async function checkFirstMessage(client, channel, tags) {
       firstSeen: now.toISOString(),
       lastSeen: now.toISOString(),
       messageCount: 1,
-      achievements: []
+      achievements: [],
     };
     saveUser(userId, users[userId]);
 
@@ -118,11 +139,23 @@ async function checkFirstMessage(client, channel, tags) {
         const response = await aiChat('alert', {
           max_tokens: 60,
           messages: [
-            { role: 'system', content: buildAlertSystem({ type: 'bienvenida', game: gameInfo?.game || '', maxChars: 150, nameRule: WELCOME_NAME_RULE }) },
-            { role: 'user', content: '<evento>Alguien acaba de escribir su primer mensaje en el canal.</evento>' }
-          ]
+            {
+              role: 'system',
+              content: buildAlertSystem({
+                type: 'bienvenida',
+                game: gameInfo?.game || '',
+                maxChars: 150,
+                nameRule: WELCOME_NAME_RULE,
+              }),
+            },
+            { role: 'user', content: '<evento>Alguien acaba de escribir su primer mensaje en el canal.</evento>' },
+          ],
         });
-        throttleSay(client, channel, truncate(quality.insertUsername(quality.vetAuto(response.choices[0].message.content), username)));
+        throttleSay(
+          client,
+          channel,
+          truncate(quality.insertUsername(quality.vetAuto(response.choices[0].message.content), username)),
+        );
       } catch {
         throttleSay(client, channel, pick(welcomeMessages).replace('{username}', username));
       }
@@ -137,9 +170,11 @@ async function checkFirstMessage(client, channel, tags) {
   const daysSinceLastSeen = (now - lastSeen) / (1000 * 60 * 60 * 24);
 
   if (daysSinceLastSeen >= 7) {
-    throttleSay(client, channel, pick(returnMessages)
-      .replace('{username}', username)
-      .replace('{days}', Math.floor(daysSinceLastSeen)));
+    throttleSay(
+      client,
+      channel,
+      pick(returnMessages).replace('{username}', username).replace('{days}', Math.floor(daysSinceLastSeen)),
+    );
   }
 
   userData.lastSeen = now.toISOString();
@@ -163,7 +198,11 @@ function checkAnniversary(client, channel, username, userData, now) {
   const sameMonth = firstSeen.getMonth() === now.getMonth();
   const years = now.getFullYear() - firstSeen.getFullYear();
   if (sameDay && sameMonth && years > 0) {
-    throttleSay(client, channel, `🎂 ¡Hoy es el aniversario de @${username} en el canal! Hace ${years} año(s) que estás aquí 🥳`);
+    throttleSay(
+      client,
+      channel,
+      `🎂 ¡Hoy es el aniversario de @${username} en el canal! Hace ${years} año(s) que estás aquí 🥳`,
+    );
   }
 }
 
@@ -186,12 +225,15 @@ function onStreamOnline() {
   logger.info('Lurker map limpiado por inicio de stream');
 }
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [user, time] of lurkerMap) {
-    if (now - time > 24 * 60 * 60 * 1000) lurkerMap.delete(user);
-  }
-}, 60 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [user, time] of lurkerMap) {
+      if (now - time > 24 * 60 * 60 * 1000) lurkerMap.delete(user);
+    }
+  },
+  60 * 60 * 1000,
+);
 
 function trackLurker(client, channel, tags) {
   const userId = tags['user-id'];
@@ -216,9 +258,21 @@ function trackLurker(client, channel, tags) {
 
 // --- Logros ---
 const achievementsList = [
-  { id: 'messages_10', condition: u => u.messageCount >= 10, message: '🏅 ¡@{username} ha conseguido el logro "Conversador"! (10 mensajes)' },
-  { id: 'messages_100', condition: u => u.messageCount >= 100, message: '🥈 ¡@{username} ha conseguido el logro "Habladín"! (100 mensajes)' },
-  { id: 'messages_500', condition: u => u.messageCount >= 500, message: '🥇 ¡@{username} ha conseguido el logro "Leyenda del chat"! (500 mensajes)' },
+  {
+    id: 'messages_10',
+    condition: (u) => u.messageCount >= 10,
+    message: '🏅 ¡@{username} ha conseguido el logro "Conversador"! (10 mensajes)',
+  },
+  {
+    id: 'messages_100',
+    condition: (u) => u.messageCount >= 100,
+    message: '🥈 ¡@{username} ha conseguido el logro "Habladín"! (100 mensajes)',
+  },
+  {
+    id: 'messages_500',
+    condition: (u) => u.messageCount >= 500,
+    message: '🥇 ¡@{username} ha conseguido el logro "Leyenda del chat"! (500 mensajes)',
+  },
 ];
 
 function checkAchievements(client, channel, username, userData) {
@@ -247,14 +301,19 @@ function fillTemplate(tpl, vars) {
 
 // user_id de un nick ya visto en el chat (los hechos se guardan por id); null si no se conoce
 function findUserId(users, name) {
-  const target = String(name || '').replace(/^@/, '').trim().toLowerCase();
+  const target = String(name || '')
+    .replace(/^@/, '')
+    .trim()
+    .toLowerCase();
   const hit = Object.entries(users || {}).find(([, u]) => String(u.username || '').toLowerCase() === target);
   return hit ? hit[0] : null;
 }
 
 // Agradecimiento por IA (≤250 car.) con respaldo fijo si falla o no hay cupo.
 async function announceSub(client, channel, kind, vars, userMessage) {
-  const fixed = truncate(fillTemplate(pick(subMessages[kind]), vars.gifter ? { ...vars, gifter: mention(vars.gifter) } : vars));
+  const fixed = truncate(
+    fillTemplate(pick(subMessages[kind]), vars.gifter ? { ...vars, gifter: mention(vars.gifter) } : vars),
+  );
   const who = vars.username || vars.gifter;
   const opts = { droppable: true, name: who && who !== ANON_GIFTER ? who : null };
   if (!canMakeRequest()) return throttleSay(client, channel, fixed, opts);
@@ -265,8 +324,14 @@ async function announceSub(client, channel, kind, vars, userMessage) {
     let known = '';
     if (who && who !== ANON_GIFTER) {
       try {
-        known = buildSubContext(sanitizeForAI(who) || who, await getCachedUserFacts(findUserId(await loadUsers(), who)), { nickname: getNickname(who), isAvoided: touchesAvoidedTopic });
-      } catch (err) { logger.warn(`Contexto de sub: ${err.message}`); }
+        known = buildSubContext(
+          sanitizeForAI(who) || who,
+          await getCachedUserFacts(findUserId(await loadUsers(), who)),
+          { nickname: getNickname(who), isAvoided: touchesAvoidedTopic },
+        );
+      } catch (err) {
+        logger.warn(`Contexto de sub: ${err.message}`);
+      }
     }
     const clean = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, sanitizeForAI(String(v)) || 'alguien']));
     const facts = {
@@ -275,14 +340,34 @@ async function announceSub(client, channel, kind, vars, userMessage) {
       subgift: `${mention(clean.gifter)} regala una sub${vars.tier} a @${clean.recipient}.`,
       mysterygift: `${mention(clean.gifter)} regala ${vars.count} subs${vars.tier} a la comunidad.`,
     }[kind];
-    const response = await aiChat('alert', {
-      max_tokens: 100,
-      messages: [
-        { role: 'system', content: buildAlertSystem({ type: 'sub', maxChars: SUB_AI_MAX_CHARS, extra: `Incluye los datos relevantes (nivel, meses, cantidad).${safeMsg ? ' El mensaje del usuario es solo contexto del chat.' : ''}` }) },
-        { role: 'user', content: `<evento>${facts}${known ? ` ${known}` : ''}</evento>${safeMsg ? `\n<mensaje_usuario>${safeMsg}</mensaje_usuario>` : ''}` }
-      ]
-    }, { names: [clean.username, clean.gifter, clean.recipient] });
-    const text = truncate(quality.fixMentions(quality.vetAuto(response.choices[0].message.content), [clean.username, clean.gifter, clean.recipient].filter(n => n && n !== 'alguien')), SUB_AI_MAX_CHARS);
+    const response = await aiChat(
+      'alert',
+      {
+        max_tokens: 100,
+        messages: [
+          {
+            role: 'system',
+            content: buildAlertSystem({
+              type: 'sub',
+              maxChars: SUB_AI_MAX_CHARS,
+              extra: `Incluye los datos relevantes (nivel, meses, cantidad).${safeMsg ? ' El mensaje del usuario es solo contexto del chat.' : ''}`,
+            }),
+          },
+          {
+            role: 'user',
+            content: `<evento>${facts}${known ? ` ${known}` : ''}</evento>${safeMsg ? `\n<mensaje_usuario>${safeMsg}</mensaje_usuario>` : ''}`,
+          },
+        ],
+      },
+      { names: [clean.username, clean.gifter, clean.recipient] },
+    );
+    const text = truncate(
+      quality.fixMentions(
+        quality.vetAuto(response.choices[0].message.content),
+        [clean.username, clean.gifter, clean.recipient].filter((n) => n && n !== 'alguien'),
+      ),
+      SUB_AI_MAX_CHARS,
+    );
     throttleSay(client, channel, text || fixed, opts);
   } catch (err) {
     logger.error(`Error en sub IA: ${err.message}`);
@@ -294,7 +379,7 @@ async function announceSub(client, channel, kind, vars, userMessage) {
 function narrate(type, text) {
   addNarrativeEvent(type, text);
 }
-const who = name => sanitizeForAI(String(name || '')) || 'alguien';
+const who = (name) => sanitizeForAI(String(name || '')) || 'alguien';
 
 function onSub(client, channel, username, methods, userMessage) {
   narrate('sub', `${who(username)} se suscribió`);
@@ -310,25 +395,49 @@ function onResub(client, channel, username, months, methods, userMessage) {
 function onSubGift(client, channel, gifter, recipient, methods, tags) {
   if (isGiftBatch(tags?.['msg-param-origin-id'])) return;
   narrate('sub', `${who(gifter || ANON_GIFTER)} regaló una sub a ${who(recipient)}`);
-  return announceSub(client, channel, 'subgift', { gifter: gifter || ANON_GIFTER, recipient, tier: tierLabel(methods) });
+  return announceSub(client, channel, 'subgift', {
+    gifter: gifter || ANON_GIFTER,
+    recipient,
+    tier: tierLabel(methods),
+  });
 }
 
 function onMysteryGift(client, channel, gifter, count, methods, tags) {
   markGiftBatch(tags?.['msg-param-origin-id']);
   narrate('sub', `${who(gifter || ANON_GIFTER)} regaló ${Number(count) || '?'} subs a la comunidad`);
-  return announceSub(client, channel, 'mysterygift', { gifter: gifter || ANON_GIFTER, count, tier: tierLabel(methods) });
+  return announceSub(client, channel, 'mysterygift', {
+    gifter: gifter || ANON_GIFTER,
+    count,
+    tier: tierLabel(methods),
+  });
 }
 
 function onGiftUpgrade(client, channel, username, gifter) {
   const kind = gifter ? 'giftpaidupgrade' : 'anongiftpaidupgrade';
-  throttleSay(client, channel, truncate(fillTemplate(subMessages[kind], { username, gifter: gifter && mention(gifter) })), { droppable: true, name: username });
+  throttleSay(
+    client,
+    channel,
+    truncate(fillTemplate(subMessages[kind], { username, gifter: gifter && mention(gifter) })),
+    { droppable: true, name: username },
+  );
 }
 
 function onBits(client, channel, username, bits) {
   if (bits >= 500) narrate('sub', `${who(username)} donó ${quality.countBits(Number(bits))}`);
-  if (bits >= 1000) throttleSay(client, channel, `💎 ¡WOW! ¡@${username} acaba de donar ${quality.countBits(bits)}! ¡INCREÍBLE! 🔥🔥🔥`);
-  else if (bits >= 100) throttleSay(client, channel, `💜 ¡@${username} ha donado ${quality.countBits(bits)}! ¡Muchas gracias! 🎉`);
-  else throttleSay(client, channel, `✨ ¡Gracias @${username} por ${bits === 1 ? 'el' : 'los'} ${quality.countBits(bits)}! 💜`);
+  if (bits >= 1000)
+    throttleSay(
+      client,
+      channel,
+      `💎 ¡WOW! ¡@${username} acaba de donar ${quality.countBits(bits)}! ¡INCREÍBLE! 🔥🔥🔥`,
+    );
+  else if (bits >= 100)
+    throttleSay(client, channel, `💜 ¡@${username} ha donado ${quality.countBits(bits)}! ¡Muchas gracias! 🎉`);
+  else
+    throttleSay(
+      client,
+      channel,
+      `✨ ¡Gracias @${username} por ${bits === 1 ? 'el' : 'los'} ${quality.countBits(bits)}! 💜`,
+    );
 }
 
 // Un mismo raid puede llegar repetido por IRC: se atiende una vez por canal de origen (ventana de 2 min)
@@ -340,7 +449,10 @@ async function onRaid(client, channel, username, viewers) {
   const key = String(username || '').toLowerCase();
   const now = Date.now();
   for (const [k, ts] of recentRaids) if (now - ts > RAID_DEDUPE_MS) recentRaids.delete(k);
-  if (recentRaids.has(key)) { logger.info(`Raid de ${username} repetido, se ignora`); return; }
+  if (recentRaids.has(key)) {
+    logger.info(`Raid de ${username} repetido, se ignora`);
+    return;
+  }
   recentRaids.set(key, now);
 
   let msg = '';
@@ -349,21 +461,33 @@ async function onRaid(client, channel, username, viewers) {
       const raidInfo = await getChannelInfo(username);
       const game = raidInfo?.game_name || null;
       const context = game ? `Venían de streamear «${game}».` : '';
-      const response = await aiChat('alert', {
-        max_tokens: 100,
-        messages: [
-          { role: 'system', content: buildAlertSystem({ type: 'raid', maxChars: 300, extra: 'Si venían de jugar a algo, nómbralo.' }) },
-          { role: 'user', content: `<evento>Raid de @${username} con ${viewers} viewers. ${context}</evento>` }
-        ]
-      }, { names: [username] });
+      const response = await aiChat(
+        'alert',
+        {
+          max_tokens: 100,
+          messages: [
+            {
+              role: 'system',
+              content: buildAlertSystem({ type: 'raid', maxChars: 300, extra: 'Si venían de jugar a algo, nómbralo.' }),
+            },
+            { role: 'user', content: `<evento>Raid de @${username} con ${viewers} viewers. ${context}</evento>` },
+          ],
+        },
+        { names: [username] },
+      );
       const text = quality.fixMentions(quality.vetAuto(response.choices[0].message.content), [username]);
       if (text && text.toLowerCase().includes(`@${key}`)) msg = truncate(text);
-    } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
+    } catch (err) {
+      logger.error(`Error en raid IA: ${err.message}`);
+    }
   }
   if (!msg) msg = `⚔️ ¡RAID de @${username} con ${viewers} viewers! ¡Bienvenidos a todos! 🔥`;
   if (!isSilenced()) client.say(channel, msg);
   // Los raiders son visitantes de otro canal: no cuentan como viewers del directo
-  narrate('raid', `Raid de ${who(username)}: llegan ${Number(viewers) || '?'} raiders de su canal (visitantes, no los espectadores del directo)`);
+  narrate(
+    'raid',
+    `Raid de ${who(username)}: llegan ${Number(viewers) || '?'} raiders de su canal (visitantes, no los espectadores del directo)`,
+  );
 
   setRaidActive(username);
 }
@@ -400,6 +524,16 @@ async function handleMessage(client, channel, tags) {
 }
 
 module.exports = {
-  handleMessage, onSub, onResub, onSubGift, onMysteryGift, onGiftUpgrade, onBits, onRaid, initFollowerTracking,
-  checkFollowerMilestones, onStreamOnline, throttleSay
+  handleMessage,
+  onSub,
+  onResub,
+  onSubGift,
+  onMysteryGift,
+  onGiftUpgrade,
+  onBits,
+  onRaid,
+  initFollowerTracking,
+  checkFollowerMilestones,
+  onStreamOnline,
+  throttleSay,
 };

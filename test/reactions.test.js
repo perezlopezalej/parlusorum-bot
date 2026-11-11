@@ -5,7 +5,15 @@ const { flagMessages } = require('../src/ai/self-review');
 const { buildRow } = require('../src/utils/chatlog');
 
 const T0 = Date.UTC(2026, 9, 30, 20, 0, 0);
-const row = (s, username, message, extra = {}) => ({ created_at: new Date(T0 + s * 1000).toISOString(), username, message, is_bot: false, origin: null, reply_parent_login: null, ...extra });
+const row = (s, username, message, extra = {}) => ({
+  created_at: new Date(T0 + s * 1000).toISOString(),
+  username,
+  message,
+  is_bot: false,
+  origin: null,
+  reply_parent_login: null,
+  ...extra,
+});
 const bot = (s, origin, message) => row(s, 'dios_fua', message, { is_bot: true, origin });
 
 describe('detección', () => {
@@ -32,19 +40,31 @@ describe('scoreReaction', () => {
     assert.equal(s.ignored, false);
   });
   test('cohost "sueco": negativo aunque haya risa', () => {
-    const rows = [bot(0, 'cohost', 'Sueco de la diversión'), row(20, 'markos', 'Que dice este ahora...?'), row(25, 'b', 'jajaja')];
+    const rows = [
+      bot(0, 'cohost', 'Sueco de la diversión'),
+      row(20, 'markos', 'Que dice este ahora...?'),
+      row(25, 'b', 'jajaja'),
+    ];
     const s = R.scoreReaction(rows[0], rows.slice(1));
     assert.equal(s.negative, true);
     assert.equal(s.positive, false);
   });
   test('mención: solo se ríe el destinatario → no es positivo', () => {
-    const rows = [bot(0, 'mencion', '@gangar79 una buena cola'), row(4, 'gangar79', 'Jajajaja'), row(9, 'gangar79', 'jajaja')];
+    const rows = [
+      bot(0, 'mencion', '@gangar79 una buena cola'),
+      row(4, 'gangar79', 'Jajajaja'),
+      row(9, 'gangar79', 'jajaja'),
+    ];
     const s = R.scoreReaction(rows[0], rows.slice(1));
     assert.equal(s.positive, false);
     assert.equal(s.ignored, false); // el destinatario contestó
   });
   test('responder al bot o nombrarlo cuenta aunque no haya risa', () => {
-    const rows = [bot(0, 'cohost', 'x'), row(30, 'a', 'vale', { reply_parent_login: 'dios_fua' }), row(40, 'b', 'dios fua eres un crack')];
+    const rows = [
+      bot(0, 'cohost', 'x'),
+      row(30, 'a', 'vale', { reply_parent_login: 'dios_fua' }),
+      row(40, 'b', 'dios fua eres un crack'),
+    ];
     assert.equal(R.scoreReaction(rows[0], rows.slice(1)).positive, true);
   });
   test('sin nadie en 60 s: ignorado; fuera de ventana no cuenta', () => {
@@ -63,7 +83,12 @@ describe('scoreReaction', () => {
 
 describe('scoreSession', () => {
   test('puntúa solo mensajes IA, no timers ni comandos', () => {
-    const rows = [bot(0, 'timer', 'Dale follow'), bot(5, 'comando', 'Muerte #1'), bot(10, 'cohost', 'x'), row(15, 'a', 'jajaja')];
+    const rows = [
+      bot(0, 'timer', 'Dale follow'),
+      bot(5, 'comando', 'Muerte #1'),
+      bot(10, 'cohost', 'x'),
+      row(15, 'a', 'jajaja'),
+    ];
     const { scored } = R.scoreSession(rows);
     assert.equal(scored.length, 1);
     assert.equal(scored[0].row.origin, 'cohost');
@@ -93,7 +118,7 @@ describe('flagMessages', () => {
       bot(600, 'hook', 'Pregunta sin respuesta'),
     ];
     const flagged = flagMessages(R.scoreSession(rows).scored);
-    const reasons = flagged.flatMap(f => f.reasons).join(' ');
+    const reasons = flagged.flatMap((f) => f.reasons).join(' ');
     assert.match(reasons, /dato inventado/);
     assert.match(reasons, /negativa/);
     assert.match(reasons, /repetición/);

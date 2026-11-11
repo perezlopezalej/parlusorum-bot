@@ -8,11 +8,11 @@ const BATCH_DELAY_MS = 5000;
 const MAX_BATCH_SIZE = 100;
 const TWITCHBOTS_API = 'https://api.twitchbots.info/v2/bot';
 
-const WHITELIST = new Set([
-  ...(channelConfig.bot_whitelist || []),
-  process.env.BOT_USERNAME || '',
-  channelConfig.streamer_username || '',
-].map(n => String(n).toLowerCase()).filter(Boolean));
+const WHITELIST = new Set(
+  [...(channelConfig.bot_whitelist || []), process.env.BOT_USERNAME || '', channelConfig.streamer_username || '']
+    .map((n) => String(n).toLowerCase())
+    .filter(Boolean),
+);
 
 function isWhitelisted(username) {
   return WHITELIST.has(String(username || '').toLowerCase());
@@ -26,7 +26,7 @@ function getHelixHeaders() {
   const token = (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
   return {
     'Client-ID': process.env.CLIENT_ID,
-    'Authorization': `Bearer ${token}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
 }
@@ -38,8 +38,8 @@ async function banUser(userId, username) {
       {
         method: 'POST',
         headers: getHelixHeaders(),
-        body: JSON.stringify({ data: { user_id: userId, reason: 'Bot conocido detectado automáticamente' } })
-      }
+        body: JSON.stringify({ data: { user_id: userId, reason: 'Bot conocido detectado automáticamente' } }),
+      },
     );
     if (res.ok) {
       logger.info(`[BotDetector] Bot baneado: ${username} (${userId})`);
@@ -58,16 +58,13 @@ async function processBatch(batch) {
   const ids = [...batch.keys()];
   if (ids.length === 0) return;
   try {
-    const res = await fetch(
-      `${TWITCHBOTS_API}?ids=${ids.join(',')}`,
-      { headers: { 'Accept': 'application/json' } }
-    );
+    const res = await fetch(`${TWITCHBOTS_API}?ids=${ids.join(',')}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) {
       logger.warn(`[BotDetector] twitchbots.info error: ${res.status}`);
       return;
     }
     const data = await res.json();
-    const botIds = new Set((data.bots || []).map(b => String(b.id ?? b.user_id)));
+    const botIds = new Set((data.bots || []).map((b) => String(b.id ?? b.user_id)));
     const dryRun = channelConfig.bot_autoban_dry_run !== false;
     const detected = [];
     for (const id of ids) {
@@ -81,7 +78,9 @@ async function processBatch(batch) {
         banUser(id, batch.get(id) || id);
       }
     }
-    logger.info(`🤖 Detector: ${ids.length} usuarios comprobados, ${detected.length} bots detectados${dryRun ? ' (dry run)' : ''}${dryRun && detected.length ? ': ' + detected.join(', ') : ''}`);
+    logger.info(
+      `🤖 Detector: ${ids.length} usuarios comprobados, ${detected.length} bots detectados${dryRun ? ' (dry run)' : ''}${dryRun && detected.length ? ': ' + detected.join(', ') : ''}`,
+    );
   } catch (e) {
     logger.warn(`[BotDetector] Error consultando twitchbots.info: ${e.message}`);
   }
@@ -95,7 +94,10 @@ function checkNewUser(tags) {
   const username = tags['display-name'] || tags.username || userId;
   pendingBatch.set(userId, username);
   if (pendingBatch.size >= MAX_BATCH_SIZE) {
-    if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+    if (batchTimer) {
+      clearTimeout(batchTimer);
+      batchTimer = null;
+    }
     const batch = pendingBatch;
     pendingBatch = new Map();
     processBatch(batch);

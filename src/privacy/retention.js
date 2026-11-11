@@ -29,25 +29,40 @@ const iso = (now, ms) => new Date(now - ms).toISOString();
 async function runRetention({ now = Date.now(), db = supabase, beforeChatPurge = null, limits = LIMITS } = {}) {
   const result = { chat: 0, quality: 0, users: 0, facts: 0, cooldowns: 0, errors: [] };
   const step = async (name, fn) => {
-    try { return await fn(); } catch (e) { result.errors.push(`${name}: ${e.message}`); return null; }
+    try {
+      return await fn();
+    } catch (e) {
+      result.errors.push(`${name}: ${e.message}`);
+      return null;
+    }
   };
 
   let canPurgeChat = true;
   if (beforeChatPurge) {
     // Solo se retiene el chat más allá de 24 h si el registro de calidad falla y aún no han pasado 48 h
-    const ok = await step('registro de calidad', async () => { await beforeChatPurge({ now }); return true; });
+    const ok = await step('registro de calidad', async () => {
+      await beforeChatPurge({ now });
+      return true;
+    });
     canPurgeChat = ok === true;
   }
   const chatCutoff = canPurgeChat ? iso(now, limits.chatMs) : iso(now, limits.chatMs * 2);
   result.chat = (await step('chat_log', () => db.deleteChatLogBefore(chatCutoff))) || 0;
   result.quality = (await step('quality_log', () => db.deleteQualityLogBefore(iso(now, limits.qualityMs)))) || 0;
-  const purged = await step('usuarios', () => db.purgeInactiveUsers({ usersBefore: iso(now, limits.usersMs), factsBefore: iso(now, limits.factsMs) }));
-  if (purged) { result.users = purged.users; result.facts = purged.facts; }
+  const purged = await step('usuarios', () =>
+    db.purgeInactiveUsers({ usersBefore: iso(now, limits.usersMs), factsBefore: iso(now, limits.factsMs) }),
+  );
+  if (purged) {
+    result.users = purged.users;
+    result.facts = purged.facts;
+  }
   result.cooldowns = (await step('cooldowns', () => db.deleteExpiredCooldowns(new Date(now).toISOString()))) || 0;
 
   const total = result.chat + result.quality + result.users + result.facts + result.cooldowns;
   if (total > 0) {
-    logger.info(`🧹 Caducidad: ${result.chat} chat, ${result.quality} calidad, ${result.users} usuarios, ${result.facts} hechos, ${result.cooldowns} cooldowns`);
+    logger.info(
+      `🧹 Caducidad: ${result.chat} chat, ${result.quality} calidad, ${result.users} usuarios, ${result.facts} hechos, ${result.cooldowns} cooldowns`,
+    );
   }
   for (const e of result.errors) logger.warn(`Caducidad de datos: ${e}`);
   return result;
@@ -57,7 +72,7 @@ let timer = null;
 
 function start(opts = {}) {
   if (timer || !(process.env.SUPABASE_URL && process.env.SUPABASE_KEY)) return;
-  const tick = () => runRetention(opts).catch(e => logger.warn(`Caducidad de datos: ${e.message}`));
+  const tick = () => runRetention(opts).catch((e) => logger.warn(`Caducidad de datos: ${e.message}`));
   timer = setInterval(tick, INTERVAL_MS);
   timer.unref?.();
   tick();

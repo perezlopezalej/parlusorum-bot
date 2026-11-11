@@ -24,7 +24,14 @@ describe('muletillas (tío, tía, colega, bro, chaval)', () => {
   });
 
   test('no toca nombres de usuario, palabras que la contienen ni el sustantivo', () => {
-    for (const s of ['@tio_pepe gracias por el sub, histórico', 'el tiovivo de Manu', 'un broche de oro', 'Ese tío es un crack', 'Mi colega Pao juega genial', 'Menuda tía, qué nivel']) {
+    for (const s of [
+      '@tio_pepe gracias por el sub, histórico',
+      'el tiovivo de Manu',
+      'un broche de oro',
+      'Ese tío es un crack',
+      'Mi colega Pao juega genial',
+      'Menuda tía, qué nivel',
+    ]) {
       assert.equal(q.limitFillers(s), s);
     }
   });
@@ -42,8 +49,18 @@ describe('muletillas (tío, tía, colega, bro, chaval)', () => {
 describe('Lusorums (comunidad)', () => {
   test('limitLusorums: 1 de cada 4 mensajes', () => {
     const flags = [];
-    const msgs = ['¡Vamos, Lusorums!', 'Lusorums, qué racha.', 'Ánimo, Lusorums.', '¡Fuerza, Lusorums!', '¡Otra vez, Lusorums!'];
-    const out = msgs.map(m => { const r = q.limitLusorums(m, flags.slice(-3)); flags.push(r.had); return r.text; });
+    const msgs = [
+      '¡Vamos, Lusorums!',
+      'Lusorums, qué racha.',
+      'Ánimo, Lusorums.',
+      '¡Fuerza, Lusorums!',
+      '¡Otra vez, Lusorums!',
+    ];
+    const out = msgs.map((m) => {
+      const r = q.limitLusorums(m, flags.slice(-3));
+      flags.push(r.had);
+      return r.text;
+    });
     assert.deepEqual(out, ['¡Vamos, Lusorums!', 'Qué racha.', 'Ánimo.', '¡Fuerza!', '¡Otra vez, Lusorums!']);
   });
 

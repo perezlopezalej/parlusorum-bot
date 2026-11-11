@@ -1,6 +1,21 @@
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const { getCurrentGame } = require('../twitch/api');
-const { recordFilterDiscard, recordFilterSent, isSilenced, isReactive, getDeathCount, getStreamStartedAt, getStreamNarrative, markStructure, getUsedStructures, getBotHistory, addBotMessage, getPlayer, markNamed, getNamedUsers } = require('../utils/state');
+const {
+  recordFilterDiscard,
+  recordFilterSent,
+  isSilenced,
+  isReactive,
+  getDeathCount,
+  getStreamStartedAt,
+  getStreamNarrative,
+  markStructure,
+  getUsedStructures,
+  getBotHistory,
+  addBotMessage,
+  getPlayer,
+  markNamed,
+  getNamedUsers,
+} = require('../utils/state');
 const { windowFacts, chatSample } = require('../utils/narrative');
 const { pickBest } = require('../ai/pick-best');
 const { canMakeRequest } = require('../utils/ratelimit');
@@ -34,8 +49,15 @@ function enqueueTimerMessage(send) {
 
 function drainTimerQueue() {
   const send = timerQueue.shift();
-  if (!send) { timerDrainRef = null; return; }
-  try { if (isLiveViaEventSub() && !isSilenced() && !isReactive()) send(); } catch (err) { logger.warn(`Timer: ${err.message}`); }
+  if (!send) {
+    timerDrainRef = null;
+    return;
+  }
+  try {
+    if (isLiveViaEventSub() && !isSilenced() && !isReactive()) send();
+  } catch (err) {
+    logger.warn(`Timer: ${err.message}`);
+  }
   timerDrainRef = setTimeout(drainTimerQueue, MIN_TIMER_GAP_MS);
   timerDrainRef.unref?.();
 }
@@ -61,7 +83,10 @@ async function runTimerIA(client) {
   const chatLines = getChatWindow(AI_TIMER_INTERVAL_MS, now);
   const sample = chatSample(chatLines, { n: 8 });
   const chatTalk = chatLines.length >= MIN_CHAT_FOR_SUMMARY && sample.length >= 4;
-  if (!firstFacts.relevant && !chatTalk) { logger.info('Timer IA: nada relevante en la última media hora, no se envía'); return ''; }
+  if (!firstFacts.relevant && !chatTalk) {
+    logger.info('Timer IA: nada relevante en la última media hora, no se envía');
+    return '';
+  }
 
   try {
     // Ficha del juego actual (caché de IGDB) solo para el revisor: así no descarta datos correctos como el año
@@ -80,24 +105,59 @@ async function runTimerIA(client) {
       const summary = `Última media hora: ${facts.lines.length ? facts.lines.join('; ') : 'sin caídas ni jefes nuevos'}. Total de caídas del directo hasta ahora: ${deathCount} (dato de apoyo; no hace falta citarlo).`;
       const chatBlock = sample.length ? `\n<chat>\n${sample.join('\n')}\n</chat>` : '';
       // Lo que ya se dijo en ese tramo (cohost incluido): el código comprueba el parecido, el prompt no lo cita
-      const saidInWindow = getBotHistory().filter(e => at - e.ts <= AI_TIMER_INTERVAL_MS).map(e => e.msg);
+      const saidInWindow = getBotHistory()
+        .filter((e) => at - e.ts <= AI_TIMER_INTERVAL_MS)
+        .map((e) => e.msg);
       const recent = [...recentTimerIA, ...saidInWindow];
       const lastCitedDeaths = quality.citesDeathCount((getBotHistory().slice(-1)[0] || {}).msg || '', deathCount);
-      const system = buildTimerSystem({ game, player: getPlayer(), now: new Date(at), weekday: !getUsedStructures().has('dia-semana') });
+      const system = buildTimerSystem({
+        game,
+        player: getPlayer(),
+        now: new Date(at),
+        weekday: !getUsedStructures().has('dia-semana'),
+      });
       const response = await aiChat('timer', {
         max_tokens: 90,
         messages: [
           { role: 'system', content: `${system}${retryNote(feedback)}` },
-          { role: 'user', content: `<resumen>${summary}</resumen>${chatBlock}` }
-        ]
+          { role: 'user', content: `<resumen>${summary}</resumen>${chatBlock}` },
+        ],
       });
       // Si el contador cambió mientras la IA escribía, el texto parte de datos viejos: se rehace con el estado actual
-      if (getDeathCount() !== deathCount) { feedback = ''; logger.info('Timer IA: el contador cambió mientras se generaba, se rehace con el estado actual'); continue; }
+      if (getDeathCount() !== deathCount) {
+        feedback = '';
+        logger.info('Timer IA: el contador cambió mientras se generaba, se rehace con el estado actual');
+        continue;
+      }
       // Emote como mucho 1 de cada 3 mensajes y siempre al final
-      const allowEmote = quality.emoteAllowed(getBotHistory().map(e => e.msg), emotes);
-      const out = quality.applyEmotePolicy(truncate((response.choices[0].message.content || '').trim()), allowEmote, emotes);
-      const check = quality.validateTimerIA(out, { deathCount, extraDeathNumbers: [facts.deaths, facts.streak], recent, currentGame: game, channelGames: channelConfig.games_played || [], usedStructures: getUsedStructures(), lastCitedDeaths, player: getPlayer(), named: getNamedUsers(), now: at, nameWindowMs: AI_TIMER_NAME_WINDOW_MS });
-      if (!check.ok) { recordFilterDiscard('timer_ia', String(check.reason).slice(0, 30)); feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
+      const allowEmote = quality.emoteAllowed(
+        getBotHistory().map((e) => e.msg),
+        emotes,
+      );
+      const out = quality.applyEmotePolicy(
+        truncate((response.choices[0].message.content || '').trim()),
+        allowEmote,
+        emotes,
+      );
+      const check = quality.validateTimerIA(out, {
+        deathCount,
+        extraDeathNumbers: [facts.deaths, facts.streak],
+        recent,
+        currentGame: game,
+        channelGames: channelConfig.games_played || [],
+        usedStructures: getUsedStructures(),
+        lastCitedDeaths,
+        player: getPlayer(),
+        named: getNamedUsers(),
+        now: at,
+        nameWindowMs: AI_TIMER_NAME_WINDOW_MS,
+      });
+      if (!check.ok) {
+        recordFilterDiscard('timer_ia', String(check.reason).slice(0, 30));
+        feedback = check.reason;
+        logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`);
+        continue;
+      }
       // Un modelo pequeño comprueba ortografía, lógica y que cuadre con el chat y el juego; si no puede, la revisión de siempre
       const pick = await pickBest([out], {
         dayLine: dayLine(new Date(at)),
@@ -107,14 +167,28 @@ async function runTimerIA(client) {
         activity: getChatWindow(5 * 60 * 1000, at).length,
         generator: response._ai?.model,
       });
-      if (pick.status === 'none') { recordFilterDiscard('timer_ia', 'selector'); feedback = 'selector'; logger.info(`Timer IA descartado (el selector no lo ve bueno): ${out.slice(0, 80)}`); continue; }
-      const review = await factcheck.evaluate(out, `Juego: ${game}. Muertes anotadas: ${deathCount}. ${summary} ${gameFacts}`, { game, sense: pick.status === 'error' });
+      if (pick.status === 'none') {
+        recordFilterDiscard('timer_ia', 'selector');
+        feedback = 'selector';
+        logger.info(`Timer IA descartado (el selector no lo ve bueno): ${out.slice(0, 80)}`);
+        continue;
+      }
+      const review = await factcheck.evaluate(
+        out,
+        `Juego: ${game}. Muertes anotadas: ${deathCount}. ${summary} ${gameFacts}`,
+        { game, sense: pick.status === 'error' },
+      );
       if (review.discard) {
         recordFilterDiscard('timer_ia', 'datos');
         logger.info(`Timer IA descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
         break;
       }
-      if (review.nonsense) { recordFilterDiscard('timer_ia', 'sentido'); feedback = 'la frase no tiene sentido o está mal escrita'; logger.info(`Timer IA descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
+      if (review.nonsense) {
+        recordFilterDiscard('timer_ia', 'sentido');
+        feedback = 'la frase no tiene sentido o está mal escrita';
+        logger.info(`Timer IA descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`);
+        continue;
+      }
       msg = out;
     }
     if (msg) {
@@ -140,43 +214,64 @@ function start(client, config) {
   lastMessages = new Array(config.timers.length).fill('');
 
   config.timers.forEach((timer, index) => {
-    const ref = setInterval(withOrigin('timer', () => {
-      // Usar EventSub para saber si está en directo (fiable)
-      if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
+    const ref = setInterval(
+      withOrigin('timer', () => {
+        // Usar EventSub para saber si está en directo (fiable)
+        if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
 
-      const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
-      const msg = timer.message + suffix;
-      lastMessages[index] = msg;
-      enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, msg)));
-    }), timer.interval * 60 * 1000);
+        const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
+        const msg = timer.message + suffix;
+        lastMessages[index] = msg;
+        enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, msg)));
+      }),
+      timer.interval * 60 * 1000,
+    );
 
     timerRefs.push(ref);
   });
 
   // Timer de duración del stream cada 40 min — usa EventSub (fiable)
-  streamDurationInterval = setInterval(withOrigin('timer', () => {
-    if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
+  streamDurationInterval = setInterval(
+    withOrigin('timer', () => {
+      if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
 
-    const uptime = getStreamUptime();
-    const startedAt = getStreamStartedAt();
-    // Sin tiempo real de directo (p. ej. justo tras un despliegue) no hay nada que contar
-    if (!uptime || !startedAt || Date.now() - startedAt < MIN_UPTIME_MS) return;
+      const uptime = getStreamUptime();
+      const startedAt = getStreamStartedAt();
+      // Sin tiempo real de directo (p. ej. justo tras un despliegue) no hay nada que contar
+      if (!uptime || !startedAt || Date.now() - startedAt < MIN_UPTIME_MS) return;
 
-    enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`)));
-  }), 40 * 60 * 1000);
+      enqueueTimerMessage(
+        withOrigin('timer', () =>
+          client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`),
+        ),
+      );
+    }),
+    40 * 60 * 1000,
+  );
 
   // Timer IA: resumen de la última media hora. El código reúne lo que ha pasado (caídas, jefes, temas del chat) y la IA
   // lo cuenta con gracia en una frase. Si no ha pasado nada relevante, no se envía nada.
-  timerRefs.push(setInterval(withOrigin('timer_ia', () => runTimerIA(client)), AI_TIMER_INTERVAL_MS));
+  timerRefs.push(
+    setInterval(
+      withOrigin('timer_ia', () => runTimerIA(client)),
+      AI_TIMER_INTERVAL_MS,
+    ),
+  );
 }
 
 function stop() {
-  timerRefs.forEach(ref => clearInterval(ref));
+  timerRefs.forEach((ref) => clearInterval(ref));
   timerRefs.length = 0;
   timerQueue.length = 0;
   recentTimerIA.length = 0;
-  if (timerDrainRef) { clearTimeout(timerDrainRef); timerDrainRef = null; }
-  if (streamDurationInterval) { clearInterval(streamDurationInterval); streamDurationInterval = null; }
+  if (timerDrainRef) {
+    clearTimeout(timerDrainRef);
+    timerDrainRef = null;
+  }
+  if (streamDurationInterval) {
+    clearInterval(streamDurationInterval);
+    streamDurationInterval = null;
+  }
   logger.info('⏹️ Timers detenidos');
 }
 

@@ -18,7 +18,10 @@ test('la regla vale para cohost, menciones, timer, hook, alertas, resumen y !que
   assert.equal(q.validateHook(`${BAD} ¿Y vosotros?`, { deathCount: 5 }).ok, false);
   assert.equal(q.validateAuto(BAD).ok, false);
   assert.ok(summaryProblem('Gran directo con la FUA presente en cada caída de Manu.'));
-  assert.match(q.validateQueMePerdi('Llevamos un rato con la FUA a tope y poco más que contar.', {}) || '', /masculino/);
+  assert.match(
+    q.validateQueMePerdi('Llevamos un rato con la FUA a tope y poco más que contar.', {}) || '',
+    /masculino/,
+  );
   assert.equal(q.validateMention(GOOD).ok, true);
 });
 

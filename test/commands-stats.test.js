@@ -1,6 +1,12 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseMuertesArgs, sumGameDeaths, formatSince, findUserByName, MAX_DEATHS_ADD } = require('../src/commands/stats');
+const {
+  parseMuertesArgs,
+  sumGameDeaths,
+  formatSince,
+  findUserByName,
+  MAX_DEATHS_ADD,
+} = require('../src/commands/stats');
 
 const A = (...a) => ['muertes', ...a];
 
@@ -54,8 +60,9 @@ describe('sumGameDeaths', () => {
 
 describe('formatSince', () => {
   const now = Date.UTC(2026, 9, 29);
-  const ago = ms => formatSince(now - ms, now);
-  const MIN = 60000, DAY = 24 * 60 * MIN;
+  const ago = (ms) => formatSince(now - ms, now);
+  const MIN = 60000,
+    DAY = 24 * 60 * MIN;
   test('unidades y plurales', () => {
     assert.equal(ago(1 * MIN), '1 minuto');
     assert.equal(ago(5 * 60 * MIN), '5 horas');
@@ -94,6 +101,8 @@ describe('!muertes / !boss <texto>: nunca se repite lo que escribe el usuario', 
     assert.deepEqual(gameTotalReply(sumGameDeaths('hell is us', rows)), { kind: 'total', game: 'Hell Is Us' });
   });
   test('juego conocido pero sin muertes anotadas → ayuda', () => {
-    assert.deepEqual(gameTotalReply(sumGameDeaths('hell is us', [{ id: 1, game: 'Hell Is Us', death_count: 0 }])), { kind: 'help' });
+    assert.deepEqual(gameTotalReply(sumGameDeaths('hell is us', [{ id: 1, game: 'Hell Is Us', death_count: 0 }])), {
+      kind: 'help',
+    });
   });
 });

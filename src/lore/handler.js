@@ -16,8 +16,8 @@ const logger = require('../utils/logger');
 const MIN_STREAMS = 2;
 const MIN_USERS = 3;
 const MAX_NEW_PER_STREAM = 10;
-const DECAY_START = 4;        // streams sin aparecer antes de empezar a perder peso
-const ARCHIVE_AT = 8;         // streams sin aparecer → archivado
+const DECAY_START = 4; // streams sin aparecer antes de empezar a perder peso
+const ARCHIVE_AT = 8; // streams sin aparecer → archivado
 const MAX_USERS_STORED = 50;
 const MAX_PROMPT_CHARS = 500; // tope del lore aprendido inyectado en el prompt
 const CACHE_TTL = 10 * 60 * 1000;
@@ -40,7 +40,21 @@ function hasPhrase(normText, key) {
 
 // ─── FILTROS DE CANDIDATOS (puros) ───────────────────────────────────────────
 
-const NOISE_WORDS = new Set(['xd', 'xdd', 'lol', 'lul', 'kek', 'kekw', 'omg', 'wtf', 'jsjs', 'haha', 'hehe', 'ufff', 'ostia']);
+const NOISE_WORDS = new Set([
+  'xd',
+  'xdd',
+  'lol',
+  'lul',
+  'kek',
+  'kekw',
+  'omg',
+  'wtf',
+  'jsjs',
+  'haha',
+  'hehe',
+  'ufff',
+  'ostia',
+]);
 
 // Risas y onomatopeyas ("Jajajaja", "jsjsjs", "yiyiyiyi", "Wauuuu"): no son lore
 function isNoiseTerm(term) {
@@ -49,8 +63,8 @@ function isNoiseTerm(term) {
   if (NOISE_WORDS.has(compact)) return true;
   if (/^[aeiou]?(?:[jh][aeiou])+[jh]?$/.test(compact)) return true; // jaja, jeje, ajaj, haha
   if (/^(?:js)+$/.test(compact)) return true;
-  if (/^(.{1,4}?)\1{2,}$/.test(compact)) return true;                 // unidad corta repetida
-  if (/(.)\1{2,}/.test(compact)) return true;                         // letra alargada (vamooo, wauuu)
+  if (/^(.{1,4}?)\1{2,}$/.test(compact)) return true; // unidad corta repetida
+  if (/(.)\1{2,}/.test(compact)) return true; // letra alargada (vamooo, wauuu)
   return false;
 }
 
@@ -67,13 +81,13 @@ const PEOPLE_WORDS = buildPeopleWords(loreConfig.people);
 
 // El término nombra a una persona: usuario del chat, nombre del mapa "people" o apodo oficial
 function isPersonTerm(key, chatters, peopleWords = PEOPLE_WORDS) {
-  return key.split(' ').some(w => chatters.has(w) || peopleWords.has(w));
+  return key.split(' ').some((w) => chatters.has(w) || peopleWords.has(w));
 }
 
 // El término es (casi) el nombre de alguno de los juegos dados
 function matchesGameName(term, games) {
   const n = tokenize(term).length;
-  return games.some(g => tokenize(g).length <= n + 2 && classifyGameMatch(term, g) === 'match');
+  return games.some((g) => tokenize(g).length <= n + 2 && classifyGameMatch(term, g) === 'match');
 }
 
 // Juegos de sesiones anteriores + IGDB como segunda opinión (coste: 1 consulta por candidato)
@@ -91,7 +105,7 @@ async function isGameTerm(term, playedGames) {
 async function loadPlayedGames() {
   try {
     const { getRecentSessionDeaths } = require('../utils/supabase');
-    return [...new Set((await getRecentSessionDeaths(60)).map(r => r.game).filter(Boolean))];
+    return [...new Set((await getRecentSessionDeaths(60)).map((r) => r.game).filter(Boolean))];
   } catch {
     return [];
   }
@@ -99,26 +113,30 @@ async function loadPlayedGames() {
 
 // ─── LORE MANUAL ─────────────────────────────────────────────────────────────
 
-const AVOID = (loreConfig.avoid || []).map(a => ({
+const AVOID = (loreConfig.avoid || []).map((a) => ({
   topic: String(a.topic || '').replace(/^EJEMPLO:\s*/i, ''),
-  keywords: (a.keywords || []).map(norm).filter(Boolean)
+  keywords: (a.keywords || []).map(norm).filter(Boolean),
 }));
 
 function touchesAvoidedTopic(text) {
   const n = norm(text);
-  return AVOID.some(a => a.keywords.some(k => hasPhrase(n, k)));
+  return AVOID.some((a) => a.keywords.some((k) => hasPhrase(n, k)));
 }
 
 // Siempre primero en el prompt, sin tope ni decaimiento
 // profile 'lean': identidad y chistes internos condensados (loreConfig.lean); los temas a evitar van siempre
 function getManualLore(profile = 'full') {
-  const avoid = AVOID.map(a => a.topic).filter(Boolean).join('; ');
+  const avoid = AVOID.map((a) => a.topic)
+    .filter(Boolean)
+    .join('; ');
   const src = profile === 'lean' && loreConfig.lean ? loreConfig.lean : loreConfig;
   return [
     src.identity,
     src.inside_jokes,
-    avoid ? `Temas a evitar (no los menciones ni bromees con ellos): ${avoid}.` : ''
-  ].filter(Boolean).join(' ');
+    avoid ? `Temas a evitar (no los menciones ni bromees con ellos): ${avoid}.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 // Apodo oficial del lore manual (config/lore.json, "nicknames": { "nick": "apodo" }); null si no hay
@@ -144,8 +162,8 @@ async function getLoreContext() {
   try {
     const rows = await getLoreRows(['active']);
     const sorted = rows
-      .map(r => ({ r, w: weightOf(r) }))
-      .filter(x => x.w > 0)
+      .map((r) => ({ r, w: weightOf(r) }))
+      .filter((x) => x.w > 0)
       .sort((a, b) => b.w - a.w || (b.r.users_count || 0) - (a.r.users_count || 0));
 
     const parts = [];
@@ -200,7 +218,10 @@ function statsFor(key, lines) {
   const users = new Set();
   let count = 0;
   for (const l of lines) {
-    if (hasPhrase(l.norm, key)) { count++; users.add(l.user); }
+    if (hasPhrase(l.norm, key)) {
+      count++;
+      users.add(l.user);
+    }
   }
   return { count, users };
 }
@@ -213,7 +234,10 @@ function fitSample(text, maxChars = 6000) {
 }
 
 async function extractCandidates(chatSample, memory, existingTerms) {
-  const avoid = AVOID.map(a => a.topic).filter(Boolean).join('; ') || 'ninguno';
+  const avoid =
+    AVOID.map((a) => a.topic)
+      .filter(Boolean)
+      .join('; ') || 'ninguno';
   const prompt = `Analizas el chat de un stream de Twitch en español para detectar LORE del canal: memes, frases recurrentes, apodos, chistes internos y enemigos jurados (jefes o juegos que el chat odia).
 Resumen del stream: ${memory?.summary || 'sin datos'}
 Momentos: ${JSON.stringify(memory?.highlights || [])}
@@ -229,7 +253,7 @@ Responde SOLO con un JSON array: [{"term":"...","kind":"meme|frase|apodo|chiste|
 
   const response = await aiChat('endstream', {
     max_tokens: 500,
-    messages: [{ role: 'user', content: prompt }]
+    messages: [{ role: 'user', content: prompt }],
   });
   const text = (response.choices[0].message.content || '').replace(/```json|```/g, '').trim();
   const start = text.indexOf('[');
@@ -249,12 +273,12 @@ async function onStreamEndLore(memory) {
     const streamId = String(getCurrentSessionId() ?? new Date().toISOString().slice(0, 10));
     const now = new Date().toISOString();
     const rows = await getLoreRows();
-    const byKey = new Map(rows.map(r => [r.term_key, r]));
+    const byKey = new Map(rows.map((r) => [r.term_key, r]));
     const toSave = [];
 
     const nickToId = getLoreSampleIds();
     // channel_lore.users guarda user_id, no nicks (privacidad); quien no tiene id no se cuenta
-    const idsOf = nicks => [...nicks].map(n => nickToId.get(n)).filter(Boolean);
+    const idsOf = (nicks) => [...nicks].map((n) => nickToId.get(n)).filter(Boolean);
     const playedGames = await loadPlayedGames();
 
     // 1. Lore ya conocido: contar apariciones reales en el chat y decaer lo que no sale
@@ -263,14 +287,18 @@ async function onStreamEndLore(memory) {
       // Limpieza de lo aprendido antes de existir los filtros
       if (isNoiseTerm(row.term) || matchesGameName(row.term, playedGames)) {
         const rejected = { ...row, status: 'rejected' };
-        delete rejected.id; delete rejected.created_at; delete rejected.channel;
+        delete rejected.id;
+        delete rejected.created_at;
+        delete rejected.channel;
         toSave.push(rejected);
         logger.info(`📖 Lore descartado por filtro: "${row.term}"`);
         continue;
       }
       const { count, users } = statsFor(row.term_key, lines);
       const next = { ...row };
-      delete next.id; delete next.created_at; delete next.channel;
+      delete next.id;
+      delete next.created_at;
+      delete next.channel;
       if (count > 0) {
         const merged = [...new Set([...(row.users || []), ...idsOf(users)])].slice(0, MAX_USERS_STORED);
         next.streams_count = (row.streams_count || 0) + (row.last_stream_id === streamId ? 0 : 1);
@@ -282,8 +310,12 @@ async function onStreamEndLore(memory) {
         next.last_stream_id = streamId;
         // Nada entra en los prompts sin !lore aprobar: lo aprendido siempre espera a un mod
         next.needs_approval = true;
-        if (next.status === 'pending' && (row.streams_count < MIN_STREAMS || row.users_count < MIN_USERS)
-            && next.streams_count >= MIN_STREAMS && next.users_count >= MIN_USERS) {
+        if (
+          next.status === 'pending' &&
+          (row.streams_count < MIN_STREAMS || row.users_count < MIN_USERS) &&
+          next.streams_count >= MIN_STREAMS &&
+          next.users_count >= MIN_USERS
+        ) {
           logger.info(`📖 Lore listo para aprobar: "${next.term}" (!lore aprobar ${row.id})`);
         }
       } else {
@@ -291,12 +323,15 @@ async function onStreamEndLore(memory) {
         if (next.missed_streams >= ARCHIVE_AT) next.status = 'archived';
       }
       // Un término activo sin aprobador (aprendido antes de B2) vuelve a la cola de aprobación
-      if (next.status === 'active' && !next.approved_by) { next.status = 'pending'; next.needs_approval = true; }
+      if (next.status === 'active' && !next.approved_by) {
+        next.status = 'pending';
+        next.needs_approval = true;
+      }
       toSave.push(next);
     }
 
     // 2. Candidatos nuevos propuestos por la IA
-    const existingTerms = rows.filter(r => r.status !== 'archived').map(r => r.term);
+    const existingTerms = rows.filter((r) => r.status !== 'archived').map((r) => r.term);
     let candidates = [];
     try {
       candidates = await extractCandidates(chatSample, memory, existingTerms);
@@ -325,7 +360,9 @@ async function onStreamEndLore(memory) {
       const kind = KINDS.includes(c.kind) ? c.kind : 'meme';
       const userList = idsOf(users).slice(0, MAX_USERS_STORED);
       toSave.push({
-        term, term_key: key, kind,
+        term,
+        term_key: key,
+        kind,
         status: 'pending',
         needs_approval: true, // siempre requiere !lore aprobar
         streams_count: 1,
@@ -334,12 +371,12 @@ async function onStreamEndLore(memory) {
         users_count: userList.length,
         missed_streams: 0,
         last_seen: now,
-        last_stream_id: streamId
+        last_stream_id: streamId,
       });
       added++;
     }
 
-    if (toSave.length && await upsertLoreRows(toSave)) {
+    if (toSave.length && (await upsertLoreRows(toSave))) {
       invalidateLoreCache();
       logger.info(`📖 Lore: ${added} candidatos nuevos, ${toSave.length - added} actualizados`);
     }
@@ -353,13 +390,14 @@ async function onStreamEndLore(memory) {
 async function getLoreOverview() {
   const rows = await getLoreRows(['active', 'pending']);
   // * = ya cumple los umbrales (≥2 streams y ≥3 usuarios): listo para aprobar
-  const ready = r => (r.streams_count || 0) >= MIN_STREAMS && (r.users_count || 0) >= MIN_USERS;
-  const fmt = r => `#${r.id} ${sanitizeForAI(r.term) || '?'}${r.status === 'pending' && ready(r) ? '*' : ''}`;
-  const take = status => rows
-    .filter(r => r.status === status)
-    .sort((a, b) => (status === 'pending' ? Number(ready(b)) - Number(ready(a)) : 0) || weightOf(b) - weightOf(a))
-    .slice(0, 6)
-    .map(fmt);
+  const ready = (r) => (r.streams_count || 0) >= MIN_STREAMS && (r.users_count || 0) >= MIN_USERS;
+  const fmt = (r) => `#${r.id} ${sanitizeForAI(r.term) || '?'}${r.status === 'pending' && ready(r) ? '*' : ''}`;
+  const take = (status) =>
+    rows
+      .filter((r) => r.status === status)
+      .sort((a, b) => (status === 'pending' ? Number(ready(b)) - Number(ready(a)) : 0) || weightOf(b) - weightOf(a))
+      .slice(0, 6)
+      .map(fmt);
   return { active: take('active'), pending: take('pending'), total: rows.length };
 }
 
@@ -383,8 +421,11 @@ module.exports = {
   getLoreContext,
   invalidateLoreCache,
   onStreamEndLore,
-  isNoiseTerm, isPersonTerm, matchesGameName, buildPeopleWords,
+  isNoiseTerm,
+  isPersonTerm,
+  matchesGameName,
+  buildPeopleWords,
   getLoreOverview,
   approveLore,
-  deleteLore
+  deleteLore,
 };

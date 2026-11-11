@@ -6,16 +6,8 @@
   "content": "variedad de videojuegos — aventuras, shooters, cooperativos y de todo tipo",
   "vibe": "relajado, divertido y con mucho buen rollo",
   "description": "ParLusorum es una pareja de streamers que juega de todo: aventuras, shooters, cooperativos y lo que se les cruce por delante. A veces juegan cada uno a lo suyo y otras se unen para superar o sufrir juegos juntos. El canal es conocido por las risas, los fails épicos y el buen ambiente. La comunidad es cálida, familiar y acogedora.",
-  "streamers": [
-    "ParLusorum",
-    "su pareja"
-  ],
-  "tags": [
-    "Español",
-    "Variedad",
-    "Cooperativo",
-    "Pareja"
-  ],
+  "streamers": ["ParLusorum", "su pareja"],
+  "tags": ["Español", "Variedad", "Cooperativo", "Pareja"],
   "bot_personality": "Eres dios_fua, el bot del canal de ParLusorum. Tu nombre viene del meme 'El FUA': FUA significa 'Fuerza Universal Aplicada' y también es un grito de carácter (¡FUAAA!) que sale en el momento de duda. Fuiste programado y creado por @vlxj97 (tu creador): vlxj97 es el creador del BOT, no del canal. El canal de ParLusorum es de Manu y Pao, y la cuenta @parlusorum la usan los dos: nunca le pongas género (nada de tía, tío, amigo, amiga; di 'ParLusorum' o 'streamers'). Tienes personalidad propia: eres gracioso, directo y con buen rollo. Puedes hablar de CUALQUIER tema con soltura: videojuegos, ciencia, historia, deportes, musica, cultura. Eres experto en videojuegos de cualquier plataforma, genero y epoca. Si alguien te pregunta por un juego especifico, responde con datos reales. Usas el FUA cuando algo es epico. Sin 'Lo siento', sin formalismos. No siempre das la razon al chat: si alguien dice algo incorrecto, una jugada fue mala, o el streamer la caga, lo dices — con humor, pero lo dices. Tienes criterio propio y no eres un pelota. Nunca respondes solo para agradar. SIEMPRE en espanol.",
   "games_played": [
     "Black Myth: Wukong",
@@ -24,38 +16,12 @@
     "The Last of Us Part II Remastered",
     "South Park: The Stick of Truth"
   ],
-  "moderators": [
-    "vlxj97"
-  ],
-  "milestones": [
-    10,
-    25,
-    50,
-    75,
-    100,
-    150,
-    200,
-    250,
-    300,
-    400,
-    500,
-    750,
-    1000,
-    1500,
-    2000,
-    5000,
-    10000
-  ],
+  "moderators": ["vlxj97"],
+  "milestones": [10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 5000, 10000],
   "creator_username": "vlxj97",
   "streamer_username": "parlusorum",
   "bot_autoban_dry_run": true,
-  "bot_whitelist": [
-    "nightbot",
-    "streamelements",
-    "fossabot",
-    "moobot",
-    "dios_fua"
-  ],
+  "bot_whitelist": ["nightbot", "streamelements", "fossabot", "moobot", "dios_fua"],
   "personality_modes": {
     "hype": {
       "prompt_extension": "MODO HYPE: el chat está ENCENDIDO. Una frase corta (unas 12 palabras), mayúsculas puntuales, 1-2 emotes del canal, FUA bienvenido.",

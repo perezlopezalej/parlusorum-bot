@@ -10,10 +10,14 @@ const COOLDOWNS = {
 };
 
 // Minúsculas y sin tildes
-const normalize = s => String(s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+const normalize = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
 // Letras repetidas 3+ veces ("fuaaaa") se reducen a una
-const squash = s => s.replace(/(.)\1{2,}/g, '$1');
-const lettersOnly = s => normalize(s).replace(/[^a-z]/g, '');
+const squash = (s) => s.replace(/(.)\1{2,}/g, '$1');
+const lettersOnly = (s) => normalize(s).replace(/[^a-z]/g, '');
 
 // Distancia de edición con transposición (Damerau/OSA)
 function editDistance(a, b) {
@@ -23,53 +27,66 @@ function editDistance(a, b) {
     for (let j = 1; j <= b.length; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
     }
   }
   return d[a.length][b.length];
 }
 
-const targetsFor = botNames => [...new Set([TARGET, ...botNames.map(lettersOnly).filter(n => n.length >= 5)])];
+const targetsFor = (botNames) => [...new Set([TARGET, ...botNames.map(lettersOnly).filter((n) => n.length >= 5)])];
 
 // "dios fua", "diosfua", "dios_fua", "@dios_fua", mayúsculas, signos repetidos y una letra de más o de menos.
 // Ante la duda se prefiere responder: un falso positivo cuesta menos que ignorar a quien habla con el bot.
 function isDirectMention(message, botNames = []) {
-  const words = normalize(message).split(/[^a-z]+/).filter(Boolean).map(squash);
+  const words = normalize(message)
+    .split(/[^a-z]+/)
+    .filter(Boolean)
+    .map(squash);
   const targets = targetsFor(botNames);
-  const near = candidate => candidate.length >= 5 && targets.some(t => editDistance(candidate, t) <= 1);
+  const near = (candidate) => candidate.length >= 5 && targets.some((t) => editDistance(candidate, t) <= 1);
   return words.some((w, i) => near(w) || (i + 1 < words.length && near(w + words[i + 1])));
 }
 
 // Preguntas naturales: ancladas al inicio de la frase. needsQuestion = exige "?" para disparar.
 const NATURAL_PATTERNS = [
   // Juego actual
-  { re: /^(?:y )?(?:a )?que juego (?:es|juegas|juegan|jugais|jugamos|estas jugando|estais jugando|estan jugando)\b/, needsQuestion: false },
+  {
+    re: /^(?:y )?(?:a )?que juego (?:es|juegas|juegan|jugais|jugamos|estas jugando|estais jugando|estan jugando)\b/,
+    needsQuestion: false,
+  },
   { re: /^(?:y )?a que (?:juegas|juegan|jugais|estas jugando|estais jugando|estan jugando)\b/, needsQuestion: false },
   { re: /^(?:y )?que (?:estas|estais|estan) jugando\b/, needsQuestion: false },
   { re: /^como se llama (?:el|este) juego\b/, needsQuestion: false },
   { re: /^de que va (?:el juego|este juego|esto)\b/, needsQuestion: false },
   // Duración del stream
-  { re: /^cuanto (?:tiempo )?(?:llevas|llevais)(?: (?:ya|hoy|aqui|jugando|de stream|de directo|en (?:el )?(?:stream|directo)))*$/, needsQuestion: false },
+  {
+    re: /^cuanto (?:tiempo )?(?:llevas|llevais)(?: (?:ya|hoy|aqui|jugando|de stream|de directo|en (?:el )?(?:stream|directo)))*$/,
+    needsQuestion: false,
+  },
   { re: /^cuanto (?:tiempo )?lleva (?:el|este) (?:stream|directo)$/, needsQuestion: false },
   // Identidad del bot
   { re: /^(?:tu )?eres (?:un )?(?:bot|ia|inteligencia artificial|robot|real|humano|persona)$/, needsQuestion: true },
   { re: /^como te llamas$/, needsQuestion: true },
   { re: /^quien eres$/, needsQuestion: true },
   // Dificultad
-  { re: /^(?:es|esta) (?:muy )?(?:dificil|complicado|facil)(?: (?:el|este) (?:juego|boss|jefe|nivel))?$/, needsQuestion: true },
+  {
+    re: /^(?:es|esta) (?:muy )?(?:dificil|complicado|facil)(?: (?:el|este) (?:juego|boss|jefe|nivel))?$/,
+    needsQuestion: true,
+  },
   { re: /^que tan (?:dificil|facil) (?:es|esta)(?: (?:el|este) (?:juego|boss|jefe|nivel))?$/, needsQuestion: true },
 ];
 
 function isNaturalQuestion(message, tags = {}, botNames = []) {
   if (!message || message.length > MAX_NATURAL_LENGTH) return false;
   const botKeys = targetsFor(botNames);
-  const isBot = name => botKeys.includes(lettersOnly(name));
+  const isBot = (name) => botKeys.includes(lettersOnly(name));
 
   // Respuesta a otro usuario o @ a otra persona: no va dirigido al bot
   const replyTo = tags['reply-parent-user-login'];
   if (replyTo && !isBot(replyTo)) return false;
   const mentions = message.match(/@\w+/g) || [];
-  if (mentions.some(m => !isBot(m))) return false;
+  if (mentions.some((m) => !isBot(m))) return false;
 
   const hasQuestionMark = /[?¿]/.test(message);
   const text = normalize(message)
@@ -77,11 +94,12 @@ function isNaturalQuestion(message, tags = {}, botNames = []) {
     .replace(/^[^a-z0-9]+/, '')
     .replace(/[^a-z0-9]+$/, '')
     .replace(/\s+/g, ' ');
-  return NATURAL_PATTERNS.some(p => p.re.test(text) && (!p.needsQuestion || hasQuestionMark));
+  return NATURAL_PATTERNS.some((p) => p.re.test(text) && (!p.needsQuestion || hasQuestionMark));
 }
 
 // Insultos y provocaciones típicas del chat (sobre texto normalizado)
-const PROVOCATION_RE = /\b(subnormal|mierda|cagar|caga|chup(?:a|ame|amela|ar)\b|mamon|mamona|puto|puta|cabron|gilipollas|imbecil|idiota|panchito|maric[ao]n?|repelente|pesao|pesado|tus muertos|tu madre|callate|callas|cierra la boca|te faltan huevos|te (?:mato|mate|reviento|destruyo|voy a (?:matar|dejar|reventar))|vete a|que te follen)\b/;
+const PROVOCATION_RE =
+  /\b(subnormal|mierda|cagar|caga|chup(?:a|ame|amela|ar)\b|mamon|mamona|puto|puta|cabron|gilipollas|imbecil|idiota|panchito|maric[ao]n?|repelente|pesao|pesado|tus muertos|tu madre|callate|callas|cierra la boca|te faltan huevos|te (?:mato|mate|reviento|destruyo|voy a (?:matar|dejar|reventar))|vete a|que te follen)\b/;
 
 function isProvocation(message) {
   return PROVOCATION_RE.test(normalize(message));
@@ -89,23 +107,59 @@ function isProvocation(message) {
 
 // "Dios Fua cállate un rato": una petición de silencio, no un insulto. Se responde breve y amable y se pausa el cohost libre.
 // Si además trae un insulto de verdad ("cállate subnormal") sigue siendo una provocación.
-const SHUTUP_RE = /\b(?:callate|callese|callense|calla|cierra la boca|no hables|deja de hablar|dejad de hablar|silencio|shh+|hazte el mudo|un rato sin hablar|callad[oa]s?)\b/;
+const SHUTUP_RE =
+  /\b(?:callate|callese|callense|calla|cierra la boca|no hables|deja de hablar|dejad de hablar|silencio|shh+|hazte el mudo|un rato sin hablar|callad[oa]s?)\b/;
 function isShutUpRequest(message) {
   const text = normalize(message);
   return SHUTUP_RE.test(text) && !PROVOCATION_RE.test(text.replace(new RegExp(SHUTUP_RE.source, 'g'), ' '));
 }
 
 // Palabras que delatan que se habla CON el bot
-const SECOND_PERSON = new Set(['te', 'tu', 'tus', 'eres', 'tienes', 'puedes', 'sabes', 'estas', 'quieres', 'haces', 'dices', 'contigo', 'dime', 'dinos', 'cuentanos', 'cuentame']);
+const SECOND_PERSON = new Set([
+  'te',
+  'tu',
+  'tus',
+  'eres',
+  'tienes',
+  'puedes',
+  'sabes',
+  'estas',
+  'quieres',
+  'haces',
+  'dices',
+  'contigo',
+  'dime',
+  'dinos',
+  'cuentanos',
+  'cuentame',
+]);
 // Delante del nombre: se habla DE él ("el dios fua", "con ese dios fua")
 const THIRD_PREV = new Set(['el', 'ese', 'este', 'del', 'al', 'de', 'su', 'nuestro', 'mi', 'otro']);
 // Detrás del nombre: verbo en tercera persona ("dios fua va a lo suyo")
-const THIRD_NEXT = new Set(['va', 'es', 'esta', 'sigue', 'ha', 'funciona', 'tiene', 'hace', 'dice', 'sabe', 'quiere', 'parece', 'dijo', 'estaba', 'era', 'ya', 'siempre']);
+const THIRD_NEXT = new Set([
+  'va',
+  'es',
+  'esta',
+  'sigue',
+  'ha',
+  'funciona',
+  'tiene',
+  'hace',
+  'dice',
+  'sabe',
+  'quiere',
+  'parece',
+  'dijo',
+  'estaba',
+  'era',
+  'ya',
+  'siempre',
+]);
 
 // Posición [start, end) de la mención en la lista de palabras, o null
 function mentionSpan(words, botNames) {
   const targets = targetsFor(botNames);
-  const near = c => c.length >= 5 && targets.some(t => editDistance(c, t) <= 1);
+  const near = (c) => c.length >= 5 && targets.some((t) => editDistance(c, t) <= 1);
   for (let i = 0; i < words.length; i++) {
     if (near(words[i])) return [i, i + 1];
     if (i + 1 < words.length && near(words[i] + words[i + 1])) return [i, i + 2];
@@ -116,11 +170,14 @@ function mentionSpan(words, botNames) {
 // true si el mensaje habla CON el bot; false si habla DE él en tercera persona
 function isAddressedToBot(message, _tags = {}, botNames = []) {
   const text = normalize(message);
-  if (text.split(/\s+/).some(w => w.startsWith('@') && isDirectMention(w, botNames))) return true;
-  const words = text.split(/[^a-z]+/).filter(Boolean).map(squash);
+  if (text.split(/\s+/).some((w) => w.startsWith('@') && isDirectMention(w, botNames))) return true;
+  const words = text
+    .split(/[^a-z]+/)
+    .filter(Boolean)
+    .map(squash);
   const span = mentionSpan(words, botNames);
   if (!span) return true;
-  if (words.some(w => SECOND_PERSON.has(w))) return true;
+  if (words.some((w) => SECOND_PERSON.has(w))) return true;
   const prev = words[span[0] - 1];
   const next = words[span[1]];
   if (prev && THIRD_PREV.has(prev)) return false;
@@ -160,7 +217,7 @@ function cooldownGate(kind, { now, lastGlobalAt = 0, userUntil = 0, multiplier =
 // Tope de respuestas por usuario en una ventana deslizante. stamps = instantes de sus respuestas recientes.
 // Devuelve { ok, stamps }: stamps ya sin los caducados (y con `now` añadido si ok)
 function mentionBudget(stamps, now, max, windowMs) {
-  const kept = (stamps || []).filter(t => now - t < windowMs);
+  const kept = (stamps || []).filter((t) => now - t < windowMs);
   if (kept.length >= max) return { ok: false, stamps: kept };
   return { ok: true, stamps: [...kept, now] };
 }
@@ -170,4 +227,18 @@ function isStale(startedAt, now, maxMs) {
   return now - startedAt > maxMs;
 }
 
-module.exports = { mentionBudget, isStale, COOLDOWNS, editDistance, isDirectMention, isNaturalQuestion, isProvocation, isShutUpRequest, isAddressedToBot, classifyMessage, provocationGate, cooldownMs, cooldownGate };
+module.exports = {
+  mentionBudget,
+  isStale,
+  COOLDOWNS,
+  editDistance,
+  isDirectMention,
+  isNaturalQuestion,
+  isProvocation,
+  isShutUpRequest,
+  isAddressedToBot,
+  classifyMessage,
+  provocationGate,
+  cooldownMs,
+  cooldownGate,
+};

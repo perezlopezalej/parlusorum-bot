@@ -24,7 +24,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 **Hallazgos clave**
 
-- **[Oficial] Anthropic** describe el contexto como un "presupuesto de atención" finito. Su guía de *context engineering* (septiembre de 2025) adopta el término *context rot*: a medida que crece el número de tokens en la ventana de contexto, disminuye la capacidad del modelo para recordar con precisión esa información. Explica que la arquitectura transformer crea relaciones por pares entre todos los tokens, de modo que la atención "se estira". Su principio rector es buscar el conjunto más pequeño posible de tokens de alta señal que maximice la probabilidad del resultado deseado.
+- **[Oficial] Anthropic** describe el contexto como un "presupuesto de atención" finito. Su guía de _context engineering_ (septiembre de 2025) adopta el término _context rot_: a medida que crece el número de tokens en la ventana de contexto, disminuye la capacidad del modelo para recordar con precisión esa información. Explica que la arquitectura transformer crea relaciones por pares entre todos los tokens, de modo que la atención "se estira". Su principio rector es buscar el conjunto más pequeño posible de tokens de alta señal que maximice la probabilidad del resultado deseado.
 - **[Investigación] "Lost in the Middle"** (Liu et al., TACL 2024) muestra que el rendimiento cae de forma significativa al cambiar la posición de la información relevante. Suele ser peor cuando esa información está en mitad de un contexto largo. Por tanto, lo que va al principio y al final del prompt pesa más.
 - **[Investigación] Instrucciones negativas y efecto "elefante rosa":**
   - Jang et al. (2023) evaluaron 9 tareas con prompts negados y vieron que los modelos más grandes rendían peor con ellos.
@@ -33,7 +33,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
   - Matiz: hay trabajos de 2026 según los cuales los modelos actuales manejan bien la negación en contexto en casos simples. El riesgo crece con prompts largos y cargados.
 - **[Oficial] Temperatura en Gemini 3:** la guía para desarrolladores de Gemini 3 dice: "para todos los modelos Gemini 3, recomendamos encarecidamente mantener el parámetro de temperatura en su valor por defecto de 1.0"; bajarla "puede provocar un comportamiento inesperado, como bucles o rendimiento degradado". Es justo lo contrario de la costumbre de 2023 de bajar la temperatura para "controlar" al modelo.
 - **[Investigación] Por qué repiten:**
-  - El paper de *Verbalized Sampling* (Zhang et al., 2025, con Manning entre los autores) atribuye el *mode collapse* de los modelos alineados a un "sesgo de tipicidad" en los datos de preferencias: los anotadores prefieren el texto familiar, y eso empuja al modelo hacia la respuesta más típica.
+  - El paper de _Verbalized Sampling_ (Zhang et al., 2025, con Manning entre los autores) atribuye el _mode collapse_ de los modelos alineados a un "sesgo de tipicidad" en los datos de preferencias: los anotadores prefieren el texto familiar, y eso empuja al modelo hacia la respuesta más típica.
   - Hay un caso extremo en humor: en 2023, Jentzsch y Kersting (WASSA 2023) vieron que 909 de 1.008 chistes generados por ChatGPT eran idénticos a uno de los 25 más frecuentes, y solo los cuatro primeros sumaban más de la mitad.
 
 **Qué significa para el bot Dios Fua**
@@ -49,7 +49,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 - **[Oficial] Anthropic (guía de buenas prácticas, 2026):**
   - "Di al modelo qué hacer en lugar de qué no hacer".
-  - Explica *por qué* existe cada regla.
+  - Explica _por qué_ existe cada regla.
   - Usa de 3 a 5 ejemplos variados y realistas dentro de etiquetas `<example>`, para que el modelo no los confunda con instrucciones.
   - Las etiquetas XML ayudan a separar instrucciones, contexto, ejemplos y entradas variables. La propia Anthropic matiza que los modelos modernos las necesitan menos y que no son una barrera de seguridad.
   - Haz que el estilo del prompt se parezca a la salida deseada: menos markdown en el prompt produce menos markdown en la respuesta.
@@ -67,21 +67,21 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 **Hallazgos clave**
 
-- **[Investigación]** *Verbalized Sampling* propone pedir al modelo varias respuestas, cada una con su probabilidad estimada, y muestrear de esa distribución. En escritura creativa (poemas, relatos, chistes) aumenta la diversidad entre 1,6 y 2,1 veces frente al prompt directo y mejora un 25,7 % las valoraciones humanas, sin perder precisión ni seguridad. Además, los modelos más capaces se benefician más.
-- **[Investigación]** La generación de humor sigue siendo difícil. Pedir "algo gracioso" sin restricciones tiende a producir plantillas memorizadas (Jentzsch y Kersting, 2023). Trabajos de 2025 y 2026 (HumorPlanSearch, SemEval-2026) apuestan por planificar estrategias de humor diversas, generar un conjunto amplio de candidatos e invertir el esfuerzo en *seleccionar* bien.
+- **[Investigación]** _Verbalized Sampling_ propone pedir al modelo varias respuestas, cada una con su probabilidad estimada, y muestrear de esa distribución. En escritura creativa (poemas, relatos, chistes) aumenta la diversidad entre 1,6 y 2,1 veces frente al prompt directo y mejora un 25,7 % las valoraciones humanas, sin perder precisión ni seguridad. Además, los modelos más capaces se benefician más.
+- **[Investigación]** La generación de humor sigue siendo difícil. Pedir "algo gracioso" sin restricciones tiende a producir plantillas memorizadas (Jentzsch y Kersting, 2023). Trabajos de 2025 y 2026 (HumorPlanSearch, SemEval-2026) apuestan por planificar estrategias de humor diversas, generar un conjunto amplio de candidatos e invertir el esfuerzo en _seleccionar_ bien.
 - **[Investigación] LLM como juez:** está sesgado. Prefiere la posición (el primer o el último candidato), la longitud (respuestas más largas) y sus propias salidas o las de su misma familia de modelos (Zheng et al., 2023, y varias encuestas de 2024 a 2026). El sesgo de posición se mitiga intercambiando el orden y promediando.
 - **[Investigación]** El estudio "My Favorite Streamer is an LLM" (2025), una encuesta a 334 fans de Neuro-sama, encontró que el 83 % percibe una personalidad coherente y distintiva. La investigación de Jessa Lingel y Wanyan Wu (Annenberg, UPenn; New Media & Society, 2025), basada en 15 meses de observación, atribuye esa autenticidad en parte a que la comunidad co-construye al personaje ("las audiencias han co-creado su autenticidad") y a la transparencia de su desarrollador.
 
 **Qué significa para el bot Dios Fua**
 
-- Tu sistema de 3 candidatos más selector es esencialmente *best-of-n* con reranking, y está bien encaminado. Para que funcione mejor:
+- Tu sistema de 3 candidatos más selector es esencialmente _best-of-n_ con reranking, y está bien encaminado. Para que funcione mejor:
   - Que los 3 candidatos nazcan de "formas" distintas: pregunta retórica, pique amistoso a Manu o Pao, dato del juego, callback a un chiste interno. No basta con el mismo prompt tres veces.
   - Que el selector compare por pares con orden aleatorio y criterios explícitos y breves: concreto sobre lo que ha pasado, español de España, menos de 25 palabras, gracioso para esta comunidad.
   - Que el selector sea de otra familia que el generador. Si genera gpt-oss, juzga Gemini o Qwen. Esto reduce la autopreferencia.
   - Que pueda elegir "ninguno" y el bot se calle.
 - Castiga la longitud en código, no en el juez. Penaliza o descarta los candidatos largos antes de juzgar, porque el juez tiende a premiar lo largo.
 - La personalidad estable sale de una "biblia" corta del personaje (5-8 rasgos en positivo, muletillas propias, de qué se ríe y de qué no) y de un banco de ejemplos reales seleccionados por ti. No sale de reglas largas.
-- Añade un registro de "fórmulas recientes" en código: los n-gramas de los últimos 50 mensajes del bot. Rechaza los candidatos que repitan estructura o arranque. Es la defensa más barata contra el *mode collapse*.
+- Añade un registro de "fórmulas recientes" en código: los n-gramas de los últimos 50 mensajes del bot. Rechaza los candidatos que repitan estructura o arranque. Es la defensa más barata contra el _mode collapse_.
 
 ## 4. Cohost en directo: cuándo hablar y cuándo callar
 
@@ -89,12 +89,12 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 - **[Investigación]** "Proactive Conversational Agents with Inner Thoughts" (CHI 2025) propone que el agente genere "pensamientos" en paralelo y solo hable cuando su motivación intrínseca supera un umbral, en lugar de limitarse a predecir turnos.
 - **[Investigación]** En el estudio Koala (IUI 2025), al menos la mitad de los participantes dijo que la variante proactiva se entrometía demasiado; uno la describió como "demasiado habladora, tanto en longitud de mensaje como en frecuencia". Los participantes querían poder alternar entre el modo proactivo y el reactivo. Conclusión del estudio: no hay un punto óptimo único, así que hacen falta controles ajustables.
-- **[Investigación]** LlamaPIE (ACL Findings 2025) usa una arquitectura de dos modelos: uno pequeño decide *cuándo* responder y uno grande genera *qué* decir. "Time to Talk" (EMNLP Findings 2025) usa un "prompt planificador" que se ajusta si el agente habla más o menos que los demás participantes.
+- **[Investigación]** LlamaPIE (ACL Findings 2025) usa una arquitectura de dos modelos: uno pequeño decide _cuándo_ responder y uno grande genera _qué_ decir. "Time to Talk" (EMNLP Findings 2025) usa un "prompt planificador" que se ajusta si el agente habla más o menos que los demás participantes.
 - **[Investigación]** "Read the Room" (CHI 2026) estudia cuándo es apropiado que un agente intervenga en chats de grupo que mezclan charla casual y tareas.
 - **[Oficial] Twitch:**
   - Límites de mensajes: 20 mensajes cada 30 segundos para cuentas normales y 100 si la cuenta es broadcaster, moderador o VIP.
   - Si se excede el límite, Twitch ignora los mensajes del bot durante 1 hora.
-  - Los bots que usan la API *Send Chat Message* con un token de aplicación y el permiso `channel:bot` (o con estatus de moderador) muestran la insignia oficial de "Chat Bot".
+  - Los bots que usan la API _Send Chat Message_ con un token de aplicación y el permiso `channel:bot` (o con estatus de moderador) muestran la insignia oficial de "Chat Bot".
 - **[Comunidad]** Neuro-sama, el caso más exitoso, funciona con un equipo humano que monitoriza y modera, y con un filtro de salida. Según Kotaku (enero de 2023), el canal fue baneado dos semanas por "conducta de odio" después de que Neuro-sama dijera sobre el Holocausto "I'm not sure if I believe it" (28 de diciembre de 2022, según Anime News Network).
 
 **Qué significa para el bot Dios Fua**
@@ -108,7 +108,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 - Da prioridad a los eventos sobre los temporizadores. El resumen de cada media hora y las preguntas al chat deberían cancelarse si ha habido mucha actividad reciente del bot o si el momento no encaja.
 - Regla dura en código: no responder a mensajes dirigidos a otro usuario (que empiecen por @otro o formen parte de un intercambio entre dos personas en los últimos N mensajes) salvo que mencionen al bot. Esto resuelve lo de "meterse en conversaciones privadas" mejor que cualquier instrucción en el prompt.
 - Da a Manu y Pao un control en vivo con comandos de moderador: `!fua_callate 10m`, `!fua_modo reactivo` y `!fua_modo normal`. Es la lección directa de Koala.
-- Migra el envío a la API *Send Chat Message* con token de aplicación y `channel:bot` para obtener la insignia oficial de Chat Bot. Así el bot queda identificado sin ambigüedad. tmi.js por IRC no la obtiene.
+- Migra el envío a la API _Send Chat Message_ con token de aplicación y `channel:bot` para obtener la insignia oficial de Chat Bot. Así el bot queda identificado sin ambigüedad. tmi.js por IRC no la obtiene.
 
 ## 5. Reducir alucinaciones
 
@@ -120,7 +120,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 **Qué significa para el bot Dios Fua**
 
-- Los datos de IGDB deben ser la *única* fuente de hechos sobre juegos. Pásalos como una ficha breve con IDs (`<datos_juego>`) y exige en el JSON que el mensaje declare qué dato usa (`dato_id`).
+- Los datos de IGDB deben ser la _única_ fuente de hechos sobre juegos. Pásalos como una ficha breve con IDs (`<datos_juego>`) y exige en el JSON que el mensaje declare qué dato usa (`dato_id`).
 - Verificación en código: si el mensaje contiene nombres propios, cifras o fechas que no aparecen en la ficha ni en el chat reciente, descártalo o reescríbelo sin el dato.
 - Cuando no haya ficha (juego indie raro o fallo de IGDB), cambia la "forma" del mensaje a una que no necesite hechos: reacción, pique o pregunta al chat. Es mejor eso que confiar en que el modelo se contenga.
 - Para !dios_fua, si la pregunta es factual y no hay dato, la respuesta correcta es una salida con gracia del tipo "ni idea, pregúntale al chat". Inclúyela entre los ejemplos.
@@ -135,7 +135,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
   - Hacer crecer el conjunto de evaluación con casos reales.
   - Evitar el "diseño sesgado", es decir, conjuntos que no reproducen el tráfico real.
   - Con jueces LLM: rúbricas claras y razonamiento antes de la nota.
-  - Vigilar el *grader hacking*, contrastando a los jueces de modelo con evaluaciones humanas.
+  - Vigilar el _grader hacking_, contrastando a los jueces de modelo con evaluaciones humanas.
 - **[Comunidad]** Guías de práctica recomiendan separar el conjunto de desarrollo del de validación para detectar sobreajuste.
 
 **Qué significa para el bot Dios Fua**
@@ -221,7 +221,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 **Hallazgos clave**
 
-- **[Secundaria, citando la documentación de Groq]** El nivel gratuito de gpt-oss-120b, gpt-oss-20b y Qwen 3.x 27B tiene unos límites de 30 peticiones por minuto, 1.000 al día, 8.000 tokens por minuto y 200.000 al día, *por modelo y por organización*. Los tokens cacheados no cuentan para los límites. Las cabeceras `x-ratelimit-*` indican el saldo restante, y la propia Groq dice que la página de límites de cada cuenta es la autoridad.
+- **[Secundaria, citando la documentación de Groq]** El nivel gratuito de gpt-oss-120b, gpt-oss-20b y Qwen 3.x 27B tiene unos límites de 30 peticiones por minuto, 1.000 al día, 8.000 tokens por minuto y 200.000 al día, _por modelo y por organización_. Los tokens cacheados no cuentan para los límites. Las cabeceras `x-ratelimit-*` indican el saldo restante, y la propia Groq dice que la página de límites de cada cuenta es la autoridad.
 - **[Comunidad]** Con unos 2.000 tokens por llamada, gpt-oss-120b no da para 1.000 llamadas diarias: lo que se agota primero son los tokens por minuto y por día.
 - **[Oficial] Gemini** puede rebajar los límites o suspender el acceso por incumplimientos.
 
@@ -229,7 +229,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 - Haz las cuentas. Si cada intervención con 3 candidatos y un selector cuesta unos 4 × 2.000 tokens, 8.000 TPM equivalen a una intervención por minuto como máximo por modelo, y 200.000 TPD a unas 25 intervenciones completas al día por modelo. La decisión de "callar" barata, con reglas antes del LLM, ahorra cupo además de mejorar la calidad.
 - Para aprovechar la caché de prompts, el prefijo del prompt (personaje y estilo) debe ser idéntico entre llamadas. Pon la aleatoriedad (ejemplos rotativos y "forma") después del prefijo fijo.
-- El router debe leer las cabeceras `x-ratelimit-*`, aplicar *backoff* con jitter ante los errores 429 y repartir la carga por funciones: el 20b para decidir y seleccionar, y el 120b o el Qwen para generar. Si no queda cupo, el bot calla en lugar de usar un modelo peor.
+- El router debe leer las cabeceras `x-ratelimit-*`, aplicar _backoff_ con jitter ante los errores 429 y repartir la carga por funciones: el 20b para decidir y seleccionar, y el 120b o el Qwen para generar. Si no queda cupo, el bot calla en lugar de usar un modelo peor.
 - Observabilidad mínima en Supabase:
   - Por llamada: proveedor, modelo, tokens, latencia, error, candidato elegido y motivo de descarte del filtro.
   - Un panel con la tasa de descarte por filtro, que muestra si los filtros eliminan respuestas buenas.
@@ -241,7 +241,7 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 **Hallazgos clave**
 
 - **[Oficial] Anthropic** recomienda recuperar el contexto "justo a tiempo" en lugar de cargarlo todo, y advierte de que una compactación demasiado agresiva pierde matices.
-- **[Investigación]** El *context rot* y el "lost in the middle" penalizan los resúmenes largos acumulados.
+- **[Investigación]** El _context rot_ y el "lost in the middle" penalizan los resúmenes largos acumulados.
 - **[Comunidad]** Los proyectos de compañeros de IA para streaming combinan memoria a corto plazo con memoria a largo plazo resumida o recuperada.
 
 **Qué significa para el bot Dios Fua**
@@ -258,25 +258,25 @@ Las recomendaciones propias van marcadas como tales. Algunos datos (límites de 
 
 ## Recomendaciones priorizadas
 
-| # | Recomendación | Impacto | Esfuerzo | Estado actual |
-|---|---|---|---|---|
-| 1 | Dejar de usar Gemini gratuito para el chat del EEE: activar facturación o sacarlo del router | Muy alto (cumplimiento de términos) | Bajo | **Falta. Riesgo prioritario** |
-| 2 | Activar Zero Data Retention en Groq | Alto (privacidad) | Muy bajo | Falta |
-| 3 | Retención máxima de 24 h para los mensajes crudos; memoria seudonimizada, con caducidad y `!fua_olvidame` | Muy alto (RGPD y Twitch) | Medio | Falta |
-| 4 | Aviso de privacidad público en el panel del canal | Alto | Bajo | Falta |
-| 5 | Filtro de salida en código (ofensivo, URLs, eco literal, identidad) y entrada saneada y etiquetada como dato | Alto (seguridad y normas de Twitch) | Bajo-medio | Parcial (hay filtros de calidad) |
-| 6 | Decisión "hablar o callar" separada, con presupuesto por ventana y regla dura anti-conversaciones privadas | Muy alto (experiencia) | Medio | Parcial |
-| 7 | Comandos de control en vivo para los streamers (`!fua_callate`, modo reactivo) | Alto | Bajo | Falta |
-| 8 | Salida JSON validada con `hablar` y `dato_id`; verificar en código los hechos frente a la ficha de IGDB | Alto (alucinaciones) | Medio | Parcial (hay IGDB) |
-| 9 | Selector comparativo de otra familia de modelos, con orden aleatorio, penalización de longitud en código y opción "ninguno" | Medio-alto | Bajo | Bien encaminado (3 candidatos) |
-| 10 | Prompt corto con prefijo fijo (caché), tarea y evento al final, lore recuperado y no completo | Medio-alto (calidad y cupo) | Bajo | Bien encaminado (prompts en positivo) |
-| 11 | Registro de n-gramas recientes y "formas" distintas por candidato | Medio | Bajo | Bien encaminado (formas al azar) |
-| 12 | Eval con división dev/holdout, 3-5 ejecuciones por caso, juez calibrado con notas humanas y métricas de reacción del chat | Medio-alto | Medio | Bien encaminado (eval con chatlogs) |
-| 13 | Migrar el envío a la API Send Chat Message con `channel:bot` (insignia de Chat Bot) | Medio (identificación y normas) | Medio | Falta (tmi.js) |
-| 14 | Router con lectura de `x-ratelimit-*`, backoff, reparto por funciones y "callar si no hay cupo"; panel de tasa de descarte | Medio | Medio | Parcial |
-| 15 | Lore aprendido solo vía cola de aprobación de moderadores | Medio (calidad y privacidad) | Bajo | Falta |
+| #   | Recomendación                                                                                                               | Impacto                             | Esfuerzo   | Estado actual                         |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------- | ------------------------------------- |
+| 1   | Dejar de usar Gemini gratuito para el chat del EEE: activar facturación o sacarlo del router                                | Muy alto (cumplimiento de términos) | Bajo       | **Falta. Riesgo prioritario**         |
+| 2   | Activar Zero Data Retention en Groq                                                                                         | Alto (privacidad)                   | Muy bajo   | Falta                                 |
+| 3   | Retención máxima de 24 h para los mensajes crudos; memoria seudonimizada, con caducidad y `!fua_olvidame`                   | Muy alto (RGPD y Twitch)            | Medio      | Falta                                 |
+| 4   | Aviso de privacidad público en el panel del canal                                                                           | Alto                                | Bajo       | Falta                                 |
+| 5   | Filtro de salida en código (ofensivo, URLs, eco literal, identidad) y entrada saneada y etiquetada como dato                | Alto (seguridad y normas de Twitch) | Bajo-medio | Parcial (hay filtros de calidad)      |
+| 6   | Decisión "hablar o callar" separada, con presupuesto por ventana y regla dura anti-conversaciones privadas                  | Muy alto (experiencia)              | Medio      | Parcial                               |
+| 7   | Comandos de control en vivo para los streamers (`!fua_callate`, modo reactivo)                                              | Alto                                | Bajo       | Falta                                 |
+| 8   | Salida JSON validada con `hablar` y `dato_id`; verificar en código los hechos frente a la ficha de IGDB                     | Alto (alucinaciones)                | Medio      | Parcial (hay IGDB)                    |
+| 9   | Selector comparativo de otra familia de modelos, con orden aleatorio, penalización de longitud en código y opción "ninguno" | Medio-alto                          | Bajo       | Bien encaminado (3 candidatos)        |
+| 10  | Prompt corto con prefijo fijo (caché), tarea y evento al final, lore recuperado y no completo                               | Medio-alto (calidad y cupo)         | Bajo       | Bien encaminado (prompts en positivo) |
+| 11  | Registro de n-gramas recientes y "formas" distintas por candidato                                                           | Medio                               | Bajo       | Bien encaminado (formas al azar)      |
+| 12  | Eval con división dev/holdout, 3-5 ejecuciones por caso, juez calibrado con notas humanas y métricas de reacción del chat   | Medio-alto                          | Medio      | Bien encaminado (eval con chatlogs)   |
+| 13  | Migrar el envío a la API Send Chat Message con `channel:bot` (insignia de Chat Bot)                                         | Medio (identificación y normas)     | Medio      | Falta (tmi.js)                        |
+| 14  | Router con lectura de `x-ratelimit-*`, backoff, reparto por funciones y "callar si no hay cupo"; panel de tasa de descarte  | Medio                               | Medio      | Parcial                               |
+| 15  | Lore aprendido solo vía cola de aprobación de moderadores                                                                   | Medio (calidad y privacidad)        | Bajo       | Falta                                 |
 
-**Qué está bien encaminado:** las instrucciones en positivo con ejemplos rotativos, las prohibiciones en código, los 3 candidatos con selector, la aleatoriedad elegida por el código y la eval con IA real sobre chatlogs. Todo ello coincide con la documentación oficial y con la investigación sobre *mode collapse* y sesgos de juez.
+**Qué está bien encaminado:** las instrucciones en positivo con ejemplos rotativos, las prohibiciones en código, los 3 candidatos con selector, la aleatoriedad elegida por el código y la eval con IA real sobre chatlogs. Todo ello coincide con la documentación oficial y con la investigación sobre _mode collapse_ y sesgos de juez.
 
 **Qué atender primero, por riesgo:** (1) Gemini gratuito con usuarios del EEE; (2) retención y memoria frente al RGPD y la cláusula de 24 h de Twitch; (3) filtro de salida y saneado de entrada, porque un mensaje ofensivo provocado por inyección es un riesgo directo para el canal según las normas de Twitch.
 

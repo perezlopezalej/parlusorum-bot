@@ -3,11 +3,33 @@ const assert = require('node:assert/strict');
 const { template, pickIndex, fill, TEMPLATES } = require('../src/utils/plantillas');
 const { checkOutbound } = require('../src/utils/output-guard');
 
-const VARS = { username: 'ana', token: 'Kappa', title: '¿Gana Manu?', options: '1) Sí | 2) No', winner: 'Sí', winners: '¡3 acertaron!', pct: 61, votes: 40, game: 'X' };
+const VARS = {
+  username: 'ana',
+  token: 'Kappa',
+  title: '¿Gana Manu?',
+  options: '1) Sí | 2) No',
+  winner: 'Sí',
+  winners: '¡3 acertaron!',
+  pct: 61,
+  votes: 40,
+  game: 'X',
+};
 
 describe('plantillas fijas', () => {
   test('todas las claves esperadas existen con varias variantes', () => {
-    for (const k of ['lurk', 'highlight_marker', 'highlight', 'emote_spam', 'caps_rage', 'prediction_begin', 'prediction_lock', 'prediction_end', 'poll_begin', 'poll_end', 'poll_end_close']) {
+    for (const k of [
+      'lurk',
+      'highlight_marker',
+      'highlight',
+      'emote_spam',
+      'caps_rage',
+      'prediction_begin',
+      'prediction_lock',
+      'prediction_end',
+      'poll_begin',
+      'poll_end',
+      'poll_end_close',
+    ]) {
       assert.ok(Array.isArray(TEMPLATES[k]) && TEMPLATES[k].length >= 3, k);
     }
   });

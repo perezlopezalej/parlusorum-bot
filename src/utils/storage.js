@@ -26,13 +26,16 @@ let nLoadPromise = null;
 async function nLoadUsers() {
   if (nCache !== null) return nCache;
   if (nLoading) return nLoadPromise;
-  if (!NPOINT_ID) { nCache = {}; return nCache; }
+  if (!NPOINT_ID) {
+    nCache = {};
+    return nCache;
+  }
   nLoading = true;
   nLoadPromise = (async () => {
     try {
       const res = await fetch(BASE_URL);
       const data = await res.json();
-      nCache = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+      nCache = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
       logger.info(`✅ Usuarios cargados desde npoint (${Object.keys(nCache).length})`);
     } catch (e) {
       logger.error(`Error npoint load: ${e.message}`);
@@ -49,12 +52,15 @@ function nSaveUsers(data) {
   nDirty = true;
   if (nSaveTimer) return;
   nSaveTimer = setTimeout(async () => {
-    if (!nDirty || !NPOINT_ID) { nSaveTimer = null; return; }
+    if (!nDirty || !NPOINT_ID) {
+      nSaveTimer = null;
+      return;
+    }
     try {
       await fetch(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nCache)
+        body: JSON.stringify(nCache),
       });
       nDirty = false;
     } catch (e) {

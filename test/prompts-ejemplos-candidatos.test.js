@@ -19,23 +19,44 @@ const style = require('../src/ai/style');
 const ai = require('../src/ai/handler');
 
 const FORBIDDEN_IN_PROMPT = [
-  /\bt[ií]o\b/i, /\bt[ií]a\b/i, /\bcolega\b/i, /\bbro\b/i, /\bchaval\b/i, /pucha|qué onda|órale|chido|ahorita|\bwey\b|parcero|enojarse|concha/i,
-  /la reina del FUA/i, /Lo siento/i, /como IA/i, /comentarista deportivo/i, /Manu lleva N/i, /tarde de martes/i,
+  /\bt[ií]o\b/i,
+  /\bt[ií]a\b/i,
+  /\bcolega\b/i,
+  /\bbro\b/i,
+  /\bchaval\b/i,
+  /pucha|qué onda|órale|chido|ahorita|\bwey\b|parcero|enojarse|concha/i,
+  /la reina del FUA/i,
+  /Lo siento/i,
+  /como IA/i,
+  /comentarista deportivo/i,
+  /Manu lleva N/i,
+  /tarde de martes/i,
   /PROHIBIDO|NUNCA|\bNO\b|TU INTENTO ANTERIOR|RECHAZADO|YA DIJISTE|NO repetir/,
 ];
 
 let sent, prompts;
-const client = { say: (ch, msg) => { sent.push(msg); } };
+const client = {
+  say: (ch, msg) => {
+    sent.push(msg);
+  },
+};
 function stubModels(fn) {
-  const t = async p => { prompts.push(p.messages); return fn(p); };
+  const t = async (p) => {
+    prompts.push(p.messages);
+    return fn(p);
+  };
   router.setTransport('groq', t);
 }
-const json = (...c) => ({ choices: [{ message: { content: JSON.stringify({ candidatos: c }) }, finish_reason: 'stop' }] });
-const text = c => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
+const json = (...c) => ({
+  choices: [{ message: { content: JSON.stringify({ candidatos: c }) }, finish_reason: 'stop' }],
+});
+const text = (c) => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
 
 beforeEach(() => {
-  sent = []; prompts = [];
-  state.resetAiBlocks(); state.resetAiUsage();
+  sent = [];
+  prompts = [];
+  state.resetAiBlocks();
+  state.resetAiUsage();
   state.setStreamIsLive(true);
   state.setStreamStartedAt(Date.now() - 47 * 60000);
   ai.addToHistory('gangar79', 'Jajaja otra vez ese jefe');
@@ -47,13 +68,33 @@ describe('prompts nuevos: sin prohibidas citadas', () => {
   test('provocación, cohost, mención, !dios_fua y alertas', () => {
     const all = [
       style.buildProvocationSystem(),
-      style.buildCohostSystem({ game: 'X', minutes: 10, deathLine: '3 caídas anotadas.', form: style.COHOST_FORMS[0], emoteLine: 'Escribe solo texto.', nameLine: 'Dirígete a Manu.', loreBlock: '<lore>La comunidad del canal son los Lusorums.</lore>' }),
-      style.buildMentionSystem({ context: 'Se está jugando a «X».', role: style.roleLine('creator'), emoteLine: 'Escribe solo texto.' }),
+      style.buildCohostSystem({
+        game: 'X',
+        minutes: 10,
+        deathLine: '3 caídas anotadas.',
+        form: style.COHOST_FORMS[0],
+        emoteLine: 'Escribe solo texto.',
+        nameLine: 'Dirígete a Manu.',
+        loreBlock: '<lore>La comunidad del canal son los Lusorums.</lore>',
+      }),
+      style.buildMentionSystem({
+        context: 'Se está jugando a «X».',
+        role: style.roleLine('creator'),
+        emoteLine: 'Escribe solo texto.',
+      }),
       style.buildQuestionSystem({ context: 'Se está jugando a «X».' }),
-      ...['sub', 'raid', 'bienvenida', 'prediccion'].map(type => style.buildAlertSystem({ type, event: 'Evento.' })),
-      style.buildSummaryPrompt({ game: 'X', durationMinutes: 60, deathCount: 3, peakViewers: 8, topCommands: [], chatSample: 'a: hola' }),
+      ...['sub', 'raid', 'bienvenida', 'prediccion'].map((type) => style.buildAlertSystem({ type, event: 'Evento.' })),
+      style.buildSummaryPrompt({
+        game: 'X',
+        durationMinutes: 60,
+        deathCount: 3,
+        peakViewers: 8,
+        topCommands: [],
+        chatSample: 'a: hola',
+      }),
     ];
-    for (const p of all) for (const re of FORBIDDEN_IN_PROMPT) assert.doesNotMatch(p, re, `${re} en: ${p.slice(0, 60)}`);
+    for (const p of all)
+      for (const re of FORBIDDEN_IN_PROMPT) assert.doesNotMatch(p, re, `${re} en: ${p.slice(0, 60)}`);
   });
 
   test('cohost: identidad corta y sin los últimos mensajes del bot', () => {
@@ -74,8 +115,18 @@ describe('ejemplos y formas', () => {
   });
   test('la forma del cohost nunca repite la anterior', () => {
     let last = '';
-    for (let i = 0; i < 200; i++) { const f = style.pickCohostForm(last); assert.notEqual(f.id, last); last = f.id; }
-    assert.deepEqual(style.COHOST_FORMS.map(f => f.id).sort(), ['autoironia', 'exageracion', 'pregunta', 'reaccion', 'vacile']);
+    for (let i = 0; i < 200; i++) {
+      const f = style.pickCohostForm(last);
+      assert.notEqual(f.id, last);
+      last = f.id;
+    }
+    assert.deepEqual(style.COHOST_FORMS.map((f) => f.id).sort(), [
+      'autoironia',
+      'exageracion',
+      'pregunta',
+      'reaccion',
+      'vacile',
+    ]);
   });
   test('ningún ejemplo enseña muletillas ni la estructura del contador', () => {
     const data = style.loadExamples();
@@ -103,7 +154,7 @@ describe('candidatos', () => {
     const recent = ['El jefe ya sabe el nombre de Manu y toca sacar el FUA.'];
     const { ranked, failures } = style.rankCandidates(
       ['El jefe ya sabe el nombre de Manu otra vez.', 'Pregunta seria: ¿quién abona el terreno hoy?', 'x'],
-      { validate: t => (t.length < 8 ? { ok: false, rule: 'vacio', reason: 'corto' } : { ok: true }), recent }
+      { validate: (t) => (t.length < 8 ? { ok: false, rule: 'vacio', reason: 'corto' } : { ok: true }), recent },
     );
     assert.equal(ranked[0].text, 'Pregunta seria: ¿quién abona el terreno hoy?');
     assert.equal(failures.length, 1);
@@ -126,7 +177,16 @@ describe('reintentos en positivo', () => {
     for (const r of reasons) {
       const note = style.retryNote(r);
       assert.match(note, /^\n<correccion>.+<\/correccion>$/, r);
-      for (const re of [/Manu lleva N/, /despertador/, /fuerzas/, /rol y acción/, /gangar79/, /Japón/, /\bNO\b|\bno\b (lo|hables|cites|uses)/]) assert.doesNotMatch(note, re, r);
+      for (const re of [
+        /Manu lleva N/,
+        /despertador/,
+        /fuerzas/,
+        /rol y acción/,
+        /gangar79/,
+        /Japón/,
+        /\bNO\b|\bno\b (lo|hables|cites|uses)/,
+      ])
+        assert.doesNotMatch(note, re, r);
     }
     assert.equal(style.retryNote(''), '');
   });
@@ -134,7 +194,13 @@ describe('reintentos en positivo', () => {
 
 describe('cohost con tres candidatos', () => {
   test('envía el que pasa los filtros y no se parece a lo reciente; el prompt lleva etiquetas y ejemplos', async () => {
-    stubModels(() => json('Chavales, qué grande sois Lusorums, tío.', 'El jefe ya sabe el camino a casa de Manu de memoria.', 'Hacer caso al chat con ese historial es jugársela.'));
+    stubModels(() =>
+      json(
+        'Chavales, qué grande sois Lusorums, tío.',
+        'El jefe ya sabe el camino a casa de Manu de memoria.',
+        'Hacer caso al chat con ese historial es jugársela.',
+      ),
+    );
     const out = await ai.runCohost(client, '#parlusorum', null);
     assert.equal(out, 'sent');
     assert.equal(sent.length, 1);
@@ -149,7 +215,11 @@ describe('cohost con tres candidatos', () => {
   });
 
   test('si los tres candidatos fallan, reintenta con la corrección en positivo y después se calla', async () => {
-    const bad = json('Ese jefe lleva dos años sin descanso por su aire latino ahorita.', 'Qué onda con el wey ese del chat, órale.', 'Pucha, esto está chido de verdad.');
+    const bad = json(
+      'Ese jefe lleva dos años sin descanso por su aire latino ahorita.',
+      'Qué onda con el wey ese del chat, órale.',
+      'Pucha, esto está chido de verdad.',
+    );
     stubModels(() => bad);
     const out = await ai.runCohost(client, '#parlusorum', null);
     assert.equal(out, 'dropped');
@@ -162,7 +232,14 @@ describe('cohost con tres candidatos', () => {
 
   test('suceso: la forma cambia entre llamadas y no se repite', async () => {
     const forms = [];
-    stubModels(p => { forms.push((/<ajustes>([^.]*\.)/.exec(p.messages[0].content) || [])[1]); return json('Buen intento de Manu, el FUA aplaude desde su nube.', 'El FUA se levanta antes que el propio jefe de la zona.', 'Otra para el álbum de caídas con más estilo del canal.'); });
+    stubModels((p) => {
+      forms.push((/<ajustes>([^.]*\.)/.exec(p.messages[0].content) || [])[1]);
+      return json(
+        'Buen intento de Manu, el FUA aplaude desde su nube.',
+        'El FUA se levanta antes que el propio jefe de la zona.',
+        'Otra para el álbum de caídas con más estilo del canal.',
+      );
+    });
     for (let i = 0; i < 4; i++) {
       state.resetCohostTexts?.();
       await ai.runCohost(client, '#parlusorum', { kind: 'death', description: 'Manu ha caído contra un jefe' });
@@ -174,11 +251,13 @@ describe('cohost con tres candidatos', () => {
 describe('menciones, !dios_fua y provocaciones', () => {
   test('mención: prompt con etiquetas, ejemplos y rol; reintento solo con la corrección', async () => {
     let n = 0;
-    stubModels(() => text(n++ === 0 ? 'Claro tío, ahorita te lo cuento.' : 'Apuesto por veinte caídas y el FUA por más.'));
+    stubModels(() =>
+      text(n++ === 0 ? 'Claro tío, ahorita te lo cuento.' : 'Apuesto por veinte caídas y el FUA por más.'),
+    );
     const tags = { 'display-name': 'gangar79', 'user-id': '1', username: 'gangar79', badges: {} };
     const out = await ai.checkPatternMatch(client, '#parlusorum', tags, 'dios fua tú qué opinas del stream de hoy?');
     assert.equal(out, true);
-    const mentionPrompts = prompts.filter(m => /<tarea>Responde al mensaje/.test(m[0].content)); // la revisión de sentido es otra llamada
+    const mentionPrompts = prompts.filter((m) => /<tarea>Responde al mensaje/.test(m[0].content)); // la revisión de sentido es otra llamada
     assert.equal(mentionPrompts.length, 2);
     const sys = mentionPrompts[0][0].content;
     assert.match(sys, /<contexto>/);
@@ -195,7 +274,10 @@ describe('menciones, !dios_fua y provocaciones', () => {
     await ai.handleQuestion(client, '#parlusorum', tags, ['!dios_fua', 'por', 'qué', 'el', 'cielo', 'es', 'azul']);
     const sys = prompts[0][0].content;
     assert.match(sys, /<forma>[\s\S]*buscar_juego/);
-    assert.match(sys, /<tarea>Responde a la pregunta del usuario; si nombra un videojuego, consulta antes buscar_juego\.<\/tarea>$/);
+    assert.match(
+      sys,
+      /<tarea>Responde a la pregunta del usuario; si nombra un videojuego, consulta antes buscar_juego\.<\/tarea>$/,
+    );
     for (const re of FORBIDDEN_IN_PROMPT) assert.doesNotMatch(sys, re);
     assert.match(sent[0], /cielo es azul/);
   });
@@ -205,7 +287,11 @@ describe('menciones, !dios_fua y provocaciones', () => {
     const tags = { 'display-name': 'trol', 'user-id': '3', username: 'trol', badges: {} };
     const realNow = Date.now;
     Date.now = () => realNow() + 3600e3; // fuera de los cooldowns de la mención anterior
-    try { await ai.checkPatternMatch(client, '#parlusorum', tags, 'dios fua eres un idiota'); } finally { Date.now = realNow; }
+    try {
+      await ai.checkPatternMatch(client, '#parlusorum', tags, 'dios fua eres un idiota');
+    } finally {
+      Date.now = realNow;
+    }
     const sys = prompts[0]?.[0].content || '';
     assert.match(sys, /<ejemplos>/);
     assert.ok(sys.length / 3.6 < 450);

@@ -17,21 +17,23 @@ const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 const SCOPES = 'chat:read chat:edit user:write:chat user:bot';
 
 const { CLIENT_ID, CLIENT_SECRET } = process.env;
-const missing = ['CLIENT_ID', 'CLIENT_SECRET', 'SUPABASE_URL', 'SUPABASE_KEY'].filter(v => !process.env[v]);
+const missing = ['CLIENT_ID', 'CLIENT_SECRET', 'SUPABASE_URL', 'SUPABASE_KEY'].filter((v) => !process.env[v]);
 if (missing.length) {
   console.error(`❌ Faltan variables de entorno: ${missing.join(', ')}`);
   process.exit(1);
 }
 
 const state = crypto.randomBytes(16).toString('hex');
-const authUrl = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
-  client_id: CLIENT_ID,
-  redirect_uri: REDIRECT_URI,
-  response_type: 'code',
-  scope: SCOPES,
-  state,
-  force_verify: 'true'
-});
+const authUrl =
+  'https://id.twitch.tv/oauth2/authorize?' +
+  new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    scope: SCOPES,
+    state,
+    force_verify: 'true',
+  });
 
 function finish(code, msg) {
   console.log(msg);
@@ -41,9 +43,16 @@ function finish(code, msg) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
-  if (url.pathname !== '/callback') { res.writeHead(404); res.end(); return; }
+  if (url.pathname !== '/callback') {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
 
-  const reply = (status, text) => { res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(text); };
+  const reply = (status, text) => {
+    res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(text);
+  };
 
   if (url.searchParams.get('state') !== state) {
     reply(400, 'State inválido.');
@@ -64,8 +73,8 @@ const server = http.createServer(async (req, res) => {
         client_secret: CLIENT_SECRET,
         code,
         grant_type: 'authorization_code',
-        redirect_uri: REDIRECT_URI
-      })
+        redirect_uri: REDIRECT_URI,
+      }),
     });
     const data = await tokenRes.json();
     if (!tokenRes.ok || !data.access_token || !data.refresh_token) {
@@ -74,7 +83,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Comprobar a qué cuenta pertenece (login no es secreto) antes de guardar
-    const vRes = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { Authorization: `OAuth ${data.access_token}` } });
+    const vRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `OAuth ${data.access_token}` },
+    });
     const v = vRes.ok ? await vRes.json() : {};
     const expected = (process.env.BOT_USERNAME || '').toLowerCase();
     if (expected && v.login && v.login.toLowerCase() !== expected) {
@@ -86,7 +97,10 @@ const server = http.createServer(async (req, res) => {
     const saved = await loadTokens();
     if (!saved?.bot_refresh_token) {
       reply(500, 'No se pudo guardar en Supabase.');
-      return finish(1, '❌ No se pudo verificar el guardado en Supabase (¿existen las columnas bot_token y bot_refresh_token?).');
+      return finish(
+        1,
+        '❌ No se pudo verificar el guardado en Supabase (¿existen las columnas bot_token y bot_refresh_token?).',
+      );
     }
     reply(200, 'Listo. Puedes cerrar esta ventana.');
     finish(0, `✅ Tokens del bot (${v.login || 'cuenta desconocida'}) guardados en Supabase.`);

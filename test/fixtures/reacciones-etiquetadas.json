@@ -1,931 +1,931 @@
 {
- "nota": "Mensajes de logs/chat-2026-11-03/05 etiquetados a mano (bien = el chat reaccionó al bot; ignorado; reaccion = solo el destinatario; mal). Nicks seudonimizados.",
- "cases": [
-  {
-   "id": "2026-11-03#1",
-   "origin": "cohost",
-   "bot": "Una muerte y el chat ya escribe poemas, ¡FUAAA, a ver si la próxima vez el árbol se apunta a la fiesta!",
-   "next": [
+  "nota": "Mensajes de logs/chat-2026-11-03/05 etiquetados a mano (bien = el chat reaccionó al bot; ignorado; reaccion = solo el destinatario; mal). Nicks seudonimizados.",
+  "cases": [
     {
-     "s": 2,
-     "user": "parlusorum",
-     "text": "ya la iba a puntar yo que justo entro y mueres jajaja"
+      "id": "2026-11-03#1",
+      "origin": "cohost",
+      "bot": "Una muerte y el chat ya escribe poemas, ¡FUAAA, a ver si la próxima vez el árbol se apunta a la fiesta!",
+      "next": [
+        {
+          "s": 2,
+          "user": "parlusorum",
+          "text": "ya la iba a puntar yo que justo entro y mueres jajaja"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#13",
+      "origin": "cohost",
+      "bot": "Doce muertes y el chat ya os quiere cobrar impuestos por revivir. parlus1PORELPODERDELFUAAAAA",
+      "next": [
+        {
+          "s": 6,
+          "user": "u1",
+          "text": "WTF"
+        },
+        {
+          "s": 21,
+          "user": "u1",
+          "text": "No sabes hacer estrategia manu"
+        },
+        {
+          "s": 30,
+          "user": "u2",
+          "text": "El dios fua es el estado ahora"
+        },
+        {
+          "s": 54,
+          "user": "u3",
+          "text": "el dios fua ha pasado a cobrar impuestos ya por revivirte coto"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#16",
+      "origin": "cohost",
+      "bot": "Con quince muertes a las espaldas y el chat debatiendo sobre huevos, lo único que salva esto es aplicar el FUA.",
+      "next": [
+        {
+          "s": 6,
+          "user": "u1",
+          "text": "Jajajaja jajajaja"
+        },
+        {
+          "s": 38,
+          "user": "u1",
+          "text": "Es lo que tú me as dicho, que yo juego con ventaja"
+        },
+        {
+          "s": 58,
+          "user": "u1",
+          "text": "Anda a chupar las 5 vergas semanales"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#27",
+      "origin": "cohost",
+      "bot": "El chat pide que Pao coja el mando para arreglar el desastre de Manu. parlus1Kelokekelowa",
+      "next": [
+        {
+          "s": 8,
+          "user": "u2",
+          "text": "Sorprendenos pao"
+        },
+        {
+          "s": 12,
+          "user": "parlusorum",
+          "text": "@dios_fua Jajajjajajajjajaajjajajajjajajajajajajajjajaj"
+        },
+        {
+          "s": 17,
+          "user": "u1",
+          "text": "Ya nos dimos cuenta que eres tú quien le hace los jefes pao"
+        },
+        {
+          "s": 18,
+          "user": "u3",
+          "text": "@dios_fua JAJAJAJAJAJ"
+        },
+        {
+          "s": 36,
+          "user": "parlusorum",
+          "text": "Pues que me ha acechado una manada de palomas"
+        },
+        {
+          "s": 43,
+          "user": "parlusorum",
+          "text": "Comiéndome mi bocadillo de jamón"
+        },
+        {
+          "s": 48,
+          "user": "parlusorum",
+          "text": "Y después un perro"
+        },
+        {
+          "s": 50,
+          "user": "u1",
+          "text": "Jajajaja jajajaja"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#28",
+      "origin": "mencion",
+      "bot": "@ParLusorum ¡A tope, Manu! Cada muerte es un paso más al triunfo. FUAAA.",
+      "next": [
+        {
+          "s": 4,
+          "user": "u1",
+          "text": "Ya nos dimos cuenta que eres tú quien le hace los jefes pao"
+        },
+        {
+          "s": 5,
+          "user": "u3",
+          "text": "@dios_fua JAJAJAJAJAJ"
+        },
+        {
+          "s": 23,
+          "user": "parlusorum",
+          "text": "Pues que me ha acechado una manada de palomas"
+        },
+        {
+          "s": 30,
+          "user": "parlusorum",
+          "text": "Comiéndome mi bocadillo de jamón"
+        },
+        {
+          "s": 35,
+          "user": "parlusorum",
+          "text": "Y después un perro"
+        },
+        {
+          "s": 37,
+          "user": "u1",
+          "text": "Jajajaja jajajaja"
+        },
+        {
+          "s": 46,
+          "user": "parlusorum",
+          "text": "Después 3 cotorras"
+        },
+        {
+          "s": 53,
+          "user": "parlusorum",
+          "text": "Y después 3 gorriones"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#31",
+      "origin": "cohost",
+      "bot": "Morir contra los esbirros rasos es un nuevo nivel de arte moderno.",
+      "next": [
+        {
+          "s": 16,
+          "user": "u2",
+          "text": "Ostia el dios fua como la suelta"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#32",
+      "origin": "mencion",
+      "bot": "@u3 ¡Vamos! La próxima muerte será épica, siente el FUA. parlus1Alataqueel",
+      "next": [
+        {
+          "s": 5,
+          "user": "u3",
+          "text": "JAJAJAJ"
+        },
+        {
+          "s": 22,
+          "user": "u1",
+          "text": "Lol"
+        },
+        {
+          "s": 53,
+          "user": "u2",
+          "text": "Dios fua que opinas de morir 28 veces en 3horas?"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#35",
+      "origin": "cohost",
+      "bot": "Cuarto jefe al zurrón y el mando de Pao demuestra que tiene superpoderes ocultos. parlus1PORELPODERDELFUAAAAA",
+      "next": [
+        {
+          "s": 23,
+          "user": "u2",
+          "text": "Dios fua que es un zurron? Dime la definicion"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#42",
+      "origin": "cohost",
+      "bot": "Treinta y seis caídas acumuladas y el boquerón sigue repartiendo estopa sin piedad.",
+      "next": [
+        {
+          "s": 34,
+          "user": "u1",
+          "text": "Hasta el bot te está vacilando ya"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#45",
+      "origin": "cohost",
+      "bot": "Cuarenta y una muertes ya en el zurrón y Manu sigue negociando con el destino mientras el FUA saca músculo.",
+      "next": [
+        {
+          "s": 0,
+          "user": "u4",
+          "text": "Jajajaja"
+        },
+        {
+          "s": 12,
+          "user": "parlusorum",
+          "text": "JAJAJAJAAJAJAJAJ"
+        },
+        {
+          "s": 30,
+          "user": "u4",
+          "text": "Perdón por se tan malo 🫣"
+        },
+        {
+          "s": 48,
+          "user": "u1",
+          "text": "Suma otra"
+        },
+        {
+          "s": 51,
+          "user": "u1",
+          "text": "Jajajaja"
+        },
+        {
+          "s": 60,
+          "user": "u4",
+          "text": "!muertes +1"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-05#56",
+      "origin": "cohost",
+      "bot": "Segundo jefe a la lona y el FUA ya exige recompensa oficial para Manu.",
+      "next": [
+        {
+          "s": 1,
+          "user": "parlusorum",
+          "text": "Solo sumamos muertes"
+        },
+        {
+          "s": 4,
+          "user": "parlusorum",
+          "text": "Jajajjajajjaja"
+        },
+        {
+          "s": 22,
+          "user": "u1",
+          "text": "Voy a preparar la cena té dejo de fondo"
+        },
+        {
+          "s": 26,
+          "user": "u4",
+          "text": "Mens mal que lo e puesto mal"
+        },
+        {
+          "s": 38,
+          "user": "u3",
+          "text": "envita gangar"
+        },
+        {
+          "s": 57,
+          "user": "u4",
+          "text": "!boss +1"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-05#65",
+      "origin": "quemeperdi",
+      "bot": "@ParLusorum ¡Hasta ahora el streamer ha sobrevivido 298 minutos, derribado 10 veces y ha aplastado 5 jefes en una montaña rusa de acción! 🎮💥 ¡Prepárate, que l",
+      "next": [
+        {
+          "s": 31,
+          "user": "u6",
+          "text": "Flipas que bueno el dios fua"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-05#67",
+      "origin": "mencion",
+      "bot": "@u4 ¡El FUA solo siente celos cuando tú superas mis predicciones de muertes! parlus1PORELPODERDELFUAAAAA",
+      "next": [
+        {
+          "s": 8,
+          "user": "u6",
+          "text": "Aajajaja wtf"
+        },
+        {
+          "s": 11,
+          "user": "u6",
+          "text": "Me flipa"
+        },
+        {
+          "s": 36,
+          "user": "u4",
+          "text": "Si si ahí veces que te saca de tus casillas"
+        },
+        {
+          "s": 42,
+          "user": "u6",
+          "text": "Buenísimo"
+        },
+        {
+          "s": 48,
+          "user": "parlusorum",
+          "text": "Comiendo chope con el dios fua"
+        },
+        {
+          "s": 55,
+          "user": "u6",
+          "text": "Dios fua no saques a markos de sus casillas"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-05#74",
+      "origin": "mencion",
+      "bot": "@u4 Ni idea, eso suena a matemáticas de otro planeta.",
+      "next": [
+        {
+          "s": 19,
+          "user": "u6",
+          "text": "Jajajaja"
+        },
+        {
+          "s": 29,
+          "user": "u4",
+          "text": "Dios fua me as defraudado"
+        },
+        {
+          "s": 36,
+          "user": "u4",
+          "text": "Te creía más listo"
+        },
+        {
+          "s": 38,
+          "user": "u6",
+          "text": "Dios fua ponte las pilas máquina"
+        },
+        {
+          "s": 50,
+          "user": "u6",
+          "text": "Ajajajajajaj"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "2026-11-03#0",
+      "origin": "hook",
+      "bot": "¿Sois más de cooperativo o en solitario? 💬",
+      "next": [
+        {
+          "s": 42,
+          "user": "u2",
+          "text": "Mamona empieza una hora mas tarde que no he acabado el estudio jajajajaja"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#2",
+      "origin": "cohost",
+      "bot": "Otra muerte y el FUA se levanta, ¡FUAAA! parlus1PORELPODERDELFUAAAAA",
+      "next": [
+        {
+          "s": 3,
+          "user": "u1",
+          "text": "Yo te digo lo que suele pasar"
+        },
+        {
+          "s": 49,
+          "user": "u1",
+          "text": "No té los quite, solo te he dicho que no té mal acostumbres"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#3",
+      "origin": "cohost",
+      "bot": "Tres muertes seguidas y el FUA te recuerda que la paciencia es la mejor invocación, tío.",
+      "next": [
+        {
+          "s": 57,
+          "user": "u1",
+          "text": "Yo no soy un souls Bro, que la gente quiera utilizar los recursos de los juegos no me molesta, cada persona juega como l"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#4",
+      "origin": "timer_ia",
+      "bot": "41 minutos de directo y ya 3 caídas, pero el FUA levanta a Manu con furia parlus1PORELPODERDELFUAAAAA . ¡Sigue la batalla, que la gloria apenas comienza!",
+      "next": [
+        {
+          "s": 19,
+          "user": "u1",
+          "text": "Yo no quería bajarte el suflé por eso dije me"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#7",
+      "origin": "cohost",
+      "bot": "¡Jefe caído y el FUA retumba, que la locura sea nuestro motor, tío!",
+      "next": [
+        {
+          "s": 32,
+          "user": "u1",
+          "text": "Se aburren de mi y me dejan pasar"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#8",
+      "origin": "cohost",
+      "bot": "Jefe abatido, el FUA se enciende a tope. parlus1Alataqueel",
+      "next": [
+        {
+          "s": 15,
+          "user": "u1",
+          "text": "Las otras son más rápidas"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#10",
+      "origin": "cohost",
+      "bot": "Manu vuelve a caer, pero el FUA ya está listo para el próximo reto, tío.",
+      "next": [
+        {
+          "s": 16,
+          "user": "u2",
+          "text": "Ola tio flojo"
+        },
+        {
+          "s": 31,
+          "user": "u2",
+          "text": "Ya se me murio el cerebro"
+        },
+        {
+          "s": 42,
+          "user": "u1",
+          "text": "Buenas @u2"
+        },
+        {
+          "s": 50,
+          "user": "u2",
+          "text": "@u1 buenaaaasss"
+        },
+        {
+          "s": 53,
+          "user": "parlusorum",
+          "text": "!muertes +1"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#22",
+      "origin": "cohost",
+      "bot": "El chat insiste en explorar el lago mientras Manu sigue buscando la salida con fe ciega.",
+      "next": [
+        {
+          "s": 2,
+          "user": "u1",
+          "text": "Una artaaa"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#26",
+      "origin": "cohost",
+      "bot": "Viendo cómo se acumulan los tropiezos con el jefe, toca invocar el FUA para enderezar el rumbo.",
+      "next": [
+        {
+          "s": 60,
+          "user": "u1",
+          "text": "Yo voy con la tía de la pipa"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#36",
+      "origin": "timer_ia",
+      "bot": "Manu acumula 28 muertes intentando avanzar en este juego de rol y acción. Menos mal que el FUA funciona igual de bien que un reseteo de router cuando todo falla",
+      "next": [
+        {
+          "s": 4,
+          "user": "u1",
+          "text": "Sip"
+        },
+        {
+          "s": 51,
+          "user": "u1",
+          "text": "Para que luego diga que solo té la lío zángano"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#37",
+      "origin": "cohost",
+      "bot": "Treinta y una caídas a sus espaldas y el mando ya pide clemencia mientras el FUA aguanta el tipo. parlus1PORELPODERDELFUAAAAA",
+      "next": [
+        {
+          "s": 6,
+          "user": "u1",
+          "text": "Qué banco"
+        },
+        {
+          "s": 16,
+          "user": "u4",
+          "text": "Se a solucionado lo del bug?"
+        },
+        {
+          "s": 25,
+          "user": "u1",
+          "text": "Son unos usureros"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#38",
+      "origin": "cohost",
+      "bot": "Treinta y dos caídas y el jefe sigue ahí vacilando, pero el FUA no entiende de treguas.",
+      "next": [
+        {
+          "s": 17,
+          "user": "u1",
+          "text": "Si"
+        },
+        {
+          "s": 37,
+          "user": "u1",
+          "text": "Pero parrys muy seguidos"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#39",
+      "origin": "cohost",
+      "bot": "Treinta y tres caídas y el jefe sigue riéndose, pero el FUA no se rinde jamás.",
+      "next": [
+        {
+          "s": 13,
+          "user": "u4",
+          "text": "Nada ahora stoy más libre"
+        },
+        {
+          "s": 15,
+          "user": "u1",
+          "text": "Es que eso nunca me a pasado"
+        },
+        {
+          "s": 42,
+          "user": "u4",
+          "text": "Es lo que tiene la versión digital"
+        },
+        {
+          "s": 53,
+          "user": "u1",
+          "text": "Miento, una vez me paso y tuve que borrar todo y empezar de nuevo"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#40",
+      "origin": "cohost",
+      "bot": "Treinta y cuatro caídas y el jefe sigue ahí con cero compasión, pero el FUA aprieta los dientes. parlus1PORELPODERDELFUAAAAA",
+      "next": [
+        {
+          "s": 0,
+          "user": "u1",
+          "text": "Desde ayer  a tenido un montón de fallos"
+        },
+        {
+          "s": 31,
+          "user": "u4",
+          "text": "Le tiene manía al pobre manu"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-03#41",
+      "origin": "timer_ia",
+      "bot": "Cuatro horas y media dándolo todo en este juego de rol y acción sin bajar los brazos. Con treinta y cinco muertes a sus espaldas, a Manu solo le falta aplicar e",
+      "next": [
+        {
+          "s": 1,
+          "user": "u4",
+          "text": "!muertes +1"
+        },
+        {
+          "s": 13,
+          "user": "u4",
+          "text": "Como qui no es todos los días"
+        },
+        {
+          "s": 52,
+          "user": "u4",
+          "text": "Aunque sea por la noche da igual"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-05#48",
+      "origin": "hook",
+      "bot": "¡Usad !chiste para que cuente un chiste! 😂",
+      "next": [
+        {
+          "s": 21,
+          "user": "parlusorum",
+          "text": "FAMILY TENEMOS CANAL DE DISCORD , OS ESPERAMOS ALLI PewPewPew parlus1Esteeselrollo"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-05#53",
+      "origin": "cohost",
+      "bot": "Hacer caso al chat con ese historial de caídas es jugársela demasiado.",
+      "next": [
+        {
+          "s": 1,
+          "user": "u1",
+          "text": "Tienes que encontrar las mascaras de los acólitos"
+        },
+        {
+          "s": 24,
+          "user": "u1",
+          "text": "Si"
+        },
+        {
+          "s": 38,
+          "user": "u1",
+          "text": "Es aquí"
+        },
+        {
+          "s": 43,
+          "user": "u1",
+          "text": "Es ella"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-05#54",
+      "origin": "timer_ia",
+      "bot": "Manu acumula siete muertes en este juego de rol y acción intentando descifrar el camino correcto. ¿Qué os hace perder la paciencia antes de tiempo en vuestro dí",
+      "next": [
+        {
+          "s": 8,
+          "user": "u1",
+          "text": "Ahora m"
+        },
+        {
+          "s": 26,
+          "user": "u1",
+          "text": "Mira alrededor y verás una entrada con fuego"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-05#62",
+      "origin": "timer_ia",
+      "bot": "Nueve muertes ya en este juego de rol, acción y aventura mientras Manu desafía el destino. ¿Qué os da fuerzas a vosotros cuando el mundo decide ponérselo difíci",
+      "next": [
+        {
+          "s": 5,
+          "user": "u1",
+          "text": "De arriba"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-05#63",
+      "origin": "cohost",
+      "bot": "Intentar un golpe perfecto con diez caídas a la espalda es invocar al caos absoluto. parlus1Kelokekelowa",
+      "next": [
+        {
+          "s": 1,
+          "user": "u4",
+          "text": "Boss"
+        },
+        {
+          "s": 5,
+          "user": "u1",
+          "text": "Y después explora esta zona bien que tienes caminos secretos"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-10#76",
+      "origin": "hook",
+      "bot": "¿Sois más de cooperativo o en solitario? 💬",
+      "next": [
+        {
+          "s": 3,
+          "user": "u3",
+          "text": "buenas tardes"
+        },
+        {
+          "s": 5,
+          "user": "u3",
+          "text": "coto puto"
+        },
+        {
+          "s": 22,
+          "user": "u3",
+          "text": "se me fue la racha"
+        },
+        {
+          "s": 24,
+          "user": "u4",
+          "text": "Buenas @u3"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-10#77",
+      "origin": "timer_ia",
+      "bot": "Rata de exploración tranquila, el chat tiraba “buenas, hermano” y el FUA se quedó mirando cómo Manu avanzaba rapidísimo.",
+      "next": [
+        {
+          "s": 3,
+          "user": "u3",
+          "text": "se me fue la racha"
+        },
+        {
+          "s": 5,
+          "user": "u4",
+          "text": "Buenas @u3"
+        },
+        {
+          "s": 50,
+          "user": "u3",
+          "text": "vamos a ver si los cambios que hice al dios fua lo ha vuelto un pesao otra ve jajja"
+        }
+      ],
+      "label": "ignorado"
+    },
+    {
+      "id": "2026-11-05#68",
+      "origin": "mencion",
+      "bot": "@u6 Entendido, mantengo a Markos donde está. No lo moveré.",
+      "next": [
+        {
+          "s": 10,
+          "user": "u6",
+          "text": "Ajajaja"
+        },
+        {
+          "s": 16,
+          "user": "u6",
+          "text": "Es vacilón"
+        },
+        {
+          "s": 21,
+          "user": "u4",
+          "text": "Si un rato"
+        },
+        {
+          "s": 33,
+          "user": "u4",
+          "text": "Antes era un cansino"
+        },
+        {
+          "s": 46,
+          "user": "u6",
+          "text": "Dios fua, estás en tus días?"
+        },
+        {
+          "s": 55,
+          "user": "u6",
+          "text": "Muahahaha"
+        }
+      ],
+      "label": "reaccion"
+    },
+    {
+      "id": "2026-11-05#75",
+      "origin": "mencion",
+      "bot": "@u6 Pilas al máximo, u6. El FUA ya está en modo turbo.",
+      "next": [
+        {
+          "s": 11,
+          "user": "u6",
+          "text": "Ajajajajajaj"
+        },
+        {
+          "s": 27,
+          "user": "u6",
+          "text": "Bueno, a ver el juego"
+        },
+        {
+          "s": 31,
+          "user": "u6",
+          "text": "Que me interesa un poco"
+        },
+        {
+          "s": 52,
+          "user": "u6",
+          "text": "En que juegas? Pc?"
+        }
+      ],
+      "label": "reaccion"
+    },
+    {
+      "id": "2026-11-05#64",
+      "origin": "cohost",
+      "bot": "Quinto jefe a la lona y el chat ya celebra saber más que Manu.",
+      "next": [
+        {
+          "s": 18,
+          "user": "u4",
+          "text": "Eso está claro"
+        },
+        {
+          "s": 49,
+          "user": "u1",
+          "text": "Que le pasa al bot? Es bipolar?"
+        },
+        {
+          "s": 59,
+          "user": "u4",
+          "text": "Por la mitad"
+        }
+      ],
+      "label": "mal"
+    },
+    {
+      "id": "audit-20:42",
+      "origin": "cohost",
+      "bot": "¡Pao mandando a Manu a rezar es el mejor resumen de este directo de martes!",
+      "next": [
+        {
+          "s": 14,
+          "user": "parlusorum",
+          "text": "Jajajajaj Dios fua es el mejor jajajja"
+        },
+        {
+          "s": 27,
+          "user": "u5",
+          "text": "@parlusorum Jajajaja"
+        }
+      ],
+      "label": "bien"
+    },
+    {
+      "id": "audit-pesao",
+      "origin": "cohost",
+      "bot": "Rata de exploración tranquila, el chat tira buenas y Manu avanza.",
+      "next": [
+        {
+          "s": 12,
+          "user": "u3",
+          "text": "lo ha vuelto un pesao"
+        }
+      ],
+      "label": "mal"
+    },
+    {
+      "id": "audit-seguimiento",
+      "origin": "cohost",
+      "bot": "Manu cae otra vez, ¡qué épica!",
+      "next": [
+        {
+          "s": 20,
+          "user": "u2",
+          "text": "le quito el seguimiento al bot"
+        }
+      ],
+      "label": "mal"
     }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#13",
-   "origin": "cohost",
-   "bot": "Doce muertes y el chat ya os quiere cobrar impuestos por revivir. parlus1PORELPODERDELFUAAAAA",
-   "next": [
-    {
-     "s": 6,
-     "user": "u1",
-     "text": "WTF"
-    },
-    {
-     "s": 21,
-     "user": "u1",
-     "text": "No sabes hacer estrategia manu"
-    },
-    {
-     "s": 30,
-     "user": "u2",
-     "text": "El dios fua es el estado ahora"
-    },
-    {
-     "s": 54,
-     "user": "u3",
-     "text": "el dios fua ha pasado a cobrar impuestos ya por revivirte coto"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#16",
-   "origin": "cohost",
-   "bot": "Con quince muertes a las espaldas y el chat debatiendo sobre huevos, lo único que salva esto es aplicar el FUA.",
-   "next": [
-    {
-     "s": 6,
-     "user": "u1",
-     "text": "Jajajaja jajajaja"
-    },
-    {
-     "s": 38,
-     "user": "u1",
-     "text": "Es lo que tú me as dicho, que yo juego con ventaja"
-    },
-    {
-     "s": 58,
-     "user": "u1",
-     "text": "Anda a chupar las 5 vergas semanales"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#27",
-   "origin": "cohost",
-   "bot": "El chat pide que Pao coja el mando para arreglar el desastre de Manu. parlus1Kelokekelowa",
-   "next": [
-    {
-     "s": 8,
-     "user": "u2",
-     "text": "Sorprendenos pao"
-    },
-    {
-     "s": 12,
-     "user": "parlusorum",
-     "text": "@dios_fua Jajajjajajajjajaajjajajajjajajajajajajajjajaj"
-    },
-    {
-     "s": 17,
-     "user": "u1",
-     "text": "Ya nos dimos cuenta que eres tú quien le hace los jefes pao"
-    },
-    {
-     "s": 18,
-     "user": "u3",
-     "text": "@dios_fua JAJAJAJAJAJ"
-    },
-    {
-     "s": 36,
-     "user": "parlusorum",
-     "text": "Pues que me ha acechado una manada de palomas"
-    },
-    {
-     "s": 43,
-     "user": "parlusorum",
-     "text": "Comiéndome mi bocadillo de jamón"
-    },
-    {
-     "s": 48,
-     "user": "parlusorum",
-     "text": "Y después un perro"
-    },
-    {
-     "s": 50,
-     "user": "u1",
-     "text": "Jajajaja jajajaja"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#28",
-   "origin": "mencion",
-   "bot": "@ParLusorum ¡A tope, Manu! Cada muerte es un paso más al triunfo. FUAAA.",
-   "next": [
-    {
-     "s": 4,
-     "user": "u1",
-     "text": "Ya nos dimos cuenta que eres tú quien le hace los jefes pao"
-    },
-    {
-     "s": 5,
-     "user": "u3",
-     "text": "@dios_fua JAJAJAJAJAJ"
-    },
-    {
-     "s": 23,
-     "user": "parlusorum",
-     "text": "Pues que me ha acechado una manada de palomas"
-    },
-    {
-     "s": 30,
-     "user": "parlusorum",
-     "text": "Comiéndome mi bocadillo de jamón"
-    },
-    {
-     "s": 35,
-     "user": "parlusorum",
-     "text": "Y después un perro"
-    },
-    {
-     "s": 37,
-     "user": "u1",
-     "text": "Jajajaja jajajaja"
-    },
-    {
-     "s": 46,
-     "user": "parlusorum",
-     "text": "Después 3 cotorras"
-    },
-    {
-     "s": 53,
-     "user": "parlusorum",
-     "text": "Y después 3 gorriones"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#31",
-   "origin": "cohost",
-   "bot": "Morir contra los esbirros rasos es un nuevo nivel de arte moderno.",
-   "next": [
-    {
-     "s": 16,
-     "user": "u2",
-     "text": "Ostia el dios fua como la suelta"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#32",
-   "origin": "mencion",
-   "bot": "@u3 ¡Vamos! La próxima muerte será épica, siente el FUA. parlus1Alataqueel",
-   "next": [
-    {
-     "s": 5,
-     "user": "u3",
-     "text": "JAJAJAJ"
-    },
-    {
-     "s": 22,
-     "user": "u1",
-     "text": "Lol"
-    },
-    {
-     "s": 53,
-     "user": "u2",
-     "text": "Dios fua que opinas de morir 28 veces en 3horas?"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#35",
-   "origin": "cohost",
-   "bot": "Cuarto jefe al zurrón y el mando de Pao demuestra que tiene superpoderes ocultos. parlus1PORELPODERDELFUAAAAA",
-   "next": [
-    {
-     "s": 23,
-     "user": "u2",
-     "text": "Dios fua que es un zurron? Dime la definicion"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#42",
-   "origin": "cohost",
-   "bot": "Treinta y seis caídas acumuladas y el boquerón sigue repartiendo estopa sin piedad.",
-   "next": [
-    {
-     "s": 34,
-     "user": "u1",
-     "text": "Hasta el bot te está vacilando ya"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#45",
-   "origin": "cohost",
-   "bot": "Cuarenta y una muertes ya en el zurrón y Manu sigue negociando con el destino mientras el FUA saca músculo.",
-   "next": [
-    {
-     "s": 0,
-     "user": "u4",
-     "text": "Jajajaja"
-    },
-    {
-     "s": 12,
-     "user": "parlusorum",
-     "text": "JAJAJAJAAJAJAJAJ"
-    },
-    {
-     "s": 30,
-     "user": "u4",
-     "text": "Perdón por se tan malo 🫣"
-    },
-    {
-     "s": 48,
-     "user": "u1",
-     "text": "Suma otra"
-    },
-    {
-     "s": 51,
-     "user": "u1",
-     "text": "Jajajaja"
-    },
-    {
-     "s": 60,
-     "user": "u4",
-     "text": "!muertes +1"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-05#56",
-   "origin": "cohost",
-   "bot": "Segundo jefe a la lona y el FUA ya exige recompensa oficial para Manu.",
-   "next": [
-    {
-     "s": 1,
-     "user": "parlusorum",
-     "text": "Solo sumamos muertes"
-    },
-    {
-     "s": 4,
-     "user": "parlusorum",
-     "text": "Jajajjajajjaja"
-    },
-    {
-     "s": 22,
-     "user": "u1",
-     "text": "Voy a preparar la cena té dejo de fondo"
-    },
-    {
-     "s": 26,
-     "user": "u4",
-     "text": "Mens mal que lo e puesto mal"
-    },
-    {
-     "s": 38,
-     "user": "u3",
-     "text": "envita gangar"
-    },
-    {
-     "s": 57,
-     "user": "u4",
-     "text": "!boss +1"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-05#65",
-   "origin": "quemeperdi",
-   "bot": "@ParLusorum ¡Hasta ahora el streamer ha sobrevivido 298 minutos, derribado 10 veces y ha aplastado 5 jefes en una montaña rusa de acción! 🎮💥 ¡Prepárate, que l",
-   "next": [
-    {
-     "s": 31,
-     "user": "u6",
-     "text": "Flipas que bueno el dios fua"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-05#67",
-   "origin": "mencion",
-   "bot": "@u4 ¡El FUA solo siente celos cuando tú superas mis predicciones de muertes! parlus1PORELPODERDELFUAAAAA",
-   "next": [
-    {
-     "s": 8,
-     "user": "u6",
-     "text": "Aajajaja wtf"
-    },
-    {
-     "s": 11,
-     "user": "u6",
-     "text": "Me flipa"
-    },
-    {
-     "s": 36,
-     "user": "u4",
-     "text": "Si si ahí veces que te saca de tus casillas"
-    },
-    {
-     "s": 42,
-     "user": "u6",
-     "text": "Buenísimo"
-    },
-    {
-     "s": 48,
-     "user": "parlusorum",
-     "text": "Comiendo chope con el dios fua"
-    },
-    {
-     "s": 55,
-     "user": "u6",
-     "text": "Dios fua no saques a markos de sus casillas"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-05#74",
-   "origin": "mencion",
-   "bot": "@u4 Ni idea, eso suena a matemáticas de otro planeta.",
-   "next": [
-    {
-     "s": 19,
-     "user": "u6",
-     "text": "Jajajaja"
-    },
-    {
-     "s": 29,
-     "user": "u4",
-     "text": "Dios fua me as defraudado"
-    },
-    {
-     "s": 36,
-     "user": "u4",
-     "text": "Te creía más listo"
-    },
-    {
-     "s": 38,
-     "user": "u6",
-     "text": "Dios fua ponte las pilas máquina"
-    },
-    {
-     "s": 50,
-     "user": "u6",
-     "text": "Ajajajajajaj"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "2026-11-03#0",
-   "origin": "hook",
-   "bot": "¿Sois más de cooperativo o en solitario? 💬",
-   "next": [
-    {
-     "s": 42,
-     "user": "u2",
-     "text": "Mamona empieza una hora mas tarde que no he acabado el estudio jajajajaja"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#2",
-   "origin": "cohost",
-   "bot": "Otra muerte y el FUA se levanta, ¡FUAAA! parlus1PORELPODERDELFUAAAAA",
-   "next": [
-    {
-     "s": 3,
-     "user": "u1",
-     "text": "Yo te digo lo que suele pasar"
-    },
-    {
-     "s": 49,
-     "user": "u1",
-     "text": "No té los quite, solo te he dicho que no té mal acostumbres"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#3",
-   "origin": "cohost",
-   "bot": "Tres muertes seguidas y el FUA te recuerda que la paciencia es la mejor invocación, tío.",
-   "next": [
-    {
-     "s": 57,
-     "user": "u1",
-     "text": "Yo no soy un souls Bro, que la gente quiera utilizar los recursos de los juegos no me molesta, cada persona juega como l"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#4",
-   "origin": "timer_ia",
-   "bot": "41 minutos de directo y ya 3 caídas, pero el FUA levanta a Manu con furia parlus1PORELPODERDELFUAAAAA . ¡Sigue la batalla, que la gloria apenas comienza!",
-   "next": [
-    {
-     "s": 19,
-     "user": "u1",
-     "text": "Yo no quería bajarte el suflé por eso dije me"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#7",
-   "origin": "cohost",
-   "bot": "¡Jefe caído y el FUA retumba, que la locura sea nuestro motor, tío!",
-   "next": [
-    {
-     "s": 32,
-     "user": "u1",
-     "text": "Se aburren de mi y me dejan pasar"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#8",
-   "origin": "cohost",
-   "bot": "Jefe abatido, el FUA se enciende a tope. parlus1Alataqueel",
-   "next": [
-    {
-     "s": 15,
-     "user": "u1",
-     "text": "Las otras son más rápidas"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#10",
-   "origin": "cohost",
-   "bot": "Manu vuelve a caer, pero el FUA ya está listo para el próximo reto, tío.",
-   "next": [
-    {
-     "s": 16,
-     "user": "u2",
-     "text": "Ola tio flojo"
-    },
-    {
-     "s": 31,
-     "user": "u2",
-     "text": "Ya se me murio el cerebro"
-    },
-    {
-     "s": 42,
-     "user": "u1",
-     "text": "Buenas @u2"
-    },
-    {
-     "s": 50,
-     "user": "u2",
-     "text": "@u1 buenaaaasss"
-    },
-    {
-     "s": 53,
-     "user": "parlusorum",
-     "text": "!muertes +1"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#22",
-   "origin": "cohost",
-   "bot": "El chat insiste en explorar el lago mientras Manu sigue buscando la salida con fe ciega.",
-   "next": [
-    {
-     "s": 2,
-     "user": "u1",
-     "text": "Una artaaa"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#26",
-   "origin": "cohost",
-   "bot": "Viendo cómo se acumulan los tropiezos con el jefe, toca invocar el FUA para enderezar el rumbo.",
-   "next": [
-    {
-     "s": 60,
-     "user": "u1",
-     "text": "Yo voy con la tía de la pipa"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#36",
-   "origin": "timer_ia",
-   "bot": "Manu acumula 28 muertes intentando avanzar en este juego de rol y acción. Menos mal que el FUA funciona igual de bien que un reseteo de router cuando todo falla",
-   "next": [
-    {
-     "s": 4,
-     "user": "u1",
-     "text": "Sip"
-    },
-    {
-     "s": 51,
-     "user": "u1",
-     "text": "Para que luego diga que solo té la lío zángano"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#37",
-   "origin": "cohost",
-   "bot": "Treinta y una caídas a sus espaldas y el mando ya pide clemencia mientras el FUA aguanta el tipo. parlus1PORELPODERDELFUAAAAA",
-   "next": [
-    {
-     "s": 6,
-     "user": "u1",
-     "text": "Qué banco"
-    },
-    {
-     "s": 16,
-     "user": "u4",
-     "text": "Se a solucionado lo del bug?"
-    },
-    {
-     "s": 25,
-     "user": "u1",
-     "text": "Son unos usureros"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#38",
-   "origin": "cohost",
-   "bot": "Treinta y dos caídas y el jefe sigue ahí vacilando, pero el FUA no entiende de treguas.",
-   "next": [
-    {
-     "s": 17,
-     "user": "u1",
-     "text": "Si"
-    },
-    {
-     "s": 37,
-     "user": "u1",
-     "text": "Pero parrys muy seguidos"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#39",
-   "origin": "cohost",
-   "bot": "Treinta y tres caídas y el jefe sigue riéndose, pero el FUA no se rinde jamás.",
-   "next": [
-    {
-     "s": 13,
-     "user": "u4",
-     "text": "Nada ahora stoy más libre"
-    },
-    {
-     "s": 15,
-     "user": "u1",
-     "text": "Es que eso nunca me a pasado"
-    },
-    {
-     "s": 42,
-     "user": "u4",
-     "text": "Es lo que tiene la versión digital"
-    },
-    {
-     "s": 53,
-     "user": "u1",
-     "text": "Miento, una vez me paso y tuve que borrar todo y empezar de nuevo"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#40",
-   "origin": "cohost",
-   "bot": "Treinta y cuatro caídas y el jefe sigue ahí con cero compasión, pero el FUA aprieta los dientes. parlus1PORELPODERDELFUAAAAA",
-   "next": [
-    {
-     "s": 0,
-     "user": "u1",
-     "text": "Desde ayer  a tenido un montón de fallos"
-    },
-    {
-     "s": 31,
-     "user": "u4",
-     "text": "Le tiene manía al pobre manu"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-03#41",
-   "origin": "timer_ia",
-   "bot": "Cuatro horas y media dándolo todo en este juego de rol y acción sin bajar los brazos. Con treinta y cinco muertes a sus espaldas, a Manu solo le falta aplicar e",
-   "next": [
-    {
-     "s": 1,
-     "user": "u4",
-     "text": "!muertes +1"
-    },
-    {
-     "s": 13,
-     "user": "u4",
-     "text": "Como qui no es todos los días"
-    },
-    {
-     "s": 52,
-     "user": "u4",
-     "text": "Aunque sea por la noche da igual"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-05#48",
-   "origin": "hook",
-   "bot": "¡Usad !chiste para que cuente un chiste! 😂",
-   "next": [
-    {
-     "s": 21,
-     "user": "parlusorum",
-     "text": "FAMILY TENEMOS CANAL DE DISCORD , OS ESPERAMOS ALLI PewPewPew parlus1Esteeselrollo"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-05#53",
-   "origin": "cohost",
-   "bot": "Hacer caso al chat con ese historial de caídas es jugársela demasiado.",
-   "next": [
-    {
-     "s": 1,
-     "user": "u1",
-     "text": "Tienes que encontrar las mascaras de los acólitos"
-    },
-    {
-     "s": 24,
-     "user": "u1",
-     "text": "Si"
-    },
-    {
-     "s": 38,
-     "user": "u1",
-     "text": "Es aquí"
-    },
-    {
-     "s": 43,
-     "user": "u1",
-     "text": "Es ella"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-05#54",
-   "origin": "timer_ia",
-   "bot": "Manu acumula siete muertes en este juego de rol y acción intentando descifrar el camino correcto. ¿Qué os hace perder la paciencia antes de tiempo en vuestro dí",
-   "next": [
-    {
-     "s": 8,
-     "user": "u1",
-     "text": "Ahora m"
-    },
-    {
-     "s": 26,
-     "user": "u1",
-     "text": "Mira alrededor y verás una entrada con fuego"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-05#62",
-   "origin": "timer_ia",
-   "bot": "Nueve muertes ya en este juego de rol, acción y aventura mientras Manu desafía el destino. ¿Qué os da fuerzas a vosotros cuando el mundo decide ponérselo difíci",
-   "next": [
-    {
-     "s": 5,
-     "user": "u1",
-     "text": "De arriba"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-05#63",
-   "origin": "cohost",
-   "bot": "Intentar un golpe perfecto con diez caídas a la espalda es invocar al caos absoluto. parlus1Kelokekelowa",
-   "next": [
-    {
-     "s": 1,
-     "user": "u4",
-     "text": "Boss"
-    },
-    {
-     "s": 5,
-     "user": "u1",
-     "text": "Y después explora esta zona bien que tienes caminos secretos"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-10#76",
-   "origin": "hook",
-   "bot": "¿Sois más de cooperativo o en solitario? 💬",
-   "next": [
-    {
-     "s": 3,
-     "user": "u3",
-     "text": "buenas tardes"
-    },
-    {
-     "s": 5,
-     "user": "u3",
-     "text": "coto puto"
-    },
-    {
-     "s": 22,
-     "user": "u3",
-     "text": "se me fue la racha"
-    },
-    {
-     "s": 24,
-     "user": "u4",
-     "text": "Buenas @u3"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-10#77",
-   "origin": "timer_ia",
-   "bot": "Rata de exploración tranquila, el chat tiraba “buenas, hermano” y el FUA se quedó mirando cómo Manu avanzaba rapidísimo.",
-   "next": [
-    {
-     "s": 3,
-     "user": "u3",
-     "text": "se me fue la racha"
-    },
-    {
-     "s": 5,
-     "user": "u4",
-     "text": "Buenas @u3"
-    },
-    {
-     "s": 50,
-     "user": "u3",
-     "text": "vamos a ver si los cambios que hice al dios fua lo ha vuelto un pesao otra ve jajja"
-    }
-   ],
-   "label": "ignorado"
-  },
-  {
-   "id": "2026-11-05#68",
-   "origin": "mencion",
-   "bot": "@u6 Entendido, mantengo a Markos donde está. No lo moveré.",
-   "next": [
-    {
-     "s": 10,
-     "user": "u6",
-     "text": "Ajajaja"
-    },
-    {
-     "s": 16,
-     "user": "u6",
-     "text": "Es vacilón"
-    },
-    {
-     "s": 21,
-     "user": "u4",
-     "text": "Si un rato"
-    },
-    {
-     "s": 33,
-     "user": "u4",
-     "text": "Antes era un cansino"
-    },
-    {
-     "s": 46,
-     "user": "u6",
-     "text": "Dios fua, estás en tus días?"
-    },
-    {
-     "s": 55,
-     "user": "u6",
-     "text": "Muahahaha"
-    }
-   ],
-   "label": "reaccion"
-  },
-  {
-   "id": "2026-11-05#75",
-   "origin": "mencion",
-   "bot": "@u6 Pilas al máximo, u6. El FUA ya está en modo turbo.",
-   "next": [
-    {
-     "s": 11,
-     "user": "u6",
-     "text": "Ajajajajajaj"
-    },
-    {
-     "s": 27,
-     "user": "u6",
-     "text": "Bueno, a ver el juego"
-    },
-    {
-     "s": 31,
-     "user": "u6",
-     "text": "Que me interesa un poco"
-    },
-    {
-     "s": 52,
-     "user": "u6",
-     "text": "En que juegas? Pc?"
-    }
-   ],
-   "label": "reaccion"
-  },
-  {
-   "id": "2026-11-05#64",
-   "origin": "cohost",
-   "bot": "Quinto jefe a la lona y el chat ya celebra saber más que Manu.",
-   "next": [
-    {
-     "s": 18,
-     "user": "u4",
-     "text": "Eso está claro"
-    },
-    {
-     "s": 49,
-     "user": "u1",
-     "text": "Que le pasa al bot? Es bipolar?"
-    },
-    {
-     "s": 59,
-     "user": "u4",
-     "text": "Por la mitad"
-    }
-   ],
-   "label": "mal"
-  },
-  {
-   "id": "audit-20:42",
-   "origin": "cohost",
-   "bot": "¡Pao mandando a Manu a rezar es el mejor resumen de este directo de martes!",
-   "next": [
-    {
-     "s": 14,
-     "user": "parlusorum",
-     "text": "Jajajajaj Dios fua es el mejor jajajja"
-    },
-    {
-     "s": 27,
-     "user": "u5",
-     "text": "@parlusorum Jajajaja"
-    }
-   ],
-   "label": "bien"
-  },
-  {
-   "id": "audit-pesao",
-   "origin": "cohost",
-   "bot": "Rata de exploración tranquila, el chat tira buenas y Manu avanza.",
-   "next": [
-    {
-     "s": 12,
-     "user": "u3",
-     "text": "lo ha vuelto un pesao"
-    }
-   ],
-   "label": "mal"
-  },
-  {
-   "id": "audit-seguimiento",
-   "origin": "cohost",
-   "bot": "Manu cae otra vez, ¡qué épica!",
-   "next": [
-    {
-     "s": 20,
-     "user": "u2",
-     "text": "le quito el seguimiento al bot"
-    }
-   ],
-   "label": "mal"
-  }
- ]
+  ]
 }

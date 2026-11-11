@@ -11,12 +11,14 @@ const stub = (rel, exports) => {
 
 // getCurrentGame tarda: simula la ventana en la que dos !trivia seguidos se cruzan
 stub('src/twitch/api.js', {
-  getCurrentGame: () => new Promise(r => setTimeout(() => r(null), 30)),
-  getGameInfo: async () => null
+  getCurrentGame: () => new Promise((r) => setTimeout(() => r(null), 30)),
+  getGameInfo: async () => null,
 });
 stub('src/utils/supabase.js', {
-  incrementUserCounter: async () => {}, getCounterLeaderboard: async () => [],
-  getRecentSessionDeaths: async () => [], getLoreRows: async () => []
+  incrementUserCounter: async () => {},
+  getCounterLeaderboard: async () => [],
+  getRecentSessionDeaths: async () => [],
+  getLoreRows: async () => [],
 });
 
 const { handleTrivia } = require('../src/games/handler');
@@ -28,6 +30,8 @@ test('dos !trivia seguidos lanzan una sola trivia', async () => {
   Math.random = () => 0.99; // sin pregunta de canal
   try {
     await Promise.all([handleTrivia(client, '#c'), handleTrivia(client, '#c')]);
-  } finally { Math.random = origRandom; }
-  assert.equal(said.filter(m => m.includes('TRIVIA:')).length, 1);
+  } finally {
+    Math.random = origRandom;
+  }
+  assert.equal(said.filter((m) => m.includes('TRIVIA:')).length, 1);
 });

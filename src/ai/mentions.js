@@ -2,7 +2,20 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getCurrentGame } = require('../twitch/api');
-const { getChatterNames, getPlayer, pauseFreeCohost, isTriviaActive, isSilenced, isReactive, getBotHistory, addBotMessage, getDeathCount, markNamed, noteMentionFua, getMentionFuaHistory } = require('../utils/state');
+const {
+  getChatterNames,
+  getPlayer,
+  pauseFreeCohost,
+  isTriviaActive,
+  isSilenced,
+  isReactive,
+  getBotHistory,
+  addBotMessage,
+  getDeathCount,
+  markNamed,
+  noteMentionFua,
+  getMentionFuaHistory,
+} = require('../utils/state');
 const factcheck = require('./factcheck');
 const { buildGameTemplate } = require('./game-template');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudget, isStale } = require('./patterns');
@@ -15,7 +28,14 @@ const { truncate } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
 const { GENERAL_TEMPERATURE, getUserType, pickIdentityReply, pickRandom } = require('./common');
 const { addToUserConversation, getUserConversation } = require('./chat-memory');
-const { buildContextText, buildRoleText, buildToneText, emoteLineFor, getModeConfig, refreshMode } = require('./prompt-context');
+const {
+  buildContextText,
+  buildRoleText,
+  buildToneText,
+  emoteLineFor,
+  getModeConfig,
+  refreshMode,
+} = require('./prompt-context');
 const { buscarJuegoLookup } = require('./dios-fua');
 
 // Provocaciones: solo la primera de cada usuario en esta ventana recibe réplica
@@ -42,42 +62,57 @@ const MENTION_MAX_CHARS = 200; // tope de las respuestas a menciones (con el @us
 let lastDirectMentionTime = 0;
 
 const directMentionUserCooldowns = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of directMentionUserCooldowns) if (now > v) directMentionUserCooldowns.delete(k);
-}, 15 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [k, v] of directMentionUserCooldowns) if (now > v) directMentionUserCooldowns.delete(k);
+  },
+  15 * 60 * 1000,
+);
 
 const mentionStamps = new Map(); // userId -> instantes de sus últimas respuestas a menciones
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of mentionStamps) if (!v.some(t => now - t < MENTION_WINDOW)) mentionStamps.delete(k);
-}, 15 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [k, v] of mentionStamps) if (!v.some((t) => now - t < MENTION_WINDOW)) mentionStamps.delete(k);
+  },
+  15 * 60 * 1000,
+);
 
 // Provocaciones: userId -> fin de su ventana (solo la primera de cada ventana recibe réplica)
 const provocationUntil = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of provocationUntil) if (now > v) provocationUntil.delete(k);
-}, 15 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [k, v] of provocationUntil) if (now > v) provocationUntil.delete(k);
+  },
+  15 * 60 * 1000,
+);
 
 // Preguntas naturales: 45s global + 30s por usuario, escalados por pattern_cooldown_multiplier del modo
 let lastPatternTime = 0;
 
 const patternUserCooldowns = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of patternUserCooldowns) if (now > v) patternUserCooldowns.delete(k);
-}, 15 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [k, v] of patternUserCooldowns) if (now > v) patternUserCooldowns.delete(k);
+  },
+  15 * 60 * 1000,
+);
 
 // Petición de silencio al bot ("Dios Fua, cállate un rato"): respuesta breve y amable, sin IA, y el cohost libre se pausa 10 min.
 // Los eventos (jefe, raid...) y las respuestas directas siguen funcionando. Un aviso por usuario cada 2 min como mucho.
 const FREE_COHOST_PAUSE_MS = parseInt(process.env.COHOST_SHUTUP_PAUSE_MS || String(10 * 60 * 1000), 10);
 
 const shutUpCooldowns = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of shutUpCooldowns) if (now > v) shutUpCooldowns.delete(k);
-}, 15 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [k, v] of shutUpCooldowns) if (now > v) shutUpCooldowns.delete(k);
+  },
+  15 * 60 * 1000,
+);
 
 function handleShutUp(client, channel, tags) {
   const now = Date.now();
@@ -89,7 +124,9 @@ function handleShutUp(client, channel, tags) {
   const out = truncate(`@${tags['display-name']} ${reply}`);
   client.say(channel, out, undefined, { expiresAt: now + MENTION_MAX_AGE_MS });
   addBotMessage(reply);
-  logger.info(`Silencio pedido por ${tags['display-name']}: cohost libre en pausa ${Math.round(FREE_COHOST_PAUSE_MS / 60000)} min`);
+  logger.info(
+    `Silencio pedido por ${tags['display-name']}: cohost libre en pausa ${Math.round(FREE_COHOST_PAUSE_MS / 60000)} min`,
+  );
   return true;
 }
 
@@ -130,26 +167,41 @@ async function checkPatternMatch(client, channel, tags, message) {
   const prevStamps = mentionStamps.get(userId);
   if (isDirect) {
     const budget = mentionBudget(prevStamps, now, MENTION_MAX_PER_USER, MENTION_WINDOW);
-    if (!budget.ok) { mentionStamps.set(userId, budget.stamps); return 'blocked'; }
+    if (!budget.ok) {
+      mentionStamps.set(userId, budget.stamps);
+      return 'blocked';
+    }
     mentionStamps.set(userId, budget.stamps);
   }
 
   // Se reservan antes de esperar a la IA (evita dobles respuestas) y se devuelven si la IA falla
   const release = () => {
-    if (isDirect) lastDirectMentionTime = prevGlobal; else lastPatternTime = prevGlobal;
-    if (prevUser) userCooldowns.set(userId, prevUser); else userCooldowns.delete(userId);
+    if (isDirect) lastDirectMentionTime = prevGlobal;
+    else lastPatternTime = prevGlobal;
+    if (prevUser) userCooldowns.set(userId, prevUser);
+    else userCooldowns.delete(userId);
     if (isProvocation) provocationUntil.delete(userId);
-    if (isDirect) { if (prevStamps) mentionStamps.set(userId, prevStamps); else mentionStamps.delete(userId); }
+    if (isDirect) {
+      if (prevStamps) mentionStamps.set(userId, prevStamps);
+      else mentionStamps.delete(userId);
+    }
   };
   const cd = cooldownMs(cdKind, multiplier);
-  if (isDirect) lastDirectMentionTime = now; else lastPatternTime = now;
+  if (isDirect) lastDirectMentionTime = now;
+  else lastPatternTime = now;
   userCooldowns.set(userId, now + cd.userMs);
   if (isProvocation) provocationUntil.set(userId, now + PROVOCATION_WINDOW);
 
   try {
     const emotes = channelConfig.channel_emotes || [];
-    const allowEmote = quality.emoteAllowed(getBotHistory().map(e => e.msg), emotes) && !isProvocation;
-    const maxChars = isProvocation ? Math.min(160, modeConfig.max_chars ?? 160) : Math.min(MENTION_MAX_CHARS, modeConfig.max_chars ?? MENTION_MAX_CHARS);
+    const allowEmote =
+      quality.emoteAllowed(
+        getBotHistory().map((e) => e.msg),
+        emotes,
+      ) && !isProvocation;
+    const maxChars = isProvocation
+      ? Math.min(160, modeConfig.max_chars ?? 160)
+      : Math.min(MENTION_MAX_CHARS, modeConfig.max_chars ?? MENTION_MAX_CHARS);
     let answer = '';
 
     // "Cuéntame de qué va Silent Hill F": se busca el juego en IGDB y se responde con esos datos (sin IA que pueda inventar).
@@ -179,7 +231,12 @@ async function checkPatternMatch(client, channel, tags, message) {
     } else if (quality.isDeathQuestion(question)) {
       // Por las muertes: el contador real, sin IA
       const n = getDeathCount();
-      answer = n === 0 ? messagesConfig.mention_deaths.none : n === 1 ? messagesConfig.mention_deaths.one : messagesConfig.mention_deaths.some.replace('{n}', n);
+      answer =
+        n === 0
+          ? messagesConfig.mention_deaths.none
+          : n === 1
+            ? messagesConfig.mention_deaths.one
+            : messagesConfig.mention_deaths.some.replace('{n}', n);
     } else if (quality.isGameQuestion(question)) {
       // Preguntas concretas del juego: a !dios_fua, que consulta IGDB
       answer = pickRandom(messagesConfig.mention_game_redirect);
@@ -196,29 +253,60 @@ async function checkPatternMatch(client, channel, tags, message) {
 
       let fixKey = ''; // regla fallida del intento anterior: el reintento recibe solo la corrección en positivo
       for (let attempt = 0; attempt < 2 && !answer; attempt++) {
-        const response = await aiChat('mention', {
-          max_tokens: modeConfig.max_tokens ?? 120,
-          temperature: GENERAL_TEMPERATURE,
-          messages: [
-            { role: 'system', content: `${system}${retryNote(fixKey)}` },
-            ...userConv,
-            { role: 'user', content: `${username}: ${question}` }
-          ]
-        }, 2, { maxDelayMs: MENTION_MAX_RETRY_DELAY_MS });
+        const response = await aiChat(
+          'mention',
+          {
+            max_tokens: modeConfig.max_tokens ?? 120,
+            temperature: GENERAL_TEMPERATURE,
+            messages: [
+              { role: 'system', content: `${system}${retryNote(fixKey)}` },
+              ...userConv,
+              { role: 'user', content: `${username}: ${question}` },
+            ],
+          },
+          2,
+          { maxDelayMs: MENTION_MAX_RETRY_DELAY_MS },
+        );
         const choice = response.choices[0];
-        const raw = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
-        const check = quality.validateMention(raw, { question, player: getPlayer(), names: [username, ...getChatterNames()] });
-        if (!check.ok) { fixKey = check.rule; continue; }
+        const raw =
+          choice.finish_reason === 'length'
+            ? quality.dropTrailingFragment(choice.message.content)
+            : (choice.message.content || '').trim();
+        const check = quality.validateMention(raw, {
+          question,
+          player: getPlayer(),
+          names: [username, ...getChatterNames()],
+        });
+        if (!check.ok) {
+          fixKey = check.rule;
+          continue;
+        }
         const mentionGame = await getCurrentGame().catch(() => null);
         // Solo se vigila lo que habla de videojuegos; "resistencia" o "zona" en una pregunta de cultura general no cuentan
         const gameTalk = quality.talksAboutGames(`${question} ${raw}`, mentionGame?.game);
-        if (gameTalk && quality.mentionsMechanics(raw)) { fixKey = 'juego'; continue; }
+        if (gameTalk && quality.mentionsMechanics(raw)) {
+          fixKey = 'juego';
+          continue;
+        }
         const invented = gameTalk ? quality.unsupportedAttributes(raw, `Juego: ${mentionGame?.game || ''}`) : '';
-        if (invented) { fixKey = 'juego'; continue; }
+        if (invented) {
+          fixKey = 'juego';
+          continue;
+        }
         // Una sola llamada: datos del juego (solo si habla de videojuegos) y sentido/redacción
-        const review = await factcheck.evaluate(raw, `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`, { game: mentionGame?.game, sense: true, checkData: gameTalk });
-        if (review.discard) { fixKey = 'juego'; continue; }
-        if (review.nonsense) { fixKey = 'sentido'; continue; }
+        const review = await factcheck.evaluate(
+          raw,
+          `Juego: ${mentionGame?.game || 'desconocido'}. Muertes anotadas: ${getDeathCount()}.`,
+          { game: mentionGame?.game, sense: true, checkData: gameTalk },
+        );
+        if (review.discard) {
+          fixKey = 'juego';
+          continue;
+        }
+        if (review.nonsense) {
+          fixKey = 'sentido';
+          continue;
+        }
         answer = raw;
       }
       // Sin respuesta válida tras reintentar: callar. Las réplicas de reserva son solo para provocaciones reales
@@ -232,11 +320,14 @@ async function checkPatternMatch(client, channel, tags, message) {
     }
 
     if (isStale(startedAt, Date.now(), MENTION_MAX_AGE_MS)) {
-      logger.info(`Respuesta a ${username} descartada por tardía (${Math.round((Date.now() - startedAt) / 1000)} s): ${String(answer).slice(0, 60)}`);
+      logger.info(
+        `Respuesta a ${username} descartada por tardía (${Math.round((Date.now() - startedAt) / 1000)} s): ${String(answer).slice(0, 60)}`,
+      );
       release();
       return 'blocked';
     }
-    if (!isProvocation) { // el «¡FUA!» de cierre no es una costumbre: solo en 1 de cada 3 menciones
+    if (!isProvocation) {
+      // el «¡FUA!» de cierre no es una costumbre: solo en 1 de cada 3 menciones
       const closing = quality.limitTrailingFua(answer, getMentionFuaHistory());
       answer = closing.text;
       noteMentionFua(closing.had);
@@ -257,7 +348,7 @@ async function checkPatternMatch(client, channel, tags, message) {
 let lastProvocationReply = '';
 
 function pickProvocationReply() {
-  const pool = (messagesConfig.provocation_replies || []).filter(r => r !== lastProvocationReply);
+  const pool = (messagesConfig.provocation_replies || []).filter((r) => r !== lastProvocationReply);
   const pick = pool[Math.floor(Math.random() * pool.length)] || '';
   lastProvocationReply = pick;
   return pick;
@@ -266,17 +357,30 @@ function pickProvocationReply() {
 // Réplica corta con personalidad; si la IA falla, rechaza o suena latina, se usa la de reserva
 async function generateProvocationReply(username, question, maxChars) {
   try {
-    const response = await aiChat('provocation', {
-      max_tokens: 60,
-      messages: [
-        { role: 'system', content: buildProvocationSystem() },
-        { role: 'user', content: `${username}: ${question}` }
-      ]
-    }, 1, { maxDelayMs: PROVOCATION_MAX_RETRY_DELAY_MS });
+    const response = await aiChat(
+      'provocation',
+      {
+        max_tokens: 60,
+        messages: [
+          { role: 'system', content: buildProvocationSystem() },
+          { role: 'user', content: `${username}: ${question}` },
+        ],
+      },
+      1,
+      { maxDelayMs: PROVOCATION_MAX_RETRY_DELAY_MS },
+    );
     const choice = response.choices[0];
-    const text = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
+    const text =
+      choice.finish_reason === 'length'
+        ? quality.dropTrailingFragment(choice.message.content)
+        : (choice.message.content || '').trim();
     // Revisión de sentido (sin datos de juego): si no se entiende, va la de reserva
-    if (quality.validateMention(text, { names: [username, ...getChatterNames()] }).ok && text.length <= maxChars && !(await factcheck.evaluate(text, '', { sense: true, checkData: false })).nonsense) return text;
+    if (
+      quality.validateMention(text, { names: [username, ...getChatterNames()] }).ok &&
+      text.length <= maxChars &&
+      !(await factcheck.evaluate(text, '', { sense: true, checkData: false })).nonsense
+    )
+      return text;
   } catch (err) {
     logger.warn(`Réplica a provocación: ${err.message}`);
   }

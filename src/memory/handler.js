@@ -5,11 +5,7 @@
  */
 
 const channelConfig = require('../../config/channel.json');
-const {
-  saveStreamMemory,
-  getRecentStreamMemory,
-  endStreamSession
-} = require('../utils/supabase');
+const { saveStreamMemory, getRecentStreamMemory, endStreamSession } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const quality = require('../ai/quality');
 const { buildSummaryPrompt, retryNote } = require('../ai/style');
@@ -18,7 +14,6 @@ const { aiChat } = require('../utils/ai-router');
 const { onStreamEndLore } = require('../lore/handler');
 const { scrubNicks, nicksFromChatSample } = require('../privacy/names');
 
-
 // Motivo de rechazo del resumen (null si vale): vacío, negativo, muertes como logro, género a ParLusorum, vida personal o texto basura
 function summaryProblem(text) {
   if (!text) return 'vacío';
@@ -26,7 +21,8 @@ function summaryProblem(text) {
   if (quality.achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
   if (quality.genderedParlusorum(text)) return 'pone género a ParLusorum';
   if (quality.fuaGender(text)) return '"el FUA" va siempre en masculino';
-  if (quality.summaryPersonalLife(text)) return 'habla de vida personal o charla ajena al stream (comida, clima, calor...); habla solo del juego, el stream y el ambiente del chat';
+  if (quality.summaryPersonalLife(text))
+    return 'habla de vida personal o charla ajena al stream (comida, clima, calor...); habla solo del juego, el stream y el ambiente del chat';
   const junk = quality.junkProblem(text, { minWords: 1 });
   if (junk) return junk.reason;
   return null;
@@ -38,7 +34,15 @@ async function generateStreamMemory(streamStats, chatSample) {
   try {
     const { game, durationMinutes, deathCount, peakViewers, topCommands } = streamStats;
 
-    const prompt = buildSummaryPrompt({ streamer: channelConfig.streamer, game, durationMinutes, deathCount, peakViewers, topCommands, chatSample });
+    const prompt = buildSummaryPrompt({
+      streamer: channelConfig.streamer,
+      game,
+      durationMinutes,
+      deathCount,
+      peakViewers,
+      topCommands,
+      chatSample,
+    });
 
     // Hasta 2 intentos: si el resumen habla de vida personal, es negativo o está mal, el segundo recibe el motivo
     let parsed = {};
@@ -47,7 +51,7 @@ async function generateStreamMemory(streamStats, chatSample) {
     for (let attempt = 0; attempt < 2 && !summary; attempt++) {
       const response = await aiChat('endstream', {
         max_tokens: 300,
-        messages: [{ role: 'user', content: `${prompt}${retryNote(feedback)}` }]
+        messages: [{ role: 'user', content: `${prompt}${retryNote(feedback)}` }],
       });
 
       const text = response.choices[0].message.content.trim();
@@ -57,24 +61,31 @@ async function generateStreamMemory(streamStats, chatSample) {
 
       const rawSummary = String(parsed.summary || '').trim();
       const problem = summaryProblem(rawSummary);
-      if (problem) { feedback = problem; logger.info(`Resumen de fin de stream descartado (${problem}): ${rawSummary.slice(0, 80)}`); continue; }
+      if (problem) {
+        feedback = problem;
+        logger.info(`Resumen de fin de stream descartado (${problem}): ${rawSummary.slice(0, 80)}`);
+        continue;
+      }
       summary = rawSummary;
     }
     if (!summary) summary = quality.positiveSummaryFallback(streamStats);
 
     // Los momentos y frases también entran luego en los prompts: sin vida personal ni charla ajena al stream
-    const keep = list => (Array.isArray(list) ? list : []).filter(item => typeof item === 'string' && !quality.summaryPersonalLife(item));
+    const keep = (list) =>
+      (Array.isArray(list) ? list : []).filter(
+        (item) => typeof item === 'string' && !quality.summaryPersonalLife(item),
+      );
 
     // Lo que perdura entre streams no lleva nicks: se sustituyen por «un espectador»
     const nicks = [...(streamStats.activeUsers || []), ...nicksFromChatSample(chatSample)];
-    const clean = text => scrubNicks(text, nicks);
+    const clean = (text) => scrubNicks(text, nicks);
 
     return {
       game,
       summary: clean(summary),
       highlights: keep(parsed.highlights).map(clean),
       recurringPhrases: keep(parsed.recurringPhrases).map(clean),
-      activeUsers: []
+      activeUsers: [],
     };
   } catch (e) {
     logger.error(`Error generando memoria del stream: ${e.message}`);
@@ -84,7 +95,7 @@ async function generateStreamMemory(streamStats, chatSample) {
       summary: quality.positiveSummaryFallback(streamStats),
       highlights: [],
       recurringPhrases: [],
-      activeUsers: []
+      activeUsers: [],
     };
   }
 }
@@ -130,7 +141,11 @@ async function onStreamEnd(streamStats, chatSample) {
 function sanitizeMemoryField(text, maxLen = 500) {
   if (!text || typeof text !== 'string') return '';
   if (containsBlockedContent(text)) return '';
-  return text.slice(0, maxLen).replace(/[\r\n]/g, ' ').replace(/[<>{}]/g, '').trim();
+  return text
+    .slice(0, maxLen)
+    .replace(/[\r\n]/g, ' ')
+    .replace(/[<>{}]/g, '')
+    .trim();
 }
 
 // ─── OBTENER CONTEXTO DE MEMORIA PARA LA IA ──────────────────────────────────
@@ -142,13 +157,18 @@ const MEMORY_CACHE_TTL = 10 * 60 * 1000;
 // Texto de memoria para el prompt. maxStreams/summaryMax recortan el perfil "lean" (los más recientes primero)
 function renderMemory(memories, { maxStreams = 5, summaryMax = 500, maxHighlights = 2, plain = false } = {}) {
   if (!memories.length) return '';
-  const lines = memories.slice(0, maxStreams).map(m => {
+  const lines = memories.slice(0, maxStreams).map((m) => {
     const date = m.stream_date;
     const game = m.game || 'sin juego';
     const summary = sanitizeMemoryField(m.summary, summaryMax);
-    const highlights = m.highlights?.length && maxHighlights > 0
-      ? `Momentos: ${m.highlights.slice(0, maxHighlights).map(h => sanitizeMemoryField(h, 150)).filter(Boolean).join(', ')}.`
-      : '';
+    const highlights =
+      m.highlights?.length && maxHighlights > 0
+        ? `Momentos: ${m.highlights
+            .slice(0, maxHighlights)
+            .map((h) => sanitizeMemoryField(h, 150))
+            .filter(Boolean)
+            .join(', ')}.`
+        : '';
     const phrases = m.recurring_phrases?.length
       ? `Frases del chat: "${sanitizeMemoryField(m.recurring_phrases[0], 150)}".`
       : '';

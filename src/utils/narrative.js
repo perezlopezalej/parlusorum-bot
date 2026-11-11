@@ -7,7 +7,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 // Qué eventos se conservan primero cuando hay que podar (mayor = más importante)
 const EVENT_PRIORITY = { sub: 3, raid: 3, boss: 3, milestone: 3, death: 2, victory: 2, rage: 1 };
-const priorityOf = type => EVENT_PRIORITY[type] ?? 1;
+const priorityOf = (type) => EVENT_PRIORITY[type] ?? 1;
 
 // Poda hasta `max` eventos: descarta el de menor prioridad y, a igualdad, el más antiguo. Conserva el orden cronológico.
 function pruneNarrative(events, max = MAX_NARRATIVE_EVENTS) {
@@ -26,8 +26,13 @@ function pruneNarrative(events, max = MAX_NARRATIVE_EVENTS) {
 function restoreNarrative(raw, max = MAX_NARRATIVE_EVENTS) {
   if (!Array.isArray(raw)) return [];
   const valid = raw
-    .filter(e => e && typeof e.type === 'string' && typeof e.description === 'string' && Number.isFinite(e.ts))
-    .map(e => ({ type: e.type.slice(0, 20), description: e.description.slice(0, 200), ts: e.ts, ...(Number.isInteger(e.n) && e.n > 1 ? { n: e.n } : {}) }))
+    .filter((e) => e && typeof e.type === 'string' && typeof e.description === 'string' && Number.isFinite(e.ts))
+    .map((e) => ({
+      type: e.type.slice(0, 20),
+      description: e.description.slice(0, 200),
+      ts: e.ts,
+      ...(Number.isInteger(e.n) && e.n > 1 ? { n: e.n } : {}),
+    }))
     .sort((a, b) => a.ts - b.ts);
   return pruneNarrative(valid, max);
 }
@@ -40,10 +45,41 @@ function relativeTime(ts, now) {
 // Bloque <stream_story> para los prompts; '' si no hay eventos
 function buildStoryBlock(events, now = Date.now()) {
   if (!events || events.length === 0) return '';
-  return `\n<stream_story>${events.map(e => `[${relativeTime(e.ts, now)}] [${e.type}] ${e.description}`).join(' | ')}</stream_story>`;
+  return `\n<stream_story>${events.map((e) => `[${relativeTime(e.ts, now)}] [${e.type}] ${e.description}`).join(' | ')}</stream_story>`;
 }
 
-const STOPWORDS = new Set(['para', 'pero', 'como', 'esto', 'esta', 'este', 'esos', 'esas', 'solo', 'muy', 'que', 'por', 'con', 'una', 'uno', 'los', 'las', 'del', 'porque', 'cuando', 'donde', 'ahora', 'tambien', 'también', 'todo', 'todos', 'pues', 'bien', 'jaja', 'jajaja']);
+const STOPWORDS = new Set([
+  'para',
+  'pero',
+  'como',
+  'esto',
+  'esta',
+  'este',
+  'esos',
+  'esas',
+  'solo',
+  'muy',
+  'que',
+  'por',
+  'con',
+  'una',
+  'uno',
+  'los',
+  'las',
+  'del',
+  'porque',
+  'cuando',
+  'donde',
+  'ahora',
+  'tambien',
+  'también',
+  'todo',
+  'todos',
+  'pues',
+  'bien',
+  'jaja',
+  'jajaja',
+]);
 
 // Condensa líneas de chat en una frase de contexto sin llamar a la IA
 function condenseChat(lines, { topUsers = 3, topWords = 4, lastN = 3, maxLast = 80 } = {}) {
@@ -52,22 +88,39 @@ function condenseChat(lines, { topUsers = 3, topWords = 4, lastN = 3, maxLast = 
   const words = new Map();
   for (const { username, message } of lines) {
     users.set(username, (users.get(username) || 0) + 1);
-    for (const w of new Set(String(message).toLowerCase().split(/[^\p{L}\p{N}_]+/u))) {
+    for (const w of new Set(
+      String(message)
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}_]+/u),
+    )) {
       if (w.length >= 4 && !STOPWORDS.has(w) && !hasElongation(w)) words.set(w, (words.get(w) || 0) + 1);
     }
   }
-  const top = (map, n, min) => [...map.entries()].filter(([, c]) => c >= min).sort((a, b) => b[1] - a[1]).slice(0, n);
-  const userPart = top(users, topUsers, 1).map(([u, c]) => `${u}(${c})`).join(', ');
-  const wordPart = top(words, topWords, 2).map(([w]) => w).join(', ');
-  const last = lines.slice(-lastN).map(m => `${m.username}: ${cleanChatNoise(String(m.message)).slice(0, maxLast)}`).join(' / ');
-  return `${lines.length} mensajes de ${users.size} usuarios. Más activos: ${userPart}.`
-    + (wordPart ? ` Se repite: ${wordPart}.` : '')
-    + ` Últimos: ${last}`;
+  const top = (map, n, min) =>
+    [...map.entries()]
+      .filter(([, c]) => c >= min)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n);
+  const userPart = top(users, topUsers, 1)
+    .map(([u, c]) => `${u}(${c})`)
+    .join(', ');
+  const wordPart = top(words, topWords, 2)
+    .map(([w]) => w)
+    .join(', ');
+  const last = lines
+    .slice(-lastN)
+    .map((m) => `${m.username}: ${cleanChatNoise(String(m.message)).slice(0, maxLast)}`)
+    .join(' / ');
+  return (
+    `${lines.length} mensajes de ${users.size} usuarios. Más activos: ${userPart}.` +
+    (wordPart ? ` Se repite: ${wordPart}.` : '') +
+    ` Últimos: ${last}`
+  );
 }
 
 // Descarta marcas de más de 1 h y dice si se alcanzó el tope por hora
 function pruneHourly(stamps, now = Date.now()) {
-  return stamps.filter(t => now - t < HOUR_MS);
+  return stamps.filter((t) => now - t < HOUR_MS);
 }
 function hourlyCapReached(stamps, max, now = Date.now()) {
   return pruneHourly(stamps, now).length >= max;
@@ -75,30 +128,44 @@ function hourlyCapReached(stamps, max, now = Date.now()) {
 
 // --- Modo de personalidad: se decide con la narrativa y caduca por la hora de cada evento ---
 const MODE_WINDOWS = { victory: 5 * 60 * 1000, hype: 3 * 60 * 1000, deaths: 10 * 60 * 1000, chat: 5 * 60 * 1000 };
-const MIN_MODE_DWELL_MS = 60 * 1000;   // permanencia mínima, salvo subida a victory/hype/BRB
+const MIN_MODE_DWELL_MS = 60 * 1000; // permanencia mínima, salvo subida a victory/hype/BRB
 const DEATHS_FOR_FOCUS = 3;
-const CALM_CHAT_MAX_MSGS = 5;          // menos mensajes que esto en MODE_WINDOWS.chat = chat tranquilo
+const CALM_CHAT_MAX_MSGS = 5; // menos mensajes que esto en MODE_WINDOWS.chat = chat tranquilo
 
 const latestTs = (events, types, now, windowMs) =>
   events.reduce((max, e) => (types.includes(e.type) && now - e.ts < windowMs && e.ts > max ? e.ts : max), 0);
 
 // prev = { mode, variant, setAt } del modo actual. Devuelve { mode, variant } (variant solo en focus: 'brb' | 'deaths').
-function decideMode({ now = Date.now(), events = [], raidActive = false, brb = false, capsRageAt = 0, recentChatCount = 0, prev = null } = {}) {
+function decideMode({
+  now = Date.now(),
+  events = [],
+  raidActive = false,
+  brb = false,
+  capsRageAt = 0,
+  recentChatCount = 0,
+  prev = null,
+} = {}) {
   const celebrationTs = latestTs(events, ['victory', 'boss', 'milestone'], now, MODE_WINDOWS.victory);
   const deathTs = latestTs(events, ['death'], now, MODE_WINDOWS.deaths);
-  const deaths = events.filter(e => e.type === 'death' && now - e.ts < MODE_WINDOWS.deaths).length;
+  const deaths = events.filter((e) => e.type === 'death' && now - e.ts < MODE_WINDOWS.deaths).length;
 
   let next;
   if (brb) next = { mode: 'focus', variant: 'brb' };
   else if (celebrationTs && celebrationTs >= deathTs) next = { mode: 'victory', variant: null };
-  else if (raidActive || now - capsRageAt < MODE_WINDOWS.hype || latestTs(events, ['sub', 'raid'], now, MODE_WINDOWS.hype)) next = { mode: 'hype', variant: null };
+  else if (
+    raidActive ||
+    now - capsRageAt < MODE_WINDOWS.hype ||
+    latestTs(events, ['sub', 'raid'], now, MODE_WINDOWS.hype)
+  )
+    next = { mode: 'hype', variant: null };
   else if (deaths >= DEATHS_FOR_FOCUS) next = { mode: 'focus', variant: 'deaths' };
   else if (recentChatCount < CALM_CHAT_MAX_MSGS) next = { mode: 'chill', variant: null };
   else next = { mode: 'normal', variant: null };
 
   const changed = !prev || prev.mode !== next.mode || (prev.variant ?? null) !== next.variant;
   const urgent = next.mode === 'victory' || next.mode === 'hype' || next.variant === 'brb';
-  if (changed && prev && !urgent && now - prev.setAt < MIN_MODE_DWELL_MS) return { mode: prev.mode, variant: prev.variant ?? null };
+  if (changed && prev && !urgent && now - prev.setAt < MIN_MODE_DWELL_MS)
+    return { mode: prev.mode, variant: prev.variant ?? null };
   return next;
 }
 
@@ -109,15 +176,15 @@ function resolveModeConfig(modes, mode, variant = null) {
 }
 
 // --- Cohost: eventos (siempre comentados, en cola) + comentarios libres por reloj ---
-const EVENT_COHOST_MIN_GAP_MS = 15 * 1000;         // separación mínima entre dos comentarios de eventos seguidos
-const EVENT_COHOST_MAX_PER_HOUR = 20;              // solo freno de seguridad (los eventos no se limitan en la práctica)
-const EVENT_QUEUE_TTL_MS = 2 * 60 * 1000;          // un evento que espera más de esto ya no se comenta
-const FREE_COHOST_INTERVAL_MS = 15 * 60 * 1000;    // cada cuánto toca un comentario libre (~4/h)
+const EVENT_COHOST_MIN_GAP_MS = 15 * 1000; // separación mínima entre dos comentarios de eventos seguidos
+const EVENT_COHOST_MAX_PER_HOUR = 20; // solo freno de seguridad (los eventos no se limitan en la práctica)
+const EVENT_QUEUE_TTL_MS = 2 * 60 * 1000; // un evento que espera más de esto ya no se comenta
+const FREE_COHOST_INTERVAL_MS = 15 * 60 * 1000; // cada cuánto toca un comentario libre (~4/h)
 const FREE_COHOST_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
-const FREE_COHOST_MIN_MESSAGES = 3;                // mensajes de usuarios en la ventana para considerar el chat activo
-const FREE_COHOST_AFTER_ANY_MS = 2 * 60 * 1000;    // no pisar un comentario de hace nada
-const FREE_COHOST_MAX_PER_HOUR = 4;                // cupo compartido libres + rachas de muertes (máximo, no objetivo: se busca ~3/h)
-const STREAK_COHOST_GAP_MS = 15 * 60 * 1000;       // hueco mínimo entre dos comentarios del cupo compartido (libre o racha)
+const FREE_COHOST_MIN_MESSAGES = 3; // mensajes de usuarios en la ventana para considerar el chat activo
+const FREE_COHOST_AFTER_ANY_MS = 2 * 60 * 1000; // no pisar un comentario de hace nada
+const FREE_COHOST_MAX_PER_HOUR = 4; // cupo compartido libres + rachas de muertes (máximo, no objetivo: se busca ~3/h)
+const STREAK_COHOST_GAP_MS = 15 * 60 * 1000; // hueco mínimo entre dos comentarios del cupo compartido (libre o racha)
 const DEATH_STREAK_WINDOW_MS = 10 * 60 * 1000;
 const DEATH_STREAK_SIZE = 3;
 const STREAK_BREAKERS = ['boss', 'victory', 'milestone'];
@@ -145,18 +212,34 @@ function classifyCohostMoment(event, { events = [], deathCount = 0, recordToBeat
   if (type !== 'death') return null;
   const added = Number.isInteger(event.n) && event.n > 0 ? event.n : 1;
   const before = Math.max(0, deathCount - added);
-  if (recordToBeat > 0 && deathCount > recordToBeat && before <= recordToBeat) return { kind: 'record', description: `${description}. Es un récord de muertes: supera a cualquier otro stream anotado` };
+  if (recordToBeat > 0 && deathCount > recordToBeat && before <= recordToBeat)
+    return {
+      kind: 'record',
+      description: `${description}. Es un récord de muertes: supera a cualquier otro stream anotado`,
+    };
   if (before === 0) return { kind: 'first_death', description };
-  const idx = events.findLastIndex(e => e === event || (e.ts === event.ts && e.type === event.type && e.description === event.description));
+  const idx = events.findLastIndex(
+    (e) => e === event || (e.ts === event.ts && e.type === event.type && e.description === event.description),
+  );
   const upto = idx >= 0 ? idx : events.length;
   const prev = deathStreakLength(events, now, DEATH_STREAK_WINDOW_MS, upto);
   const total = prev + added;
-  if (prev < DEATH_STREAK_SIZE && total >= DEATH_STREAK_SIZE) return { kind: 'streak', description: `Racha: ${total} muertes seguidas sin superar un jefe en pocos minutos (${deathCount} en total hoy)` };
+  if (prev < DEATH_STREAK_SIZE && total >= DEATH_STREAK_SIZE)
+    return {
+      kind: 'streak',
+      description: `Racha: ${total} muertes seguidas sin superar un jefe en pocos minutos (${deathCount} en total hoy)`,
+    };
   return null;
 }
 
 // Freno del cohost por eventos: separación mínima desde el último cohost y tope de seguridad por hora
-function eventCohostAllowed({ now = Date.now(), lastAt = 0, stamps = [], minGapMs = EVENT_COHOST_MIN_GAP_MS, max = EVENT_COHOST_MAX_PER_HOUR } = {}) {
+function eventCohostAllowed({
+  now = Date.now(),
+  lastAt = 0,
+  stamps = [],
+  minGapMs = EVENT_COHOST_MIN_GAP_MS,
+  max = EVENT_COHOST_MAX_PER_HOUR,
+} = {}) {
   if (lastAt && now - lastAt < minGapMs) return false;
   return !hourlyCapReached(stamps, max, now);
 }
@@ -168,7 +251,17 @@ function eventExpired(queuedAt, now = Date.now(), ttlMs = EVENT_QUEUE_TTL_MS) {
 
 // ¿Toca un comentario libre? Por reloj: ha pasado el intervalo, hay actividad reciente en el chat (recentMessages,
 // mensajes de usuarios en la ventana) y no acaba de hablar el cohost. freeStamps = marcas de los libres de la última hora.
-function freeCohostDue({ now = Date.now(), lastFreeAt = 0, intervalMs = FREE_COHOST_INTERVAL_MS, recentMessages = 0, minMessages = FREE_COHOST_MIN_MESSAGES, lastAnyAt = 0, afterAnyMs = FREE_COHOST_AFTER_ANY_MS, freeStamps = [], maxFree = FREE_COHOST_MAX_PER_HOUR } = {}) {
+function freeCohostDue({
+  now = Date.now(),
+  lastFreeAt = 0,
+  intervalMs = FREE_COHOST_INTERVAL_MS,
+  recentMessages = 0,
+  minMessages = FREE_COHOST_MIN_MESSAGES,
+  lastAnyAt = 0,
+  afterAnyMs = FREE_COHOST_AFTER_ANY_MS,
+  freeStamps = [],
+  maxFree = FREE_COHOST_MAX_PER_HOUR,
+} = {}) {
   if (now - lastFreeAt < intervalMs) return false;
   if (recentMessages < minMessages) return false;
   if (lastAnyAt && now - lastAnyAt < afterAnyMs) return false;
@@ -177,7 +270,13 @@ function freeCohostDue({ now = Date.now(), lastFreeAt = 0, intervalMs = FREE_COH
 
 // ¿Puede comentarse una racha de muertes? Comparte cupo con los comentarios libres: respeta el hueco desde el último
 // comentario del cupo (libre o racha, `lastSharedAt`) y el máximo por hora (`sharedStamps`).
-function streakAllowed({ now = Date.now(), lastSharedAt = 0, sharedStamps = [], gapMs = STREAK_COHOST_GAP_MS, max = FREE_COHOST_MAX_PER_HOUR } = {}) {
+function streakAllowed({
+  now = Date.now(),
+  lastSharedAt = 0,
+  sharedStamps = [],
+  gapMs = STREAK_COHOST_GAP_MS,
+  max = FREE_COHOST_MAX_PER_HOUR,
+} = {}) {
   if (lastSharedAt && now - lastSharedAt < gapMs) return false;
   return !hourlyCapReached(sharedStamps, max, now);
 }
@@ -185,22 +284,41 @@ function streakAllowed({ now = Date.now(), lastSharedAt = 0, sharedStamps = [], 
 // Tema concreto de cada intento del cohost libre, elegido por el código y rotando (nunca el mismo dos veces seguidas):
 // con "habla de lo que veas" el modelo respondía SKIP en 31 de 35 intentos. `last` = id del tema anterior.
 // → { id, note } con note listo para el prompt.
-function pickFreeTopic({ minutes = 0, bosses = 0, game = '', deathCount = 0, canCiteDeaths = true, last = '', pick = Math.random } = {}) {
+function pickFreeTopic({
+  minutes = 0,
+  bosses = 0,
+  game = '',
+  deathCount = 0,
+  canCiteDeaths = true,
+  last = '',
+  pick = Math.random,
+} = {}) {
   const time = minutes >= 20 ? approxDuration(minutes) : '';
   const topics = [];
-  if (time) topics.push({ id: 'tiempo', note: `el rato que llevan de directo (${time}), dicho de forma aproximada y sin minutos exactos` });
-  if (game) topics.push({ id: 'partida', note: `cómo va la partida: ${bosses > 0 ? `${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy` : 'el ritmo de la sesión'}${deathCount > 0 && canCiteDeaths ? ` y las caídas de Manu (${deathCount} anotadas)` : ''}; cuéntalo con humor sobre la sesión` });
-  topics.push({ id: 'chat_juego', note: 'algo que el chat haya dicho sobre el juego o la partida contado en general, como una anécdota del directo' });
+  if (time)
+    topics.push({
+      id: 'tiempo',
+      note: `el rato que llevan de directo (${time}), dicho de forma aproximada y sin minutos exactos`,
+    });
+  if (game)
+    topics.push({
+      id: 'partida',
+      note: `cómo va la partida: ${bosses > 0 ? `${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy` : 'el ritmo de la sesión'}${deathCount > 0 && canCiteDeaths ? ` y las caídas de Manu (${deathCount} anotadas)` : ''}; cuéntalo con humor sobre la sesión`,
+    });
+  topics.push({
+    id: 'chat_juego',
+    note: 'algo que el chat haya dicho sobre el juego o la partida contado en general, como una anécdota del directo',
+  });
   topics.push({ id: 'lore', note: 'una broma del lore del canal' });
   topics.push({ id: 'lusorums', note: 'los Lusorums, el chat, con cariño y humor' });
   topics.push({ id: 'fua', note: 'el FUA como fuerza universal, con una broma directa' });
-  const pool = topics.filter(t => t.id !== last);
+  const pool = topics.filter((t) => t.id !== last);
   return pool[Math.min(pool.length - 1, Math.floor(pick() * pool.length))];
 }
 
 // --- Jefes seguidos: varios !boss en pocos minutos se comentan una sola vez ---
-const BOSS_MERGE_MS = 2 * 60 * 1000;   // hueco máximo entre dos jefes para que cuenten como una tanda
-const BOSS_SETTLE_MS = 25 * 1000;      // el comentario del primer jefe espera por si llegan más
+const BOSS_MERGE_MS = 2 * 60 * 1000; // hueco máximo entre dos jefes para que cuenten como una tanda
+const BOSS_SETTLE_MS = 25 * 1000; // el comentario del primer jefe espera por si llegan más
 
 // Suma el jefe nuevo al momento pendiente: { kind: 'boss', n, description }
 function mergeBossMoments(pending, incoming, total = null) {
@@ -217,13 +335,16 @@ function bossInBatch(lastBossAt, now = Date.now(), windowMs = BOSS_MERGE_MS) {
 // --- Qué ha pasado en una ventana (resumen de la última media hora, hooks sobre sucesos) ---
 // Cuenta muertes y jefes (con las unidades de "+N"), la racha actual y las descripciones de victorias/hitos.
 function windowFacts(events = [], now = Date.now(), windowMs = 30 * 60 * 1000) {
-  const inWin = events.filter(e => now - e.ts <= windowMs);
-  const units = e => (Number.isInteger(e.n) && e.n > 0 ? e.n : 1);
-  const sum = type => inWin.filter(e => e.type === type).reduce((a, e) => a + units(e), 0);
+  const inWin = events.filter((e) => now - e.ts <= windowMs);
+  const units = (e) => (Number.isInteger(e.n) && e.n > 0 ? e.n : 1);
+  const sum = (type) => inWin.filter((e) => e.type === type).reduce((a, e) => a + units(e), 0);
   const deaths = sum('death');
   const bosses = sum('boss');
   const streak = deathStreakLength(events, now);
-  const celebrations = inWin.filter(e => ['victory', 'milestone'].includes(e.type)).map(e => e.description).slice(-2);
+  const celebrations = inWin
+    .filter((e) => ['victory', 'milestone'].includes(e.type))
+    .map((e) => e.description)
+    .slice(-2);
   const lines = [];
   if (deaths > 0) lines.push(`${deaths} ${deaths === 1 ? 'caída' : 'caídas'} del streamer`);
   if (bosses > 0) lines.push(`${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'}`);
@@ -236,7 +357,13 @@ function windowFacts(events = [], now = Date.now(), windowMs = 30 * 60 * 1000) {
 function chatSample(lines = [], { n = 8, minLen = 18, maxLen = 90 } = {}) {
   const out = [];
   for (const { message } of lines) {
-    const text = cleanChatNoise(String(message || '').replace(/https?:\/\/\S+/gi, ' ').replace(/@\w+/g, ' ').replace(/\bparlus1\w*/gi, ' ').replace(/\s+/g, ' '));
+    const text = cleanChatNoise(
+      String(message || '')
+        .replace(/https?:\/\/\S+/gi, ' ')
+        .replace(/@\w+/g, ' ')
+        .replace(/\bparlus1\w*/gi, ' ')
+        .replace(/\s+/g, ' '),
+    );
     if (text.startsWith('!') || text.length < minLen) continue;
     if (/^(?:(?:ja|je|ji|jo|ju|ha|he)+\W*)+$/i.test(text)) continue;
     out.push(text.slice(0, maxLen));
@@ -245,11 +372,38 @@ function chatSample(lines = [], { n = 8, minLen = 18, maxLen = 90 } = {}) {
 }
 
 module.exports = {
-  windowFacts, chatSample, mergeBossMoments, bossInBatch, BOSS_MERGE_MS, BOSS_SETTLE_MS,
-  streakAllowed, STREAK_COHOST_GAP_MS, pickFreeTopic,
-  MAX_NARRATIVE_EVENTS, pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
-  pruneHourly, hourlyCapReached,
-  EVENT_COHOST_MIN_GAP_MS, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR,
-  deathStreakLength, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue,
-  MODE_WINDOWS, MIN_MODE_DWELL_MS, DEATHS_FOR_FOCUS, CALM_CHAT_MAX_MSGS, decideMode, resolveModeConfig,
+  windowFacts,
+  chatSample,
+  mergeBossMoments,
+  bossInBatch,
+  BOSS_MERGE_MS,
+  BOSS_SETTLE_MS,
+  streakAllowed,
+  STREAK_COHOST_GAP_MS,
+  pickFreeTopic,
+  MAX_NARRATIVE_EVENTS,
+  pruneNarrative,
+  restoreNarrative,
+  buildStoryBlock,
+  condenseChat,
+  pruneHourly,
+  hourlyCapReached,
+  EVENT_COHOST_MIN_GAP_MS,
+  EVENT_COHOST_MAX_PER_HOUR,
+  EVENT_QUEUE_TTL_MS,
+  FREE_COHOST_INTERVAL_MS,
+  FREE_COHOST_ACTIVITY_WINDOW_MS,
+  FREE_COHOST_MIN_MESSAGES,
+  FREE_COHOST_MAX_PER_HOUR,
+  deathStreakLength,
+  classifyCohostMoment,
+  eventCohostAllowed,
+  eventExpired,
+  freeCohostDue,
+  MODE_WINDOWS,
+  MIN_MODE_DWELL_MS,
+  DEATHS_FOR_FOCUS,
+  CALM_CHAT_MAX_MSGS,
+  decideMode,
+  resolveModeConfig,
 };

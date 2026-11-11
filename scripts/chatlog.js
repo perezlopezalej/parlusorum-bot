@@ -52,15 +52,27 @@ async function main() {
   const db = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
   const arg = process.argv[2];
 
-  let kind, label, session = null;
+  let kind,
+    label,
+    session = null;
   if (arg) {
-    if (!dayRange(arg)) { console.error(`Fecha no válida: "${arg}" (usa AAAA-MM-DD)`); process.exit(1); }
+    if (!dayRange(arg)) {
+      console.error(`Fecha no válida: "${arg}" (usa AAAA-MM-DD)`);
+      process.exit(1);
+    }
     kind = chooseExport({ dateStr: arg });
     label = arg;
   } else {
-    const { data, error } = await db.from('stream_sessions').select('id, started_at').order('started_at', { ascending: false }).limit(1);
+    const { data, error } = await db
+      .from('stream_sessions')
+      .select('id, started_at')
+      .order('started_at', { ascending: false })
+      .limit(1);
     if (error) throw error;
-    if (!data.length) { console.error('No hay sesiones de stream registradas'); process.exit(1); }
+    if (!data.length) {
+      console.error('No hay sesiones de stream registradas');
+      process.exit(1);
+    }
     session = data[0];
     kind = chooseExport({ startedAt: session.started_at });
     label = localDateStr(new Date(session.started_at));
@@ -70,12 +82,18 @@ async function main() {
   if (kind === 'chat') {
     let rows;
     if (session) {
-      rows = await fetchRows(db, 'chat_log', q => q.eq('session_id', session.id), ['created_at', 'id']);
+      rows = await fetchRows(db, 'chat_log', (q) => q.eq('session_id', session.id), ['created_at', 'id']);
     } else {
       const range = dayRange(arg);
-      rows = await fetchRows(db, 'chat_log', q => q.gte('created_at', range.from).lt('created_at', range.to), ['created_at', 'id']);
+      rows = await fetchRows(db, 'chat_log', (q) => q.gte('created_at', range.from).lt('created_at', range.to), [
+        'created_at',
+        'id',
+      ]);
     }
-    if (!rows.length) { console.error('Sin mensajes para exportar'); process.exit(1); }
+    if (!rows.length) {
+      console.error('Sin mensajes para exportar');
+      process.exit(1);
+    }
     console.log(`${rows.length} mensajes → ${write(`chat-${label}.txt`, formatChat(rows))}`);
     console.log('Recuerda: el chat completo caduca a las 24 h en Supabase; esta copia local no.');
     return;
@@ -84,10 +102,16 @@ async function main() {
   // Más de 24 h: solo queda el registro de calidad
   console.log('El chat completo ya no existe (solo se guarda 24 h): exporto el registro de calidad.');
   const rows = session
-    ? await fetchRows(db, 'quality_log', q => q.eq('session_id', session.id), ['id'])
-    : await fetchRows(db, 'quality_log', q => q.eq('stream_date', arg), ['id']);
-  if (!rows.length) { console.error('Sin registro de calidad para esa fecha (se conserva 30 días)'); process.exit(1); }
+    ? await fetchRows(db, 'quality_log', (q) => q.eq('session_id', session.id), ['id'])
+    : await fetchRows(db, 'quality_log', (q) => q.eq('stream_date', arg), ['id']);
+  if (!rows.length) {
+    console.error('Sin registro de calidad para esa fecha (se conserva 30 días)');
+    process.exit(1);
+  }
   console.log(`${rows.length} filas → ${write(`calidad-${label}.txt`, formatQualityLog(rows))}`);
 }
 
-main().catch(err => { console.error(err.message); process.exit(1); });
+main().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});

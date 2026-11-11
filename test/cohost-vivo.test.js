@@ -28,7 +28,13 @@ describe('mentionsGame', () => {
 
 describe('factcheck selectivo', () => {
   test('un mensaje que no habla del juego se envía sin comprobar (sin llamar a Groq)', async () => {
-    assert.equal(await factcheck.shouldDiscard('El FUA no perdona, 7 muertes ya.', 'Juego: Phantom Blade Zero. Muertes anotadas: 7.'), false);
+    assert.equal(
+      await factcheck.shouldDiscard(
+        'El FUA no perdona, 7 muertes ya.',
+        'Juego: Phantom Blade Zero. Muertes anotadas: 7.',
+      ),
+      false,
+    );
   });
   test('gameFromData extrae el juego de los datos', () => {
     assert.equal(factcheck.gameFromData('Juego: Phantom Blade Zero. Muertes anotadas: 7.'), 'Phantom Blade Zero');
@@ -39,7 +45,11 @@ describe('factcheck selectivo', () => {
 describe('validateCohost: leve vs grave', () => {
   const base = { deathCount: 3, recent: [], named: new Map(), now: Date.now() };
   test('lo grave no lleva soft', () => {
-    for (const [text, rule] of [['Qué onda, chat, vamos con todo ahora', 'latam'], ['Este arma es la mejor del juego', 'juego'], ['Lo siento, no puedo ayudar con eso', 'robot']]) {
+    for (const [text, rule] of [
+      ['Qué onda, chat, vamos con todo ahora', 'latam'],
+      ['Este arma es la mejor del juego', 'juego'],
+      ['Lo siento, no puedo ayudar con eso', 'robot'],
+    ]) {
       const r = quality.validateCohost(text, base);
       assert.equal(r.ok, false);
       assert.equal(r.soft, undefined, text);
@@ -51,22 +61,39 @@ describe('validateCohost: leve vs grave', () => {
   });
   test('lo leve es soft: nombre repetido, fórmula repetida, parecido y juzgar el ambiente', () => {
     const named = new Map([['harocho', Date.now()]]);
-    assert.deepEqual(pick(quality.validateCohost('Mira harocho con su flow gigante hoy', { ...base, named })), { soft: true, rule: 'nombre' });
-    assert.deepEqual(pick(quality.validateCohost('La próxima caída ya se huele en el aire', { ...base, recent: ['Anda que la próxima caída viene fuerte'] })), { soft: true, rule: 'formula' });
-    assert.deepEqual(pick(quality.validateCohost('Este chat está muy dormido hoy, qué calma', base)), { soft: true, rule: 'ambiente' });
+    assert.deepEqual(pick(quality.validateCohost('Mira harocho con su flow gigante hoy', { ...base, named })), {
+      soft: true,
+      rule: 'nombre',
+    });
+    assert.deepEqual(
+      pick(
+        quality.validateCohost('La próxima caída ya se huele en el aire', {
+          ...base,
+          recent: ['Anda que la próxima caída viene fuerte'],
+        }),
+      ),
+      { soft: true, rule: 'formula' },
+    );
+    assert.deepEqual(pick(quality.validateCohost('Este chat está muy dormido hoy, qué calma', base)), {
+      soft: true,
+      rule: 'ambiente',
+    });
   });
   test('un mensaje correcto sigue pasando', () => {
     assert.equal(quality.validateCohost('Tres muertes y el FUA ni se despeina, qué máquina.', base).ok, true);
   });
 });
-const pick = r => ({ soft: r.soft, rule: r.rule });
+const pick = (r) => ({ soft: r.soft, rule: r.rule });
 
 describe('contadores del cohost', () => {
   test('intentos, envíos, descartes y 429 de Groq quedan registrados aparte', () => {
     state.resetCohostStats();
-    state.recordCohostAttempt('event'); state.recordCohostAttempt('event'); state.recordCohostAttempt('free');
+    state.recordCohostAttempt('event');
+    state.recordCohostAttempt('event');
+    state.recordCohostAttempt('free');
     state.recordCohostSent('event');
-    state.recordCohostDiscard('caducado'); state.recordCohostDiscard('skip');
+    state.recordCohostDiscard('caducado');
+    state.recordCohostDiscard('skip');
     state.recordGroq429();
     const s = state.getCohostStats();
     assert.deepEqual(s.attempts, { event: 2, free: 1 });
@@ -85,7 +112,10 @@ describe('contadores del cohost', () => {
     state.resetCohostStats();
     const err = Object.assign(new Error('rate limited'), { status: 429, headers: { 'retry-after': '0' } });
     let calls = 0;
-    setTransport('groq', async () => { calls++; throw err; });
+    setTransport('groq', async () => {
+      calls++;
+      throw err;
+    });
     await assert.rejects(runChain(parseChain('groq:x'), 'cohost', { messages: [] }, { maxRetries: 0 }));
     assert.equal(calls, 1);
     assert.equal(state.getCohostStats().groq429, 1);

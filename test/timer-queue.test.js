@@ -20,7 +20,7 @@ const { enqueueTimerMessage, stop } = require('../src/timers/handler');
 test('los timers que coinciden salen espaciados, no a la vez', async () => {
   const times = [];
   for (let i = 0; i < 3; i++) enqueueTimerMessage(() => times.push(Date.now()));
-  await new Promise(r => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 200));
   stop();
   assert.equal(times.length, 3);
   assert.ok(times[1] - times[0] >= 35, `hueco 1: ${times[1] - times[0]}`);

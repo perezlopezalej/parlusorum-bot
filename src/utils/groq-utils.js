@@ -27,18 +27,19 @@ const TWITCH_MAX_LENGTH = 490;
 // Regex para separar emotes del canal de puntuación adyacente.
 // Construida una vez al cargar el módulo para no repetirla en cada mensaje.
 const _channelEmotes = channelConfig.channel_emotes || [];
-const _emotePattern = _channelEmotes.length > 0
-  ? _channelEmotes.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  : null;
+const _emotePattern =
+  _channelEmotes.length > 0 ? _channelEmotes.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') : null;
 const _emoteBeforeRe = _emotePattern ? new RegExp(`(\\S)(${_emotePattern})`, 'g') : null;
-const _emoteAfterRe  = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g') : null;
+const _emoteAfterRe = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g') : null;
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Modelos de reserva (GROQ_MODEL_FALLBACKS, separados por comas). Por defecto, el modelo rápido.
 // Las cadenas por tipo de llamada viven en ai-router.js.
 const GROQ_MODEL_FALLBACKS = (process.env.GROQ_MODEL_FALLBACKS || GROQ_MODEL_FAST)
-  .split(',').map(m => m.trim()).filter(Boolean);
+  .split(',')
+  .map((m) => m.trim())
+  .filter(Boolean);
 
 // Petición única al SDK: los reintentos y el salto de modelo los decide el router, no el SDK.
 // onHeaders(headers) recibe las cabeceras de la respuesta (x-ratelimit-*) para saber el cupo real que queda.
@@ -46,7 +47,11 @@ async function groqCreate(params, { timeoutMs = 20000, onHeaders } = {}) {
   const promise = groq.chat.completions.create(params, { timeout: timeoutMs, maxRetries: 0 });
   if (onHeaders && typeof promise.withResponse === 'function') {
     const { data, response } = await promise.withResponse();
-    try { onHeaders(response?.headers); } catch { /* las cabeceras nunca rompen la petición */ }
+    try {
+      onHeaders(response?.headers);
+    } catch {
+      /* las cabeceras nunca rompen la petición */
+    }
     return data;
   }
   return promise;
@@ -58,16 +63,24 @@ function parseDurationMs(text) {
   if (!s) return null;
   if (/^\d+(?:\.\d+)?$/.test(s)) return Math.round(parseFloat(s) * 1000); // número solo: segundos
   const re = /(\d+(?:\.\d+)?)(ms|h|m|s)/g;
-  let total = 0; let found = false; let m;
-  while ((m = re.exec(s))) { found = true; total += parseFloat(m[1]) * { ms: 1, s: 1000, m: 60000, h: 3600000 }[m[2]]; }
+  let total = 0;
+  let found = false;
+  let m;
+  while ((m = re.exec(s))) {
+    found = true;
+    total += parseFloat(m[1]) * { ms: 1, s: 1000, m: 60000, h: 3600000 }[m[2]];
+  }
   return found ? Math.round(total) : null;
 }
 
 // Cabeceras x-ratelimit-* de Groq: límite y restante de peticiones (por día) y de tokens (por minuto), con su reposición
 function parseRateHeaders(headers) {
   if (!headers) return null;
-  const get = name => (typeof headers.get === 'function' ? headers.get(name) : headers[name]);
-  const int = name => { const v = parseInt(get(name), 10); return Number.isFinite(v) ? v : undefined; };
+  const get = (name) => (typeof headers.get === 'function' ? headers.get(name) : headers[name]);
+  const int = (name) => {
+    const v = parseInt(get(name), 10);
+    return Number.isFinite(v) ? v : undefined;
+  };
   const info = {
     limitRequests: int('x-ratelimit-limit-requests'),
     limitTokens: int('x-ratelimit-limit-tokens'),
@@ -76,7 +89,7 @@ function parseRateHeaders(headers) {
     resetRequestsMs: parseDurationMs(get('x-ratelimit-reset-requests')),
     resetTokensMs: parseDurationMs(get('x-ratelimit-reset-tokens')),
   };
-  return Object.values(info).some(v => v !== undefined && v !== null) ? info : null;
+  return Object.values(info).some((v) => v !== undefined && v !== null) ? info : null;
 }
 
 // 404 model_not_found / model_decommissioned: el modelo ya no existe en Groq
@@ -92,14 +105,20 @@ function retryAfterMs(err) {
 
 // Cupo diario (tokens/peticiones por día) en vez del de por minuto: el mensaje del proveedor lo dice, o la espera pedida es larga
 function isDailyQuota(err) {
-  return /per ?day|\bTPD\b|\bRPD\b/i.test(`${err?.message || ''} ${err?.error?.error?.message || ''}`) || retryAfterMs(err) > 120000;
+  return (
+    /per ?day|\bTPD\b|\bRPD\b/i.test(`${err?.message || ''} ${err?.error?.error?.message || ''}`) ||
+    retryAfterMs(err) > 120000
+  );
 }
 
 // Modelos con razonamiento visible (qwen...) devuelven <think>…</think> dentro del contenido: fuera del chat
 function stripThinking(result) {
   for (const c of result?.choices || []) {
     if (typeof c?.message?.content === 'string' && c.message.content.includes('</think>')) {
-      c.message.content = c.message.content.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*<\/think>/i, '').trim();
+      c.message.content = c.message.content
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/^[\s\S]*<\/think>/i, '')
+        .trim();
     }
   }
   return result;
@@ -109,9 +128,27 @@ function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   if (!msg) return '';
   let clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
   if (_emoteBeforeRe) clean = clean.replace(_emoteBeforeRe, '$1 $2');
-  if (_emoteAfterRe)  clean = clean.replace(_emoteAfterRe,  '$1 $2');
+  if (_emoteAfterRe) clean = clean.replace(_emoteAfterRe, '$1 $2');
   clean = clean.replace(/  +/g, ' ').trim();
   return cutAtSentence(clean, limit);
 }
 
-module.exports = { groqCreate, parseDurationMs, parseRateHeaders, isModelGone, isDailyQuota, retryAfterMs, stripThinking, truncate, isReasoningModel, REASONING_HEADROOM, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_LIGHT, GROQ_MODEL_PICK, GROQ_MODEL_COMPOUND, GROQ_MODEL_FALLBACKS };
+module.exports = {
+  groqCreate,
+  parseDurationMs,
+  parseRateHeaders,
+  isModelGone,
+  isDailyQuota,
+  retryAfterMs,
+  stripThinking,
+  truncate,
+  isReasoningModel,
+  REASONING_HEADROOM,
+  TWITCH_MAX_LENGTH,
+  GROQ_MODEL,
+  GROQ_MODEL_FAST,
+  GROQ_MODEL_LIGHT,
+  GROQ_MODEL_PICK,
+  GROQ_MODEL_COMPOUND,
+  GROQ_MODEL_FALLBACKS,
+};

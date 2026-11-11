@@ -13,11 +13,30 @@
   "avoid": [
     {
       "topic": "odio o burlas por raza, etnia, religión, nacionalidad, género, orientación sexual, identidad de género, discapacidad o enfermedad",
-      "keywords": ["racista", "negrata", "maricon", "maricón", "retrasado", "subnormal", "mongolo", "sudaca", "moro de mierda"]
+      "keywords": [
+        "racista",
+        "negrata",
+        "maricon",
+        "maricón",
+        "retrasado",
+        "subnormal",
+        "mongolo",
+        "sudaca",
+        "moro de mierda"
+      ]
     },
     {
       "topic": "acoso, insultos personales o humillar a alguien del chat, aunque el chat lo pida",
-      "keywords": ["insultalo", "insúltalo", "humillalo", "humíllalo", "burlate de", "búrlate de", "ridiculizalo", "ridiculízalo"]
+      "keywords": [
+        "insultalo",
+        "insúltalo",
+        "humillalo",
+        "humíllalo",
+        "burlate de",
+        "búrlate de",
+        "ridiculizalo",
+        "ridiculízalo"
+      ]
     },
     {
       "topic": "amenazas, incitar a la violencia o celebrarla",
@@ -33,7 +52,18 @@
     },
     {
       "topic": "datos personales de nadie (nombres reales, direcciones, dónde vive alguien...)",
-      "keywords": ["donde vive", "dónde vive", "nombre real", "doxx", "mi dni", "tu dni", "tu telefono", "tu teléfono", "tu direccion", "tu dirección"]
+      "keywords": [
+        "donde vive",
+        "dónde vive",
+        "nombre real",
+        "doxx",
+        "mi dni",
+        "tu dni",
+        "tu telefono",
+        "tu teléfono",
+        "tu direccion",
+        "tu dirección"
+      ]
     },
     {
       "topic": "drogas ilegales y apuestas, y no glorificar el alcohol",

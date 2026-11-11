@@ -12,8 +12,11 @@ function pickIndex(length, last, rng = Math.random) {
 }
 
 function fill(text, vars = {}) {
-  return String(text).replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : ''))
-    .replace(/ {2,}/g, ' ').replace(/ +([.,!?])/g, '$1').trim();
+  return String(text)
+    .replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : ''))
+    .replace(/ {2,}/g, ' ')
+    .replace(/ +([.,!?])/g, '$1')
+    .trim();
 }
 
 // template('lurk', { username }) → texto listo para truncate() y client.say()

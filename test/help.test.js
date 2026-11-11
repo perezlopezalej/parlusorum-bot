@@ -17,7 +17,9 @@ describe('!comandos y !ayuda', () => {
   });
 
   test('todo comando listado tiene ayuda y viceversa', () => {
-    const names = buildCommandList(true).match(/![a-z_]+/g).map(s => s.slice(1));
+    const names = buildCommandList(true)
+      .match(/![a-z_]+/g)
+      .map((s) => s.slice(1));
     for (const n of names) assert.ok(getHelpText(n, true), `sin ayuda: ${n}`);
   });
 

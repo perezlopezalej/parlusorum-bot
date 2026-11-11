@@ -36,7 +36,13 @@ test('pickFreeTopic: no cita muertes si canCiteDeaths es false', () => {
 
 // --- Ficha de IGDB para el revisor ---
 test('gameFactsText: la ficha incluye año, estudio, géneros y descripción', () => {
-  const t = factcheck.gameFactsText({ name: 'Phantom Blade Zero', released: '2026-09-09', developers: 'S-GAME', genres: 'RPG, Hack and slash', description: 'Acción wuxia.' });
+  const t = factcheck.gameFactsText({
+    name: 'Phantom Blade Zero',
+    released: '2026-09-09',
+    developers: 'S-GAME',
+    genres: 'RPG, Hack and slash',
+    description: 'Acción wuxia.',
+  });
   assert.match(t, /Phantom Blade Zero/);
   assert.match(t, /2026/);
   assert.match(t, /S-GAME/);
@@ -46,7 +52,9 @@ test('gameFactsText: la ficha incluye año, estudio, géneros y descripción', (
 });
 
 test('el prompt del revisor no trata como dato las frases genéricas ("exige temple de acero")', () => {
-  const p = factcheck.buildReviewPrompt('Phantom Blade Zero exige temple de acero', 'Juego: Phantom Blade Zero.', { checkData: true });
+  const p = factcheck.buildReviewPrompt('Phantom Blade Zero exige temple de acero', 'Juego: Phantom Blade Zero.', {
+    checkData: true,
+  });
   assert.match(p, /exige temple de acero/);
   assert.match(p, /NO son datos del juego/);
   assert.match(factcheck.buildCheckPrompt('x', 'y', 'stream'), /NO son datos del juego/);
@@ -62,12 +70,17 @@ test('"la dificultad del jefe" no cuenta como mecánica; "la dificultad del jueg
 });
 
 test('"repartiendo el presupuesto nacional" (chiste) no es un dato inventado; el presupuesto del juego sí', () => {
-  assert.equal(q.unsupportedAttributes('Manu repartiendo el presupuesto nacional en cada esquivada', '', { persons: false }), '');
+  assert.equal(
+    q.unsupportedAttributes('Manu repartiendo el presupuesto nacional en cada esquivada', '', { persons: false }),
+    '',
+  );
   assert.equal(q.gameTalkProblem('Manu repartiendo el presupuesto nacional en cada esquivada'), null);
   assert.equal(q.unsupportedAttributes('El juego tuvo un presupuesto enorme', '', { persons: false }), 'presupuesto');
-  assert.equal(q.unsupportedAttributes('El presupuesto del juego fue de 50 millones', '', { persons: false }), 'presupuesto');
+  assert.equal(
+    q.unsupportedAttributes('El presupuesto del juego fue de 50 millones', '', { persons: false }),
+    'presupuesto',
+  );
 });
-
 
 // --- groq-utils: \b no puede ser un retroceso (0x08) ---
 test('isDailyQuota detecta TPD/RPD y "per day", y no confunde el cupo por minuto', () => {
@@ -79,12 +92,17 @@ test('isDailyQuota detecta TPD/RPD y "per day", y no confunde el cupo por minuto
 });
 
 test('ningún fichero fuente contiene caracteres de retroceso (0x08)', () => {
-  const fs = require('node:fs'); const path = require('node:path');
+  const fs = require('node:fs');
+  const path = require('node:path');
   const bad = [];
-  const walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-    const p = path.join(d, e.name);
-    if (e.isDirectory()) walk(p); else if (/\.(js|json|md)$/.test(e.name) && fs.readFileSync(p, 'utf8').includes(String.fromCharCode(8))) bad.push(p);
-  } };
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(js|json|md)$/.test(e.name) && fs.readFileSync(p, 'utf8').includes(String.fromCharCode(8)))
+        bad.push(p);
+    }
+  };
   for (const d of ['src', 'test', 'config', 'scripts']) walk(path.join(__dirname, '..', d));
   assert.deepEqual(bad, []);
 });
@@ -92,10 +110,14 @@ test('ningún fichero fuente contiene caracteres de retroceso (0x08)', () => {
 // --- !juega ambos ---
 test('setPlayer acepta ambos / los dos y rechaza lo demás; resetPlayer vuelve a manu', () => {
   const st = require('../src/utils/state');
-  assert.equal(st.setPlayer('ambos'), true); assert.equal(st.getPlayer(), 'ambos');
-  st.resetPlayer(); assert.equal(st.getPlayer(), 'manu');
-  assert.equal(st.setPlayer('Los  Dos'), true); assert.equal(st.getPlayer(), 'ambos');
-  assert.equal(st.setPlayer('nadie'), false); assert.equal(st.getPlayer(), 'ambos');
+  assert.equal(st.setPlayer('ambos'), true);
+  assert.equal(st.getPlayer(), 'ambos');
+  st.resetPlayer();
+  assert.equal(st.getPlayer(), 'manu');
+  assert.equal(st.setPlayer('Los  Dos'), true);
+  assert.equal(st.getPlayer(), 'ambos');
+  assert.equal(st.setPlayer('nadie'), false);
+  assert.equal(st.getPlayer(), 'ambos');
   st.resetPlayer();
 });
 

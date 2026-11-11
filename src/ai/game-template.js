@@ -4,7 +4,7 @@
 const { translateGenres } = require('../utils/genres');
 
 // info: { name, genres, developers, released } de getGameInfo; quips: frases de config/messages.json (dios_fua_game_quips)
-function buildGameTemplate(info, quips = [], pick = arr => arr[Math.floor(Math.random() * arr.length)]) {
+function buildGameTemplate(info, quips = [], pick = (arr) => arr[Math.floor(Math.random() * arr.length)]) {
   if (!info?.name) return '';
   const genres = translateGenres(info.genres);
   const year = info.released ? String(info.released).slice(0, 4) : '';

@@ -59,7 +59,19 @@ function currentMeta(explicit = {}) {
 
 // ─── Funciones puras ─────────────────────────────────────────────────────────
 
-function buildRow({ userId = null, username, message, isBot = false, origin = null, model = null, usedTool = false, latencyMs = null, sessionId = null, replyTo = null, at = new Date() }) {
+function buildRow({
+  userId = null,
+  username,
+  message,
+  isBot = false,
+  origin = null,
+  model = null,
+  usedTool = false,
+  latencyMs = null,
+  sessionId = null,
+  replyTo = null,
+  at = new Date(),
+}) {
   return {
     reply_parent_login: !isBot && replyTo ? String(replyTo).toLowerCase().slice(0, 50) : null,
     created_at: at.toISOString(),
@@ -68,14 +80,14 @@ function buildRow({ userId = null, username, message, isBot = false, origin = nu
     username: String(username || '?').slice(0, 50),
     message: String(message ?? '').slice(0, MAX_MESSAGE_LEN),
     is_bot: !!isBot,
-    origin: isBot ? (origin || 'otro') : null,
-    model: isBot ? (model || null) : null,
+    origin: isBot ? origin || 'otro' : null,
+    model: isBot ? model || null : null,
     used_buscar_juego: isBot && !!usedTool,
     latency_ms: isBot && Number.isFinite(latencyMs) ? Math.round(latencyMs) : null,
   };
 }
 
-const pad2 = n => String(n).padStart(2, '0');
+const pad2 = (n) => String(n).padStart(2, '0');
 
 // Fecha local AAAA-MM-DD
 function localDateStr(d) {
@@ -134,7 +146,11 @@ function isEnabled() {
 }
 
 function currentSessionId() {
-  try { return require('./supabase').getCurrentSessionId(); } catch { return null; }
+  try {
+    return require('./supabase').getCurrentSessionId();
+  } catch {
+    return null;
+  }
 }
 
 function enqueue(row) {
@@ -148,13 +164,19 @@ function enqueue(row) {
 
 // Nunca lanzan: el registro no puede afectar al flujo del chat
 function logUserMessage(username, message, replyTo = null, userId = null) {
-  try { enqueue(buildRow({ username, message, replyTo, userId, sessionId: currentSessionId() })); } catch { /* ignorado */ }
+  try {
+    enqueue(buildRow({ username, message, replyTo, userId, sessionId: currentSessionId() }));
+  } catch {
+    /* ignorado */
+  }
 }
 
 function logBotMessage(username, message, explicit) {
   try {
     enqueue(buildRow({ username, message, isBot: true, ...currentMeta(explicit), sessionId: currentSessionId() }));
-  } catch { /* ignorado */ }
+  } catch {
+    /* ignorado */
+  }
 }
 
 async function flush() {
@@ -184,12 +206,29 @@ function start() {
   if (timer || !isEnabled()) return;
   timer = setInterval(() => flush().catch(() => {}), FLUSH_INTERVAL_MS);
   timer.unref?.();
-  logger.info(`📝 Registro de chat activo (lotes cada ${FLUSH_INTERVAL_MS / 1000}s o ${FLUSH_BATCH} msgs, retención 24 h, la purga va en privacy/retention)`);
+  logger.info(
+    `📝 Registro de chat activo (lotes cada ${FLUSH_INTERVAL_MS / 1000}s o ${FLUSH_BATCH} msgs, retención 24 h, la purga va en privacy/retention)`,
+  );
 }
 
 module.exports = {
-  runWithOrigin, withOrigin, noteAiCall, noteTool, currentMeta,
-  logUserMessage, logBotMessage, flush, start,
-  buildRow, formatLine, formatChat, dayRange, retentionCutoff, localDateStr, isWithinFullChatWindow, chooseExport,
-  FLUSH_BATCH, RETENTION_MS,
+  runWithOrigin,
+  withOrigin,
+  noteAiCall,
+  noteTool,
+  currentMeta,
+  logUserMessage,
+  logBotMessage,
+  flush,
+  start,
+  buildRow,
+  formatLine,
+  formatChat,
+  dayRange,
+  retentionCutoff,
+  localDateStr,
+  isWithinFullChatWindow,
+  chooseExport,
+  FLUSH_BATCH,
+  RETENTION_MS,
 };

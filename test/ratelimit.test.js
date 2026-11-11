@@ -1,6 +1,11 @@
 const { test, describe, beforeEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
-const { canMakeRequest, canMakeAuxRequest, canUserMakeRequest, getRequestsRemaining } = require('../src/utils/ratelimit');
+const {
+  canMakeRequest,
+  canMakeAuxRequest,
+  canUserMakeRequest,
+  getRequestsRemaining,
+} = require('../src/utils/ratelimit');
 
 // Los límites por defecto son 30 global/min, 3 usuario, 8 mod y 15 creador
 describe('rate limit de Groq', () => {

@@ -6,11 +6,14 @@ process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test';
 const factcheck = require('../src/ai/factcheck');
 
 const info = { name: 'Hell is Us', genres: 'Action, Adventure', developers: 'Rogue Factor', released: '2025-09-03' };
-const first = a => a[0];
+const first = (a) => a[0];
 
 describe('plantilla de reserva de IGDB', () => {
   test('usa nombre, género en español, estudio y año, más la frase', () => {
-    assert.equal(buildGameTemplate(info, ['Dale FUA.'], first), 'Hell is Us: acción, aventura, de Rogue Factor (2025). Dale FUA.');
+    assert.equal(
+      buildGameTemplate(info, ['Dale FUA.'], first),
+      'Hell is Us: acción, aventura, de Rogue Factor (2025). Dale FUA.',
+    );
   });
   test('omite lo que IGDB no trae', () => {
     assert.equal(buildGameTemplate({ name: 'X', released: '2020-01-01' }, ['FUA.'], first), 'X (2020). FUA.');

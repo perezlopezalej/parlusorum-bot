@@ -9,8 +9,14 @@ const { aiChat } = require('../utils/ai-router');
 // --- !so ---
 async function handleShoutout(client, channel, tags, targetUsername) {
   const isMod = tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1';
-  if (!isMod) { client.say(channel, `@${tags['display-name']} solo mods pueden usar !so.`); return; }
-  if (!targetUsername) { client.say(channel, `Uso: !so @usuario`); return; }
+  if (!isMod) {
+    client.say(channel, `@${tags['display-name']} solo mods pueden usar !so.`);
+    return;
+  }
+  if (!targetUsername) {
+    client.say(channel, `Uso: !so @usuario`);
+    return;
+  }
 
   const target = targetUsername.replace('@', '');
   client.say(channel, `Preparando shoutout para @${target}...`);
@@ -26,8 +32,8 @@ async function handleShoutout(client, channel, tags, targetUsername) {
       max_tokens: 80,
       messages: [
         { role: 'system', content: buildShoutoutSystem() },
-        { role: 'user', content: `<canal>@${target}${lastGame}</canal>` }
-      ]
+        { role: 'user', content: `<canal>@${target}${lastGame}</canal>` },
+      ],
     });
     client.say(channel, truncate(`📢 ${response.choices[0].message.content.trim()} twitch.tv/${target}`));
   } catch (err) {

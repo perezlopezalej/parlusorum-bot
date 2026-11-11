@@ -29,11 +29,14 @@ describe('outboundBlock', () => {
   test('silencio deja pasar solo comandos y sin origen', () => {
     assert.equal(C.outboundBlock('comando', { silenced: true }), null);
     assert.equal(C.outboundBlock(undefined, { silenced: true }), null);
-    for (const o of ['cohost', 'hook', 'timer', 'mencion', 'alerta', 'highlight']) assert.equal(C.outboundBlock(o, { silenced: true }), 'silencio', o);
+    for (const o of ['cohost', 'hook', 'timer', 'mencion', 'alerta', 'highlight'])
+      assert.equal(C.outboundBlock(o, { silenced: true }), 'silencio', o);
   });
   test('reactivo corta lo espontáneo y deja menciones, comandos y alertas', () => {
-    for (const o of ['cohost', 'hook', 'timer', 'timer_ia', 'highlight', 'emote_spam', 'caps_rage']) assert.equal(C.outboundBlock(o, { reactive: true }), 'reactivo', o);
-    for (const o of ['mencion', 'dios_fua', 'comando', 'alerta', 'trivia', 'chiste', 'quemeperdi']) assert.equal(C.outboundBlock(o, { reactive: true }), null, o);
+    for (const o of ['cohost', 'hook', 'timer', 'timer_ia', 'highlight', 'emote_spam', 'caps_rage'])
+      assert.equal(C.outboundBlock(o, { reactive: true }), 'reactivo', o);
+    for (const o of ['mencion', 'dios_fua', 'comando', 'alerta', 'trivia', 'chiste', 'quemeperdi'])
+      assert.equal(C.outboundBlock(o, { reactive: true }), null, o);
   });
   test('modo normal no bloquea nada', () => {
     assert.equal(C.outboundBlock('cohost', {}), null);
@@ -41,7 +44,10 @@ describe('outboundBlock', () => {
 });
 
 describe('estado: silencio temporal y modo', () => {
-  afterEach(() => { state.setMuteUntil(0); state.setBotMode('normal'); });
+  afterEach(() => {
+    state.setMuteUntil(0);
+    state.setBotMode('normal');
+  });
   test('!fua_callate silencia hasta la hora y se levanta solo', () => {
     state.setMuteUntil(Date.now() + 60_000);
     assert.equal(state.isSilenced(), true);
@@ -75,13 +81,29 @@ describe('persistencia entre reinicios', () => {
 });
 
 describe('respaldo en la cola de salida', () => {
-  const wait = ms => new Promise(r => setTimeout(r, ms));
-  const until = async (fn, ms = 3000) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await wait(5); };
-  beforeEach(() => { _testHooks({ gapMs: 5, sayTimeoutMs: 80, reset: true }); state.setStreamIsLive(true); state.setStreamEndGraceUntil(0); state.resetRecentUserTexts(); });
-  afterEach(() => { state.setMuteUntil(0); state.setBotMode('normal'); });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const until = async (fn, ms = 3000) => {
+    const t = Date.now();
+    while (!fn() && Date.now() - t < ms) await wait(5);
+  };
+  beforeEach(() => {
+    _testHooks({ gapMs: 5, sayTimeoutMs: 80, reset: true });
+    state.setStreamIsLive(true);
+    state.setStreamEndGraceUntil(0);
+    state.resetRecentUserTexts();
+  });
+  afterEach(() => {
+    state.setMuteUntil(0);
+    state.setBotMode('normal');
+  });
   test('con !fua_callate solo salen los comandos; en reactivo se cortan cohost y timers', async () => {
     const sent = [];
-    const client = { say: async (c, m) => { sent.push(m); }, readyState: () => 'OPEN' };
+    const client = {
+      say: async (c, m) => {
+        sent.push(m);
+      },
+      readyState: () => 'OPEN',
+    };
     wrapClientSay(client);
     state.setMuteUntil(Date.now() + 60_000);
     client.say('#c', 'comentario del cohost', { origin: 'cohost' });

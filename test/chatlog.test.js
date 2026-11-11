@@ -1,13 +1,33 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRow, formatLine, formatChat, dayRange, retentionCutoff, isWithinFullChatWindow, runWithOrigin, noteAiCall, noteTool, currentMeta } = require('../src/utils/chatlog');
+const {
+  buildRow,
+  formatLine,
+  formatChat,
+  dayRange,
+  retentionCutoff,
+  isWithinFullChatWindow,
+  runWithOrigin,
+  noteAiCall,
+  noteTool,
+  currentMeta,
+} = require('../src/utils/chatlog');
 const { pushChatLog, takeChatLog, requeueChatLog, getChatLogSize } = require('../src/utils/state');
 
 const at = new Date(2026, 9, 28, 21, 5, 9); // hora local
 
 describe('buildRow', () => {
   test('mensaje de usuario: sin datos de bot', () => {
-    const r = buildRow({ username: 'ana', message: 'hola', origin: 'cohost', model: 'x', usedTool: true, latencyMs: 5, sessionId: 7, at });
+    const r = buildRow({
+      username: 'ana',
+      message: 'hola',
+      origin: 'cohost',
+      model: 'x',
+      usedTool: true,
+      latencyMs: 5,
+      sessionId: 7,
+      at,
+    });
     assert.equal(r.is_bot, false);
     assert.equal(r.origin, null);
     assert.equal(r.model, null);
@@ -17,7 +37,16 @@ describe('buildRow', () => {
   });
 
   test('mensaje del bot: origen, modelo, herramienta y latencia', () => {
-    const r = buildRow({ username: 'dios_fua', message: 'fua', isBot: true, origin: 'dios_fua', model: 'm', usedTool: true, latencyMs: 812.6, at });
+    const r = buildRow({
+      username: 'dios_fua',
+      message: 'fua',
+      isBot: true,
+      origin: 'dios_fua',
+      model: 'm',
+      usedTool: true,
+      latencyMs: 812.6,
+      at,
+    });
     assert.equal(r.origin, 'dios_fua');
     assert.equal(r.model, 'm');
     assert.equal(r.used_buscar_juego, true);
@@ -36,8 +65,20 @@ describe('buildRow', () => {
 
 describe('formato de exportación', () => {
   test('usuario y bot con origen entre corchetes', () => {
-    assert.equal(formatLine({ created_at: at.toISOString(), username: 'ana', message: 'hola', is_bot: false }), '21:05:09 ana: hola');
-    assert.equal(formatLine({ created_at: at.toISOString(), username: 'dios_fua', message: 'fua', is_bot: true, origin: 'cohost' }), '21:05:09 dios_fua [cohost]: fua');
+    assert.equal(
+      formatLine({ created_at: at.toISOString(), username: 'ana', message: 'hola', is_bot: false }),
+      '21:05:09 ana: hola',
+    );
+    assert.equal(
+      formatLine({
+        created_at: at.toISOString(),
+        username: 'dios_fua',
+        message: 'fua',
+        is_bot: true,
+        origin: 'cohost',
+      }),
+      '21:05:09 dios_fua [cohost]: fua',
+    );
   });
 
   test('saltos de línea aplanados y fichero terminado en salto', () => {
@@ -57,7 +98,8 @@ describe('fechas', () => {
   });
 
   test('dayRange rechaza fechas inválidas', () => {
-    for (const bad of ['', null, '28-10-2026', '2026-02-30', '2026-13-01', 'hoy']) assert.equal(dayRange(bad), null, String(bad));
+    for (const bad of ['', null, '28-10-2026', '2026-02-30', '2026-13-01', 'hoy'])
+      assert.equal(dayRange(bad), null, String(bad));
   });
 
   test('retentionCutoff: 24 horas por defecto', () => {
@@ -75,7 +117,7 @@ describe('fechas', () => {
   test('isWithinFullChatWindow: hoy sí, hace tres días no', () => {
     const now = new Date(2026, 9, 28, 15).getTime();
     assert.equal(isWithinFullChatWindow('2026-10-28', now), true);
-    assert.equal(isWithinFullChatWindow('2026-10-27', now), true);   // acaba a medianoche, hace 15 h
+    assert.equal(isWithinFullChatWindow('2026-10-27', now), true); // acaba a medianoche, hace 15 h
     assert.equal(isWithinFullChatWindow('2026-10-26', now), false);
     assert.equal(isWithinFullChatWindow('mal', now), false);
   });
@@ -85,7 +127,7 @@ describe('contexto de origen', () => {
   test('hereda origen, modelo y latencia acumulada dentro del contexto', async () => {
     await runWithOrigin('dios_fua', async () => {
       noteAiCall('m1', 100);
-      await new Promise(r => setTimeout(r, 1));
+      await new Promise((r) => setTimeout(r, 1));
       noteAiCall('m2', 50);
       noteTool('buscar_juego');
       assert.deepEqual(currentMeta(), { origin: 'dios_fua', model: 'm2', usedTool: true, latencyMs: 150 });
@@ -108,9 +150,15 @@ describe('cola en memoria', () => {
     takeChatLog(10_000);
     for (let i = 0; i < 5; i++) pushChatLog({ i });
     const batch = takeChatLog(3);
-    assert.deepEqual(batch.map(r => r.i), [0, 1, 2]);
+    assert.deepEqual(
+      batch.map((r) => r.i),
+      [0, 1, 2],
+    );
     requeueChatLog(batch);
-    assert.deepEqual(takeChatLog(10).map(r => r.i), [0, 1, 2, 3, 4]);
+    assert.deepEqual(
+      takeChatLog(10).map((r) => r.i),
+      [0, 1, 2, 3, 4],
+    );
     for (let i = 0; i < 1100; i++) pushChatLog({ i });
     assert.equal(getChatLogSize(), 1000);
     assert.equal(takeChatLog(1)[0].i, 100, 'se descartan los más antiguos');

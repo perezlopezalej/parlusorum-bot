@@ -4,7 +4,12 @@ process.env.EVENTSUB_SECRET = process.env.EVENTSUB_SECRET || 'secreto-de-pruebas
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const q = require('../src/ai/quality');
-const { streakAllowed, freeCohostDue, STREAK_COHOST_GAP_MS, FREE_COHOST_MAX_PER_HOUR } = require('../src/utils/narrative');
+const {
+  streakAllowed,
+  freeCohostDue,
+  STREAK_COHOST_GAP_MS,
+  FREE_COHOST_MAX_PER_HOUR,
+} = require('../src/utils/narrative');
 
 test('junkProblem: descarta el caso real del timer ("something like... finding")', () => {
   assert.equal(q.junkProblem('something like... finding')?.rule, 'basura');
@@ -38,7 +43,14 @@ test('números mal formados ("cuarentay siete") se detectan; los bien escritos p
   assert.ok(q.malformedNumber('Seis horas con cuarentay siete muertes a cuestas'));
   assert.ok(q.malformedNumber('treintaydos caídas'));
   assert.ok(q.malformedNumber('cuarenta siete caídas'));
-  for (const ok of ['treinta y siete', 'cuarenta y uno', 'cuarenta y siete', 'cincuenta', 'veintiuno', 'noventa y nueve']) {
+  for (const ok of [
+    'treinta y siete',
+    'cuarenta y uno',
+    'cuarenta y siete',
+    'cincuenta',
+    'veintiuno',
+    'noventa y nueve',
+  ]) {
     assert.equal(q.malformedNumber(`Van ${ok} caídas`), null, ok);
   }
   assert.equal(q.junkProblem('Van treinta y siete caídas y el FUA sigue ahí'), null);
@@ -74,7 +86,10 @@ test('cohost: no cita el número de muertes en dos mensajes seguidos', () => {
   assert.equal(repeated.rule, 'contador');
   assert.equal(repeated.soft, undefined, 'es un descarte duro');
   // si no cita el número, pasa aunque el anterior sí lo citara
-  assert.equal(q.validateCohost('El jefe sigue riéndose, pero el FUA no se rinde jamás.', { ...base, lastCitedDeaths: true }).ok, true);
+  assert.equal(
+    q.validateCohost('El jefe sigue riéndose, pero el FUA no se rinde jamás.', { ...base, lastCitedDeaths: true }).ok,
+    true,
+  );
 });
 
 test('timer y hook: mismo límite del contador', () => {
@@ -88,8 +103,11 @@ test('streakAllowed: hueco mínimo y cupo por hora compartidos', () => {
   const now = 10 * 3600 * 1000;
   assert.equal(streakAllowed({ now, lastSharedAt: 0, sharedStamps: [] }), true);
   assert.equal(streakAllowed({ now, lastSharedAt: now - 5 * 60 * 1000, sharedStamps: [now - 5 * 60 * 1000] }), false);
-  assert.equal(streakAllowed({ now, lastSharedAt: now - STREAK_COHOST_GAP_MS, sharedStamps: [now - STREAK_COHOST_GAP_MS] }), true);
-  const full = [1, 2, 3, 4].map(i => now - i * 14 * 60 * 1000);
+  assert.equal(
+    streakAllowed({ now, lastSharedAt: now - STREAK_COHOST_GAP_MS, sharedStamps: [now - STREAK_COHOST_GAP_MS] }),
+    true,
+  );
+  const full = [1, 2, 3, 4].map((i) => now - i * 14 * 60 * 1000);
   assert.equal(streakAllowed({ now, lastSharedAt: full[0], sharedStamps: full, gapMs: 0 }), false);
 });
 
@@ -103,17 +121,29 @@ test('ritmo: con muchas muertes el cohost no pasa de 4 por hora ni de ~26 en 6,5
   const start = 20 * 3600 * 1000;
   for (let m = 0; m < 6.5 * 60; m++) {
     const now = start + m * MIN;
-    const stamps = sent.filter(t => now - t < 60 * MIN);
+    const stamps = sent.filter((t) => now - t < 60 * MIN);
     if (m % 3 === 0 && streakAllowed({ now, lastSharedAt: lastShared, sharedStamps: stamps })) {
-      sent.push(now); lastShared = now; lastFreeAt = now;
+      sent.push(now);
+      lastShared = now;
+      lastFreeAt = now;
       continue;
     }
-    if (freeCohostDue({ now, lastFreeAt: lastFreeAt || start, recentMessages: 20, freeStamps: stamps, lastAnyAt: lastShared })) {
-      sent.push(now); lastShared = now; lastFreeAt = now;
+    if (
+      freeCohostDue({
+        now,
+        lastFreeAt: lastFreeAt || start,
+        recentMessages: 20,
+        freeStamps: stamps,
+        lastAnyAt: lastShared,
+      })
+    ) {
+      sent.push(now);
+      lastShared = now;
+      lastFreeAt = now;
     }
   }
   for (const t of sent) {
-    const inHour = sent.filter(s => s >= t && s < t + 60 * MIN).length;
+    const inHour = sent.filter((s) => s >= t && s < t + 60 * MIN).length;
     assert.ok(inHour <= FREE_COHOST_MAX_PER_HOUR, `${inHour} comentarios en una hora`);
   }
   assert.ok(sent.length <= 26, `${sent.length} comentarios en 6,5 h`);
@@ -122,7 +152,12 @@ test('ritmo: con muchas muertes el cohost no pasa de 4 por hora ni de ~26 en 6,5
 
 test('resumen de fin de stream: informa de los SKIP del modelo', () => {
   const { formatCohostStats } = require('../src/eventsub');
-  const line = formatCohostStats({ attempts: { event: 2, free: 5 }, sent: { event: 2, free: 2 }, discards: { skip: 3, sin_tema: 1 }, groq429: 0 });
+  const line = formatCohostStats({
+    attempts: { event: 2, free: 5 },
+    sent: { event: 2, free: 2 },
+    discards: { skip: 3, sin_tema: 1 },
+    groq429: 0,
+  });
   assert.match(line, /SKIP del modelo: 3/);
 });
 
@@ -140,26 +175,42 @@ test('timer: sin comparaciones forzadas', () => {
   assert.ok(q.forcedComparison('El FUA ruge con la misma fuerza que un despertador un lunes por la mañana'));
   assert.ok(q.forcedComparison('El FUA lo impulsa como un tren de carga'));
   assert.equal(q.forcedComparison('El FUA sigue ahí y Manu también, qué barbaridad'), false);
-  assert.equal(q.validateTimerIA('El FUA ruge con la misma fuerza que un despertador un lunes por la mañana', { deathCount: 0 }).ok, false);
+  assert.equal(
+    q.validateTimerIA('El FUA ruge con la misma fuerza que un despertador un lunes por la mañana', { deathCount: 0 })
+      .ok,
+    false,
+  );
 });
 
 test('timer: sin preguntas de autoayuda', () => {
   assert.ok(q.selfHelp('¿Qué os da fuerzas cuando el mundo se pone difícil?'));
   assert.equal(q.selfHelp('¿Cuál es el mejor momento del directo hasta ahora?'), false);
-  assert.equal(q.validateTimerIA('¿Qué os da fuerzas cuando el mundo se pone difícil? El FUA lo sabe', { deathCount: 0 }).ok, false);
+  assert.equal(
+    q.validateTimerIA('¿Qué os da fuerzas cuando el mundo se pone difícil? El FUA lo sabe', { deathCount: 0 }).ok,
+    false,
+  );
 });
 
 test('timer: no abre dos mensajes con la misma estructura', () => {
   assert.equal(q.openingKey('Cuatro horas y media dándolo todo'), q.openingKey('Seis horas y once minutos de directo'));
-  assert.equal(q.sameOpening('Seis horas y once minutos de directo con el FUA', ['Cuatro horas y media dándolo todo']), true);
+  assert.equal(
+    q.sameOpening('Seis horas y once minutos de directo con el FUA', ['Cuatro horas y media dándolo todo']),
+    true,
+  );
   assert.equal(q.sameOpening('El FUA sigue vivo después de seis horas', ['Cuatro horas y media dándolo todo']), false);
 });
 
 test('emote: siempre al final y nunca antes de "?" o "."', () => {
   const emotes = ['parlus1PORELPODERDELFUAAAAA'];
   const e = emotes[0];
-  assert.equal(q.moveEmotesToEnd(`Sigue la batalla ${e} ¡que la gloria apenas comienza!`, emotes), `Sigue la batalla ¡que la gloria apenas comienza! ${e}`);
-  assert.equal(q.applyEmotePolicy(`¿Qué sorpresita nos espera ${e}?`, true, emotes), `¿Qué sorpresita nos espera? ${e}`);
+  assert.equal(
+    q.moveEmotesToEnd(`Sigue la batalla ${e} ¡que la gloria apenas comienza!`, emotes),
+    `Sigue la batalla ¡que la gloria apenas comienza! ${e}`,
+  );
+  assert.equal(
+    q.applyEmotePolicy(`¿Qué sorpresita nos espera ${e}?`, true, emotes),
+    `¿Qué sorpresita nos espera? ${e}`,
+  );
   assert.equal(q.applyEmotePolicy(`Manu aguanta ${e}.`, true, emotes), `Manu aguanta. ${e}`);
   assert.equal(q.applyEmotePolicy(`Manu aguanta ${e}.`, false, emotes), 'Manu aguanta.');
   assert.equal(q.applyEmotePolicy('Manu aguanta.', true, emotes), 'Manu aguanta.');
@@ -217,12 +268,18 @@ test('la regla "solo juega Manu" no descarta frases cuando juega Pao', () => {
 test('emote partido por max_tokens o por el límite: se quita', () => {
   const emotes = ['parlus1PORELPODERDELFUAAAAA', 'parlus1Esteeselrollo'];
   assert.equal(q.dropPartialEmote('Aún queda acción, parlus1PORELPO', emotes), 'Aún queda acción');
-  assert.equal(q.dropPartialEmote('Aún queda acción parlus1PORELPODERDELFUAAAAA', emotes), 'Aún queda acción parlus1PORELPODERDELFUAAAAA');
+  assert.equal(
+    q.dropPartialEmote('Aún queda acción parlus1PORELPODERDELFUAAAAA', emotes),
+    'Aún queda acción parlus1PORELPODERDELFUAAAAA',
+  );
   assert.equal(q.dropPartialEmote('Sigue el directo', emotes), 'Sigue el directo');
   const long = `${'palabra '.repeat(60)}fin parlus1PORELPODERDELFUAAAAA`;
   const fitted = q.fitWithEmotes(long, 450, emotes);
   assert.ok(!fitted.includes('parlus1'));
-  assert.equal(q.fitWithEmotes('Texto corto parlus1PORELPODERDELFUAAAAA', 450, emotes), 'Texto corto parlus1PORELPODERDELFUAAAAA');
+  assert.equal(
+    q.fitWithEmotes('Texto corto parlus1PORELPODERDELFUAAAAA', 450, emotes),
+    'Texto corto parlus1PORELPODERDELFUAAAAA',
+  );
 });
 
 test('lore: Dios Fua es leal a Manu y Pao (completo y lean)', () => {
@@ -233,7 +290,7 @@ test('lore: Dios Fua es leal a Manu y Pao (completo y lean)', () => {
 
 test('ayuda: !juega aparece como comando de mods', () => {
   const help = require('../config/help.json');
-  const entry = help.commands.find(c => c.name === 'juega');
+  const entry = help.commands.find((c) => c.name === 'juega');
   assert.ok(entry && entry.mod === true);
 });
 
@@ -251,19 +308,40 @@ test('resumen de fin de stream: onStreamEnd filtra momentos y frases personales 
   process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test';
   const { setTransport } = require('../src/utils/ai-router');
   const answers = [
-    JSON.stringify({ summary: 'Stream con charlas de hamburguesas y calor veraniego', highlights: ['hamburguesas a medianoche', 'Manu venció al jefe'], recurringPhrases: ['qué calor hace'] }),
-    JSON.stringify({ summary: 'Manu cayó 9 veces pero venció al jefe final con mucho FUA y buen ambiente', highlights: ['Manu venció al jefe', 'cena de hamburguesas'], recurringPhrases: ['qué calor hace', 'por el FUA'] }),
+    JSON.stringify({
+      summary: 'Stream con charlas de hamburguesas y calor veraniego',
+      highlights: ['hamburguesas a medianoche', 'Manu venció al jefe'],
+      recurringPhrases: ['qué calor hace'],
+    }),
+    JSON.stringify({
+      summary: 'Manu cayó 9 veces pero venció al jefe final con mucho FUA y buen ambiente',
+      highlights: ['Manu venció al jefe', 'cena de hamburguesas'],
+      recurringPhrases: ['qué calor hace', 'por el FUA'],
+    }),
   ];
   let calls = 0;
   const prompts = [];
-  setTransport('groq', async params => {
+  setTransport('groq', async (params) => {
     prompts.push(params.messages[0].content);
-    return { choices: [{ message: { content: answers[Math.min(calls++, answers.length - 1)] }, finish_reason: 'stop' }], usage: {} };
+    return {
+      choices: [{ message: { content: answers[Math.min(calls++, answers.length - 1)] }, finish_reason: 'stop' }],
+      usage: {},
+    };
   });
   try {
     const mem = require('../src/memory/handler');
     assert.ok(mem.generateStreamMemory, 'exporta generateStreamMemory para poder probarlo');
-    const out = await mem.generateStreamMemory({ game: 'Phantom Blade Zero', durationMinutes: 200, deathCount: 9, peakViewers: 10, topCommands: {}, activeUsers: [] }, 'user: hola');
+    const out = await mem.generateStreamMemory(
+      {
+        game: 'Phantom Blade Zero',
+        durationMinutes: 200,
+        deathCount: 9,
+        peakViewers: 10,
+        topCommands: {},
+        activeUsers: [],
+      },
+      'user: hola',
+    );
     assert.equal(calls, 2);
     assert.match(prompts[0], /habla del juego, del stream y del ambiente del chat/);
     assert.match(prompts[1], /<correccion>Habla del directo: la partida, Manu o el FUA\.<\/correccion>/);
@@ -271,5 +349,9 @@ test('resumen de fin de stream: onStreamEnd filtra momentos y frases personales 
     assert.match(out.summary, /venció al jefe final/);
     assert.deepEqual(out.highlights, ['Manu venció al jefe']);
     assert.deepEqual(out.recurringPhrases, ['por el FUA']);
-  } finally { setTransport('groq', async () => { throw new Error('transporte de prueba sin configurar'); }); }
+  } finally {
+    setTransport('groq', async () => {
+      throw new Error('transporte de prueba sin configurar');
+    });
+  }
 });

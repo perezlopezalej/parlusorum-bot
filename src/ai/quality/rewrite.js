@@ -28,25 +28,35 @@ function stripLeadingNames(text, names) {
 function editDistance(a, b) {
   const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) dp[0][j] = j;
-  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
-    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  }
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
   return dp[a.length][b.length];
 }
 
 function fixMentions(text, names = []) {
-  const known = names.map(n => String(n || '').replace(/^@/, '')).filter(Boolean);
-  return String(text || '').replace(/@(\w+)/g, (all, tag) => {
-    const exact = known.find(n => n.toLowerCase() === tag.toLowerCase());
-    if (exact) return `@${exact}`;
-    const close = known.map(n => [n, editDistance(n.toLowerCase(), tag.toLowerCase())]).sort((a, b) => a[1] - b[1])[0];
-    return close && close[1] <= 3 ? `@${close[0]}` : '';
-  }).replace(/\s{2,}/g, ' ').replace(/\s+([,.!?])/g, '$1').trim();
+  const known = names.map((n) => String(n || '').replace(/^@/, '')).filter(Boolean);
+  return String(text || '')
+    .replace(/@(\w+)/g, (all, tag) => {
+      const exact = known.find((n) => n.toLowerCase() === tag.toLowerCase());
+      if (exact) return `@${exact}`;
+      const close = known
+        .map((n) => [n, editDistance(n.toLowerCase(), tag.toLowerCase())])
+        .sort((a, b) => a[1] - b[1])[0];
+      return close && close[1] <= 3 ? `@${close[0]}` : '';
+    })
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .trim();
 }
 
 // Bienvenida: la IA escribe {usuario} donde quiere nombrar al recién llegado; el nombre lo inserta siempre el código
 function insertUsername(text, username) {
-  const clean = String(text || '').replace(/@\w+/g, '').replace(/\s{2,}/g, ' ').trim();
+  const clean = String(text || '')
+    .replace(/@\w+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   if (/\{usuario\}/i.test(clean)) return clean.replace(/\{usuario\}/gi, `@${username}`);
   return `@${username} ${clean}`;
 }
@@ -54,7 +64,10 @@ function insertUsername(text, username) {
 // Resumen de reserva sin IA: datos reales (muertes, juego) y en positivo
 function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
   const juego = game ? ` de ${game}` : '';
-  const datos = deathCount > 0 ? `${durationMinutes} minutos con ${deathCount} ${deathCount === 1 ? 'muerte' : 'muertes'}` : `${durationMinutes} minutos`;
+  const datos =
+    deathCount > 0
+      ? `${durationMinutes} minutos con ${deathCount} ${deathCount === 1 ? 'muerte' : 'muertes'}`
+      : `${durationMinutes} minutos`;
   return `Gran stream${juego}: ${datos}, mucho FUA y muy buen ambiente en el chat.`;
 }
 
@@ -90,7 +103,8 @@ function dropTrailingFragment(text) {
 // coma, sin descartar el mensaje. Como sustantivo ("ese tío", "mi colega", "menudo tío") se respetan.
 const FILLER_RE = /(,\s*)?(?<![\p{L}\p{N}_@])(?:t[ií][oa]|colega|bro|chaval)(?![\p{L}\p{N}_])(\s*,)?/giu;
 
-const NOUN_CONTEXT_RE = /(?:^|[\s¡¿])(?:el|la|un|una|ese|esa|este|esta|aquel|mi|tu|su|otro|otra|del|al|buen[oa]?|gran|menud[oa]|vaya|qu[eé]|pobre|ning[uú]n|cada|como|ni)\s+$/i;
+const NOUN_CONTEXT_RE =
+  /(?:^|[\s¡¿])(?:el|la|un|una|ese|esa|este|esta|aquel|mi|tu|su|otro|otra|del|al|buen[oa]?|gran|menud[oa]|vaya|qu[eé]|pobre|ning[uú]n|cada|como|ni)\s+$/i;
 
 function stripFillers(text, re = FILLER_RE) {
   return String(text)
@@ -110,13 +124,16 @@ function stripFillers(text, re = FILLER_RE) {
     .trim();
 }
 
-const limitFillers = text => (typeof text === 'string' ? stripFillers(text) : text);
+const limitFillers = (text) => (typeof text === 'string' ? stripFillers(text) : text);
 
 // "Lusorums" (la comunidad): solo al chat en general, en 1 de cada 4 mensajes del bot (como el emote, por
 // ventana de los últimos 3) y nunca en un mensaje dirigido a una persona (empieza por @usuario).
 const LUSORUMS_RE = /(,\s*)?(?<![\p{L}\p{N}_@])lusorums?(?![\p{L}\p{N}_])(\s*,)?/giu;
 
-const hasLusorums = text => { LUSORUMS_RE.lastIndex = 0; return LUSORUMS_RE.test(String(text || '')); };
+const hasLusorums = (text) => {
+  LUSORUMS_RE.lastIndex = 0;
+  return LUSORUMS_RE.test(String(text || ''));
+};
 
 function limitLusorums(text, recentFlags = []) {
   if (typeof text !== 'string' || !hasLusorums(text)) return { text, had: false };
@@ -124,4 +141,17 @@ function limitLusorums(text, recentFlags = []) {
   return { text: stripFillers(text, LUSORUMS_RE), had: false };
 }
 
-module.exports = { stripFillers, limitFillers, hasLusorums, limitLusorums, limitTrailingFua, stripLeadingNames, positiveSummaryFallback, fixMentions, insertUsername, lastSentenceEnd, cutAtSentence, dropTrailingFragment };
+module.exports = {
+  stripFillers,
+  limitFillers,
+  hasLusorums,
+  limitLusorums,
+  limitTrailingFua,
+  stripLeadingNames,
+  positiveSummaryFallback,
+  fixMentions,
+  insertUsername,
+  lastSentenceEnd,
+  cutAtSentence,
+  dropTrailingFragment,
+};

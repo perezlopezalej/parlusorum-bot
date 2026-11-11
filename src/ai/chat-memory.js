@@ -20,12 +20,17 @@ async function getCachedUserFacts(userId) {
   const { getUserFacts, getUserCounter } = require('../utils/supabase');
   const [facts, wins] = await Promise.all([getUserFacts(key), getUserCounter(key, 'trivia_wins')]);
   // trivia_wins es un contador sin caducidad: se lee aparte del filtro de 30 días
-  const data = [...facts.filter(f => f.fact_type !== 'trivia_wins'), ...(wins > 0 ? [{ fact_type: 'trivia_wins', value: String(wins) }] : [])];
+  const data = [
+    ...facts.filter((f) => f.fact_type !== 'trivia_wins'),
+    ...(wins > 0 ? [{ fact_type: 'trivia_wins', value: String(wins) }] : []),
+  ];
   userFactsCache.set(key, { data, ts: Date.now() });
   return data;
 }
 
-function clearUserFactsCache() { userFactsCache.clear(); }
+function clearUserFactsCache() {
+  userFactsCache.clear();
+}
 
 // --- Usuarios activos en el stream actual ---
 const activeUsersThisStream = new Set();
@@ -53,7 +58,7 @@ function getActiveUsers() {
 const MIN_REGULAR_MESSAGES = 3;
 
 function getActiveUsersWithMinMessages(minCount = MIN_REGULAR_MESSAGES) {
-  return [...activeUsersThisStream].filter(u => (streamMessageCounts.get(u) || 0) >= minCount);
+  return [...activeUsersThisStream].filter((u) => (streamMessageCounts.get(u) || 0) >= minCount);
 }
 
 function resetActiveUsers() {
@@ -94,21 +99,25 @@ function addToHistory(username, message, userId = null) {
   streamMessageCounts.set(lc, (streamMessageCounts.get(lc) || 0) + 1);
 }
 
-function updateLastChatTime() { lastChatMessageTime = Date.now(); }
+function updateLastChatTime() {
+  lastChatMessageTime = Date.now();
+}
 
-function getLastChatTime() { return lastChatMessageTime; }
+function getLastChatTime() {
+  return lastChatMessageTime;
+}
 
 // Mensajes del chat de los últimos windowMs (sin comandos ni bots), del más antiguo al más reciente
 function getChatWindow(windowMs = 30 * 60 * 1000, now = Date.now()) {
-  return chatHistory.filter(m => now - m.ts <= windowMs).map(m => ({ username: m.username, message: m.message }));
+  return chatHistory.filter((m) => now - m.ts <= windowMs).map((m) => ({ username: m.username, message: m.message }));
 }
 
 function getRecentHistory(n = 6) {
   const cutoff = Date.now() - 10 * 60 * 1000;
   return chatHistory
-    .filter(m => m.ts > cutoff)
+    .filter((m) => m.ts > cutoff)
     .slice(-n)
-    .map(m => `${m.username}: ${quality.cleanChatNoise(m.message)}`)
+    .map((m) => `${m.username}: ${quality.cleanChatNoise(m.message)}`)
     .join('\n');
 }
 
@@ -124,9 +133,7 @@ const MAX_CONV_AGE = 60 * 60 * 1000;
 function getUserConversation(userId) {
   const conv = userConversations.get(userId) || [];
   const cutoff = Date.now() - MAX_CONV_AGE;
-  return conv
-    .filter(m => m.ts > sessionStart && m.ts > cutoff)
-    .map(({ role, content }) => ({ role, content }));
+  return conv.filter((m) => m.ts > sessionStart && m.ts > cutoff).map(({ role, content }) => ({ role, content }));
 }
 
 function addToUserConversation(userId, role, content) {
@@ -135,7 +142,7 @@ function addToUserConversation(userId, role, content) {
       .sort((a, b) => (a[1].at(-1)?.ts || 0) - (b[1].at(-1)?.ts || 0))
       .slice(0, 50)
       .map(([k]) => k);
-    oldest.forEach(k => userConversations.delete(k));
+    oldest.forEach((k) => userConversations.delete(k));
   }
   const conv = userConversations.get(userId) || [];
   conv.push({ role, content, ts: Date.now() });
@@ -147,9 +154,13 @@ function addToUserConversation(userId, role, content) {
 function forgetUserInMemory({ userId, login }) {
   const nick = String(login || '').toLowerCase();
   let removed = 0;
-  const mine = m => !!nick && String(m.username || '').toLowerCase() === nick;
+  const mine = (m) => !!nick && String(m.username || '').toLowerCase() === nick;
   for (const arr of [chatHistory, streamChatBuffer]) {
-    for (let i = arr.length - 1; i >= 0; i--) if (mine(arr[i])) { arr.splice(i, 1); removed++; }
+    for (let i = arr.length - 1; i >= 0; i--)
+      if (mine(arr[i])) {
+        arr.splice(i, 1);
+        removed++;
+      }
   }
   if (userId) {
     const id = String(userId);
@@ -177,10 +188,37 @@ function trackMessage() {
 
 // --- !dios_fua ---
 const questionCooldowns = new Map();
-setInterval(() => { const now = Date.now(); for (const [k,v] of questionCooldowns) if (now > v) questionCooldowns.delete(k); }, 30 * 60 * 1000);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [k, v] of questionCooldowns) if (now > v) questionCooldowns.delete(k);
+  },
+  30 * 60 * 1000,
+);
 
 function getStreamChatBuffer() {
-  return streamChatBuffer.map(m => `${m.username}: ${m.message}`).join('\n');
+  return streamChatBuffer.map((m) => `${m.username}: ${m.message}`).join('\n');
 }
 
-module.exports = { chatHistory, getCachedUserFacts, getRecentHistory, recentMessages, getStreamChatBuffer, getLastChatTime, getUserConversation, addToUserConversation, trackMessage, questionCooldowns, streamChatBuffer, addToHistory, updateLastChatTime, getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, clearUserFactsCache, getActiveUserIds, forgetUserInMemory, getChatWindow };
+module.exports = {
+  chatHistory,
+  getCachedUserFacts,
+  getRecentHistory,
+  recentMessages,
+  getStreamChatBuffer,
+  getLastChatTime,
+  getUserConversation,
+  addToUserConversation,
+  trackMessage,
+  questionCooldowns,
+  streamChatBuffer,
+  addToHistory,
+  updateLastChatTime,
+  getActiveUsers,
+  getActiveUsersWithMinMessages,
+  resetActiveUsers,
+  clearUserFactsCache,
+  getActiveUserIds,
+  forgetUserInMemory,
+  getChatWindow,
+};

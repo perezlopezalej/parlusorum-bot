@@ -50,7 +50,12 @@ describe('frases cortadas', () => {
 
 describe('estilo y español de España', () => {
   test('parcero, enojarse y concha son latinoamericanos', () => {
-    for (const t of ['¡Vamos con todo, parceros!', 'No te enojes, hombre.', 'Se enojó con el jefe.', 'El FUA hace la concha de la victoria.']) {
+    for (const t of [
+      '¡Vamos con todo, parceros!',
+      'No te enojes, hombre.',
+      'Se enojó con el jefe.',
+      'El FUA hace la concha de la victoria.',
+    ]) {
       assert.equal(q.hasLatam(t), true, t);
     }
     assert.equal(q.hasLatam('Vamos con todo, tíos.'), false);
@@ -86,8 +91,16 @@ describe('identidad', () => {
 
 describe('menciones: sin tips ni redirecciones inventadas', () => {
   test('no ofrece tips que nadie pidió', () => {
-    assert.equal(q.validateMention('¡Qué bueno que te mola! Si quieres más tips, solo pregunta.', { question: 'me mola mucho este juego' }).ok, false);
-    assert.equal(q.validateMention('Aquí tienes un par de tips para el jefe.', { question: 'dame tips para el jefe' }).ok, true);
+    assert.equal(
+      q.validateMention('¡Qué bueno que te mola! Si quieres más tips, solo pregunta.', {
+        question: 'me mola mucho este juego',
+      }).ok,
+      false,
+    );
+    assert.equal(
+      q.validateMention('Aquí tienes un par de tips para el jefe.', { question: 'dame tips para el jefe' }).ok,
+      true,
+    );
   });
   test('no dice "no me mola hablar de mecánicas" si nadie las ha mencionado', () => {
     const t = 'No me mola hablar de mecánicas, pero si buscas nostalgia, Resident Evil es un clásico.';
@@ -99,7 +112,10 @@ describe('menciones: sin tips ni redirecciones inventadas', () => {
 describe('nombres repetidos: se quita el vocativo inicial', () => {
   test('stripLeadingNames quita "Mujica90," y deja la frase', () => {
     assert.equal(q.stripLeadingNames('Mujica90, ¡qué locura de jefe!', ['mujica90']), '¡Qué locura de jefe!');
-    assert.equal(q.stripLeadingNames('@Harocho: esos subs son de otro nivel.', ['harocho']), 'Esos subs son de otro nivel.');
+    assert.equal(
+      q.stripLeadingNames('@Harocho: esos subs son de otro nivel.', ['harocho']),
+      'Esos subs son de otro nivel.',
+    );
   });
   test('un nombre a mitad de frase no se puede quitar sin romperla (se queda para descartar)', () => {
     const named = new Map([['harocho', Date.now()]]);
@@ -158,7 +174,10 @@ describe('variedad en el mismo stream', () => {
   });
   test('un segundo comentario de jefe parecido (umbral 0.4) se marca como repetido', () => {
     const before = 'El segundo jefe se ha caído y el FUA ya está rugiendo con el rugido del triunfo.';
-    const r = q.validateCohost('El tercer jefe se ha caído y el FUA ya está rugiendo con el triunfo.', { ...base, sameKind: [before] });
+    const r = q.validateCohost('El tercer jefe se ha caído y el FUA ya está rugiendo con el triunfo.', {
+      ...base,
+      sameKind: [before],
+    });
     assert.equal(r.ok, false);
     assert.equal(r.soft, true);
     assert.equal(r.rule, 'parecido');
@@ -185,12 +204,21 @@ describe('identidad: el canal es de Manu y Pao, vlxj97 solo creó el bot', () =>
       'El canal lo llevan Manu y Pao; vlxj97 solo creó el bot.',
       'Me creó vlxj97, pero el canal es de Manu y Pao.',
       'Manu y Pao llevan el canal, vlxj97 me programó a mí.',
-    ]) assert.equal(quality.claimsChannelOwner(t), false, t);
+    ])
+      assert.equal(quality.claimsChannelOwner(t), false, t);
   });
   test('eval abejas: acepta respuestas correctas sin "sí"', () => {
     const cases = require('./eval-cases.json');
-    const any = cases.find(c => c.id === 'abejas').expect.matchAny.map(p => new RegExp(p, 'i'));
-    for (const t of ['Acortan su vida con el trabajo', 'Viven más en invierno, sí o sí', 'Tienen una vida más corta en verano', 'Duran menos en verano'])
-      assert.ok(any.some(re => re.test(t)), t);
+    const any = cases.find((c) => c.id === 'abejas').expect.matchAny.map((p) => new RegExp(p, 'i'));
+    for (const t of [
+      'Acortan su vida con el trabajo',
+      'Viven más en invierno, sí o sí',
+      'Tienen una vida más corta en verano',
+      'Duran menos en verano',
+    ])
+      assert.ok(
+        any.some((re) => re.test(t)),
+        t,
+      );
   });
 });

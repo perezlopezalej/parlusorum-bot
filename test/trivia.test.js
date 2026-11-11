@@ -90,8 +90,17 @@ describe('isAnswerMatch', () => {
 
 describe('buildHints', () => {
   const answers = [
-    'jupiter', 'minecraft', 'it takes two', 'fuerza universal aplicada',
-    'the last of us part ii remastered', 'sony', 'rusia', 'dios_fua', 'ab', '2011', '12345',
+    'jupiter',
+    'minecraft',
+    'it takes two',
+    'fuerza universal aplicada',
+    'the last of us part ii remastered',
+    'sony',
+    'rusia',
+    'dios_fua',
+    'ab',
+    '2011',
+    '12345',
   ];
 
   test('ninguna pista contiene la respuesta completa', () => {

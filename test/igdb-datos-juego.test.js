@@ -9,11 +9,16 @@ const { lookupGameInfo } = require('../src/twitch/api');
 
 const NO_DATA = 'SIN DATOS: no hay información de "Phantom Blade Zero".';
 const realFetch = global.fetch;
-afterEach(() => { global.fetch = realFetch; });
+afterEach(() => {
+  global.fetch = realFetch;
+});
 
 describe('inventedCompany (sin datos de IGDB)', () => {
   test('descarta editoras conocidas y nacionalidad de compañía', () => {
-    assert.equal(q.inventedCompany('El estudio que creó Phantom Blade Zero es Sega. Es una compañía japonesa.', NO_DATA), 'sega');
+    assert.equal(
+      q.inventedCompany('El estudio que creó Phantom Blade Zero es Sega. Es una compañía japonesa.', NO_DATA),
+      'sega',
+    );
     assert.equal(q.inventedCompany('Es una compañía japonesa, creo', NO_DATA), 'japonesa');
     assert.equal(q.inventedCompany('Lo ha hecho el estudio S-Game', NO_DATA), 's-game');
   });
@@ -28,18 +33,24 @@ describe('inventedCompany (sin datos de IGDB)', () => {
 
 describe('lookupGameInfo (solo IGDB)', () => {
   const unique = () => `Juego Test ${Math.random().toString(36).slice(2)}`;
-  const ok = body => ({ ok: true, status: 200, json: async () => body });
-  const http = status => ({ ok: false, status, json: async () => { throw new Error('html'); } });
+  const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+  const http = (status) => ({
+    ok: false,
+    status,
+    json: async () => {
+      throw new Error('html');
+    },
+  });
   // igdb: respuesta o Error (fallo de red)
   function mockFetch({ igdb }) {
-    global.fetch = async url => {
+    global.fetch = async (url) => {
       const u = String(url);
       if (u.includes('id.twitch.tv')) return ok({ access_token: 'tok', expires_in: 5000000 });
       if (igdb instanceof Error) throw igdb;
       return igdb;
     };
   }
-  const igdbGame = name => ({ name, genres: [{ name: 'Adventure' }], first_release_date: 1756944000 });
+  const igdbGame = (name) => ({ name, genres: [{ name: 'Adventure' }], first_release_date: 1756944000 });
 
   test('IGDB encuentra: devuelve la ficha y marca la fuente', async () => {
     const name = unique();

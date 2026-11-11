@@ -89,18 +89,18 @@ flowchart LR
 
 ## Decisiones técnicas
 
-| Decisión | Alternativa descartada | Motivo |
-|---|---|---|
-| Solo Groq, con tres modelos y reservas cruzadas | Gemini como proveedor secundario | Sus términos no permiten el nivel gratuito para usuarios del EEE; los tres modelos de Groq tienen cupo propio |
-| Router con cupo real por modelo (cabeceras `x-ratelimit-*`) | Un modelo para todo | Un directo de 6 h no cabe en los 200.000 tokens diarios de un solo modelo |
-| El selector usa un modelo de otra familia que el generador | Que el mismo modelo se autoevalúe | Un modelo tiende a aprobar sus propios errores |
-| Las prohibiciones viven en código (`src/ai/quality/`), no en el prompt | Listas de «no digas…» en el prompt | Citar lo prohibido lo introduce en el texto; el código lo rechaza sin ambigüedad |
-| IGDB como única fuente de datos factuales y ficha antes del modelo | Dejar que el modelo recuerde datos de juegos | Evita fechas, estudios y países inventados |
-| Plantillas fijas donde la IA no aporta (highlight, caps, encuestas) | IA en todos los mensajes | Gasta cupo y arriesga errores sin ganar nada |
-| Datos por `user_id` con caducidad | Guardar nicks y mensajes sin límite | Minimiza datos personales; el nick es solo un atributo del usuario |
-| Cola IRC propia y envío opcional por la API de chat | `client.say()` directo | Respeta los límites de Twitch y permite la insignia de Chat Bot |
-| Render gratuito con self-ping y watchdog | Servicio de pago | Coste cero; el self-ping evita que se duerma y el watchdog reconecta el IRC |
-| CommonJS sin paso de compilación | TypeScript | Despliegue y depuración sencillos para un proyecto de un solo autor |
+| Decisión                                                               | Alternativa descartada                       | Motivo                                                                                                        |
+| ---------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Solo Groq, con tres modelos y reservas cruzadas                        | Gemini como proveedor secundario             | Sus términos no permiten el nivel gratuito para usuarios del EEE; los tres modelos de Groq tienen cupo propio |
+| Router con cupo real por modelo (cabeceras `x-ratelimit-*`)            | Un modelo para todo                          | Un directo de 6 h no cabe en los 200.000 tokens diarios de un solo modelo                                     |
+| El selector usa un modelo de otra familia que el generador             | Que el mismo modelo se autoevalúe            | Un modelo tiende a aprobar sus propios errores                                                                |
+| Las prohibiciones viven en código (`src/ai/quality/`), no en el prompt | Listas de «no digas…» en el prompt           | Citar lo prohibido lo introduce en el texto; el código lo rechaza sin ambigüedad                              |
+| IGDB como única fuente de datos factuales y ficha antes del modelo     | Dejar que el modelo recuerde datos de juegos | Evita fechas, estudios y países inventados                                                                    |
+| Plantillas fijas donde la IA no aporta (highlight, caps, encuestas)    | IA en todos los mensajes                     | Gasta cupo y arriesga errores sin ganar nada                                                                  |
+| Datos por `user_id` con caducidad                                      | Guardar nicks y mensajes sin límite          | Minimiza datos personales; el nick es solo un atributo del usuario                                            |
+| Cola IRC propia y envío opcional por la API de chat                    | `client.say()` directo                       | Respeta los límites de Twitch y permite la insignia de Chat Bot                                               |
+| Render gratuito con self-ping y watchdog                               | Servicio de pago                             | Coste cero; el self-ping evita que se duerma y el watchdog reconecta el IRC                                   |
+| CommonJS sin paso de compilación                                       | TypeScript                                   | Despliegue y depuración sencillos para un proyecto de un solo autor                                           |
 
 ## Cómo se prueba
 
@@ -111,12 +111,12 @@ flowchart LR
 
 ## Privacidad
 
-| Dato | Se conserva |
-|---|---|
-| Chat completo (`chat_log`) | 24 horas |
-| Registro de calidad (mensajes del bot con contexto, nicks seudonimizados) | 30 días |
-| Hechos por usuario | 90 días (contadores: 1 año sin actividad) |
-| Ficha de usuario | 1 año sin actividad |
+| Dato                                                                      | Se conserva                               |
+| ------------------------------------------------------------------------- | ----------------------------------------- |
+| Chat completo (`chat_log`)                                                | 24 horas                                  |
+| Registro de calidad (mensajes del bot con contexto, nicks seudonimizados) | 30 días                                   |
+| Hechos por usuario                                                        | 90 días (contadores: 1 año sin actividad) |
+| Ficha de usuario                                                          | 1 año sin actividad                       |
 
 Cualquiera puede borrar lo suyo con `!fua_olvidame`; los mods, con `!fua_olvidar @usuario`; `!privacidad` lo resume en el chat. Todo se identifica por el ID de Twitch, no por el nick. Texto completo y base legal: [docs/aviso-privacidad.md](docs/aviso-privacidad.md).
 

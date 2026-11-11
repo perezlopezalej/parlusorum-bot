@@ -31,22 +31,31 @@ const AT_TARDE = new Date('2026-11-10T18:49:00Z').getTime();
 const AT_NOCHE = new Date('2026-11-10T21:49:00Z').getTime();
 
 let sent, calls;
-const client = { say: (ch, msg) => { sent.push(msg); } };
-const text = c => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
+const client = {
+  say: (ch, msg) => {
+    sent.push(msg);
+  },
+};
+const text = (c) => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
 const json = (...c) => text(JSON.stringify({ candidatos: c }));
-const isSelector = p => /editor de un chat/.test(p.messages[0].content);
+const isSelector = (p) => /editor de un chat/.test(p.messages[0].content);
 
 // fn recibe (params, esSelector) y devuelve la respuesta; calls guarda todas las llamadas
 function stubModels(fn) {
-  const t = async p => { calls.push({ selector: isSelector(p), messages: p.messages }); return fn(p, isSelector(p)); };
+  const t = async (p) => {
+    calls.push({ selector: isSelector(p), messages: p.messages });
+    return fn(p, isSelector(p));
+  };
   router.setTransport('groq', t);
 }
-const generated = () => calls.filter(c => !c.selector);
-const selectorCalls = () => calls.filter(c => c.selector);
+const generated = () => calls.filter((c) => !c.selector);
+const selectorCalls = () => calls.filter((c) => c.selector);
 
 beforeEach(() => {
-  sent = []; calls = [];
-  state.resetAiBlocks(); state.resetAiUsage();
+  sent = [];
+  calls = [];
+  state.resetAiBlocks();
+  state.resetAiUsage();
   state.setStreamIsLive(true);
   state.setStreamStartedAt(Date.now() - 47 * 60000);
   state.resetBotHistory();
@@ -69,7 +78,16 @@ describe('mayúsculas y ortografía', () => {
     assert.equal(q.styleProblem('Menudo masterclass de sufrir, qué grande.')?.rule, 'ortografia');
   });
   test('deja pasar el FUA, los gritos enteros, los emotes y lo correcto', () => {
-    for (const t of ['¡FUA! Manu sigue en pie.', '¡POR EL PODER DEL FUA!', 'Qué gran masterclass de despistes, FUAAAA.', 'Manu parlus1PORELPODERDELFUAAAAA sigue.', 'Vosotros reís y yo sonrío con el FUA.', '¿Queréis un chiste, Lusorums?', 'Hell Is Us se juega por el mapa, FUA.', 'Manu ya tiene la teoría del puzle.'])
+    for (const t of [
+      '¡FUA! Manu sigue en pie.',
+      '¡POR EL PODER DEL FUA!',
+      'Qué gran masterclass de despistes, FUAAAA.',
+      'Manu parlus1PORELPODERDELFUAAAAA sigue.',
+      'Vosotros reís y yo sonrío con el FUA.',
+      '¿Queréis un chiste, Lusorums?',
+      'Hell Is Us se juega por el mapa, FUA.',
+      'Manu ya tiene la teoría del puzle.',
+    ])
       assert.equal(q.oddCaps(t) || q.spellingProblem(t), '', t);
   });
   test('letras alargadas del chat ("parrrrrr") se rechazan; los emotes y el FUAAA no', () => {
@@ -85,8 +103,16 @@ describe('hora, formato y listas', () => {
     assert.equal(q.wrongDayPart('el FUA hoy cobra plus de nocturnidad', new Date(AT_TARDE)), true);
     assert.equal(q.wrongDayPart('el FUA hoy cobra plus de nocturnidad', new Date(AT_NOCHE)), false);
     assert.equal(q.wrongDayPart('qué madrugón, esta mañana en pie', new Date(AT_NOCHE)), true);
-    assert.equal(q.validateTimerIA('Manu cae y el FUA cobra plus de nocturnidad en este rato.', { deathCount: 5, now: AT_TARDE }).ok, false);
-    assert.equal(q.validateTimerIA('Manu cae y el FUA cobra plus de nocturnidad en este rato.', { deathCount: 5, now: AT_NOCHE }).ok, true);
+    assert.equal(
+      q.validateTimerIA('Manu cae y el FUA cobra plus de nocturnidad en este rato.', { deathCount: 5, now: AT_TARDE })
+        .ok,
+      false,
+    );
+    assert.equal(
+      q.validateTimerIA('Manu cae y el FUA cobra plus de nocturnidad en este rato.', { deathCount: 5, now: AT_NOCHE })
+        .ok,
+      true,
+    );
   });
   test('formato de informe: "(5 del día)", "En los últimos 30′"', () => {
     assert.equal(q.reportFormat('En los últimos 30′ Manu se ha caído 2 veces (5 del día).'), true);
@@ -97,13 +123,20 @@ describe('hora, formato y listas', () => {
   test('listas de palabras sueltas y nicks pegados', () => {
     assert.ok(q.wordListProblem('el chat suelta harocho3847, tienes, parlusorum, poco y dron'));
     assert.equal(q.wordListProblem('el chat ayudando con el puzle mientras Manu busca la forja'), '');
-    const real = 'En los últimos 30′ Manu se ha caído 2 veces (5 del día), mientras el chat suelta harocho3847, tienes, parlusorum, poco y dron… ¡FUA!';
+    const real =
+      'En los últimos 30′ Manu se ha caído 2 veces (5 del día), mientras el chat suelta harocho3847, tienes, parlusorum, poco y dron… ¡FUA!';
     assert.equal(q.validateTimerIA(real, { deathCount: 7, extraDeathNumbers: [2] }).ok, false);
-    assert.equal(q.validateTimerIA('El chat ayudando con el puzle y Manu buscando la forja con calma.', { deathCount: 7 }).ok, true);
+    assert.equal(
+      q.validateTimerIA('El chat ayudando con el puzle y Manu buscando la forja con calma.', { deathCount: 7 }).ok,
+      true,
+    );
   });
   test('"el chat mudo" cuenta como juzgar el ambiente; los viewers de una raid no se citan', () => {
     assert.equal(q.judgesChatMood('Tres muertes seguidas y el chat mudo, qué pena.'), true);
-    assert.equal(q.validateCohost('¿Dónde está la gloria? 6 viewers y el chat tan contento.', { deathCount: 5 }).rule, 'viewers');
+    assert.equal(
+      q.validateCohost('¿Dónde está la gloria? 6 viewers y el chat tan contento.', { deathCount: 5 }).rule,
+      'viewers',
+    );
   });
 });
 
@@ -121,9 +154,15 @@ describe('minutos aproximados y repeticiones del stream', () => {
     assert.equal(q.exactMinutes('116 minutos y Manu ya ha probado el suelo'), true);
     assert.equal(q.exactMinutes('Llevamos 1h 18m de stream'), true);
     assert.equal(q.exactMinutes('Llevamos casi dos horas de directo'), false);
-    assert.equal(q.validateCohost('A los 147 minutos de directo seguimos aquí con el FUA.', { deathCount: 5 }).rule, 'minutos');
+    assert.equal(
+      q.validateCohost('A los 147 minutos de directo seguimos aquí con el FUA.', { deathCount: 5 }).rule,
+      'minutos',
+    );
     assert.equal(q.validateHook('¿Quién aguanta 116 minutos más de directo?', { deathCount: 5 }).ok, false);
-    assert.equal(q.validateTimerIA('Llevamos 194 minutos y Manu sigue peleando con calma.', { deathCount: 5 }).ok, false);
+    assert.equal(
+      q.validateTimerIA('Llevamos 194 minutos y Manu sigue peleando con calma.', { deathCount: 5 }).ok,
+      false,
+    );
   });
   test('el prompt del cohost da el rato en palabras aproximadas', () => {
     const p = style.buildCohostSystem({ game: 'Hell Is Us', minutes: 116, form: style.COHOST_FORMS[0] });
@@ -135,11 +174,36 @@ describe('minutos aproximados y repeticiones del stream', () => {
     const first = 'Entre Pao y Manu, vaya martes de masterclass y sufrimiento.';
     const used = new Set(q.streamMarks(first, 'Hell Is Us'));
     assert.ok(used.has('dia-semana') && used.has('entre-x-y'));
-    assert.equal(q.validateCohost('Qué martes más largo llevamos con el FUA.', { deathCount: 5, usedStructures: used }).rule, 'repetido');
-    assert.equal(q.validateCohost('Entre el FUA y el chat se reparten el sufrimiento a partes iguales.', { deathCount: 5, usedStructures: used }).rule, 'repetido');
-    assert.equal(q.validateCohost('Manu ya domina el puzle y el FUA lo celebra con calma.', { deathCount: 5, usedStructures: used }).ok, true);
-    assert.equal(q.validateTimerIA('Otra masterclass más y Manu sigue con el puzle tan tranquilo.', { deathCount: 5, usedStructures: used }).ok, false);
-    assert.equal(q.validateCohost('Qué martes más largo llevamos con el FUA.', { deathCount: 5 }).ok, true, 'sin marcas previas pasa');
+    assert.equal(
+      q.validateCohost('Qué martes más largo llevamos con el FUA.', { deathCount: 5, usedStructures: used }).rule,
+      'repetido',
+    );
+    assert.equal(
+      q.validateCohost('Entre el FUA y el chat se reparten el sufrimiento a partes iguales.', {
+        deathCount: 5,
+        usedStructures: used,
+      }).rule,
+      'repetido',
+    );
+    assert.equal(
+      q.validateCohost('Manu ya domina el puzle y el FUA lo celebra con calma.', {
+        deathCount: 5,
+        usedStructures: used,
+      }).ok,
+      true,
+    );
+    assert.equal(
+      q.validateTimerIA('Otra masterclass más y Manu sigue con el puzle tan tranquilo.', {
+        deathCount: 5,
+        usedStructures: used,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      q.validateCohost('Qué martes más largo llevamos con el FUA.', { deathCount: 5 }).ok,
+      true,
+      'sin marcas previas pasa',
+    );
   });
   test('el prompt omite el día de la semana cuando ya salió', () => {
     assert.match(style.dayLine(new Date(AT_TARDE)), /martes/);
@@ -165,15 +229,27 @@ describe('minutos aproximados y repeticiones del stream', () => {
 
 describe('vida personal: estudios y "familia" como saludo', () => {
   test('ADE, universidad y carrera cuentan como vida personal', () => {
-    for (const t of ['Entre Pao haciendo chistes de ADE y Manu repartiendo caídas, vaya directo.', 'Pao ya va por el tercer año de carrera.', 'La universidad no perdona, ni el jefe.', 'Tocan los exámenes y el FUA sufre.'])
+    for (const t of [
+      'Entre Pao haciendo chistes de ADE y Manu repartiendo caídas, vaya directo.',
+      'Pao ya va por el tercer año de carrera.',
+      'La universidad no perdona, ni el jefe.',
+      'Tocan los exámenes y el FUA sufre.',
+    ])
       assert.equal(q.personalMatch(t), true, t);
-    assert.equal(q.validateCohost('Entre Pao haciendo chistes de ADE y Manu repartiendo caídas, vaya directo.', { deathCount: 5 }).rule, 'personal');
+    assert.equal(
+      q.validateCohost('Entre Pao haciendo chistes de ADE y Manu repartiendo caídas, vaya directo.', { deathCount: 5 })
+        .rule,
+      'personal',
+    );
   });
   test('"familia" como saludo no se descarta; "la familia de Manu" sí', () => {
     assert.equal(q.personalMatch('¡Gracias por el directo, familia Lusorum!'), false);
     assert.equal(q.personalMatch('Qué grande sois, familia.'), false);
     assert.equal(q.personalMatch('La familia de Manu viene a cenar.'), true);
-    assert.equal(summaryProblem('Gran directo de Hell Is Us, familia: Manu cayó diez veces y el chat no paró de animar.'), null);
+    assert.equal(
+      summaryProblem('Gran directo de Hell Is Us, familia: Manu cayó diez veces y el chat no paró de animar.'),
+      null,
+    );
     assert.ok(summaryProblem('Directo de Hell Is Us con charla sobre la familia de Pao y sus exámenes.'));
   });
 });
@@ -187,7 +263,10 @@ describe('muestra del chat para el resumen de media hora', () => {
       { username: 'd', message: '!muertes +1' },
       { username: 'e', message: 'Por fin encontramos el último puzle' },
     ]);
-    assert.deepEqual(out, ['Mira debajo del asiento de copiloto y en la estantería', 'Por fin encontramos el último puzle']);
+    assert.deepEqual(out, [
+      'Mira debajo del asiento de copiloto y en la estantería',
+      'Por fin encontramos el último puzle',
+    ]);
   });
 });
 
@@ -199,7 +278,13 @@ describe('selector con IA', () => {
     assert.equal(parsePick('2', 3), 2);
     assert.equal(parsePick('{"mejor": 7}', 3), null);
     assert.equal(parsePick('no sé', 3), null);
-    const p = buildPickPrompt(['uno parlus1Kelokekelowa', 'dos'], { dayLine: 'Hoy es martes por la tarde.', game: 'Hell Is Us', facts: 'Caídas anotadas: 5.', chat: 'a: hola', activity: 12 });
+    const p = buildPickPrompt(['uno parlus1Kelokekelowa', 'dos'], {
+      dayLine: 'Hoy es martes por la tarde.',
+      game: 'Hell Is Us',
+      facts: 'Caídas anotadas: 5.',
+      chat: 'a: hola',
+      activity: 12,
+    });
     assert.match(p, /<ahora>[\s\S]*martes[\s\S]*<\/ahora>/);
     assert.match(p, /Mensajes en el chat en los últimos 5 minutos: 12/);
     assert.match(p, /1\) uno/);
@@ -207,17 +292,33 @@ describe('selector con IA', () => {
     assert.doesNotMatch(p, /parlus1/);
   });
   test('pickBest: pide el selector a otra familia que el generador y baraja los candidatos', async () => {
-    const models = []; const firsts = new Set();
-    router.setTransport('groq', async p => { models.push(p.model); firsts.add(/1\) (\S+)/.exec(p.messages[1].content)[1]); return text('{"mejor": 1}'); });
+    const models = [];
+    const firsts = new Set();
+    router.setTransport('groq', async (p) => {
+      models.push(p.model);
+      firsts.add(/1\) (\S+)/.exec(p.messages[1].content)[1]);
+      return text('{"mejor": 1}');
+    });
     const rnd = Math.random;
     try {
-      for (const v of [0, 0.99]) { Math.random = () => v; await pickBest(['aaa bbb', 'ccc ddd', 'eee fff'], { generator: 'openai/gpt-oss-120b' }); }
-    } finally { Math.random = rnd; }
-    assert.ok(models.every(m => /qwen/.test(m)), models.join());
+      for (const v of [0, 0.99]) {
+        Math.random = () => v;
+        await pickBest(['aaa bbb', 'ccc ddd', 'eee fff'], { generator: 'openai/gpt-oss-120b' });
+      }
+    } finally {
+      Math.random = rnd;
+    }
+    assert.ok(
+      models.every((m) => /qwen/.test(m)),
+      models.join(),
+    );
     assert.ok(firsts.size > 1, 'el primer candidato mostrado cambia');
     models.length = 0;
     await pickBest(['aaa bbb'], { generator: 'qwen/qwen3.8-27b' });
-    assert.ok(models.every(m => /gpt-oss/.test(m)), models.join());
+    assert.ok(
+      models.every((m) => /gpt-oss/.test(m)),
+      models.join(),
+    );
   });
   test('pickBest: elegido, ninguno y error', async () => {
     stubModels(() => text('{"mejor": 2}'));
@@ -226,7 +327,9 @@ describe('selector con IA', () => {
     assert.deepEqual(await pickBest(['a b c d', 'e f g h'], { order: [1, 0] }), { status: 'ok', index: 0 });
     stubModels(() => text('{"mejor": 0}'));
     assert.deepEqual(await pickBest(['a b c d', 'e f g h']), { status: 'none' });
-    stubModels(() => { throw new Error('sin cupo'); });
+    stubModels(() => {
+      throw new Error('sin cupo');
+    });
     assert.deepEqual(await pickBest(['a b c d']), { status: 'error' });
     assert.deepEqual(await pickBest([]), { status: 'none' });
   });
@@ -235,7 +338,16 @@ describe('selector con IA', () => {
   const B = 'Hacer caso al chat con ese historial es jugársela.';
   const C = 'El FUA se levanta antes que el propio jefe, y encima aplaude.';
   // Los candidatos llegan al selector en orden aleatorio: el stub elige por el texto, no por la posición
-const choose = (p, wanted) => text(JSON.stringify({ mejor: p.messages[1].content.split(String.fromCharCode(10)).filter(l => /^[0-9]+[)] /.test(l)).findIndex(l => l.includes(wanted)) + 1 }));
+  const choose = (p, wanted) =>
+    text(
+      JSON.stringify({
+        mejor:
+          p.messages[1].content
+            .split(String.fromCharCode(10))
+            .filter((l) => /^[0-9]+[)] /.test(l))
+            .findIndex((l) => l.includes(wanted)) + 1,
+      }),
+    );
 
   test('cohost: envía el candidato que elige el selector y le pasa chat, hora y actividad', async () => {
     stubModels((p, sel) => (sel ? choose(p, B) : json(A, B, C)));
@@ -259,7 +371,10 @@ const choose = (p, wanted) => text(JSON.stringify({ mejor: p.messages[1].content
     assert.match(generated()[1].messages[0].content, /<correccion>Una sola idea que se entienda a la primera/);
   });
   test('cohost: si el selector falla (cupo o error), sigue el orden del código y envía', async () => {
-    stubModels((p, sel) => { if (sel) throw new Error('429'); return json(A, B, C); });
+    stubModels((p, sel) => {
+      if (sel) throw new Error('429');
+      return json(A, B, C);
+    });
     const out = await ai.runCohost(client, '#parlusorum', null);
     assert.equal(out, 'sent');
     assert.ok([A, B, C].includes(sent[0]));
@@ -282,7 +397,8 @@ describe('timer IA', () => {
     state.resetStreamNarrative();
     state.addNarrativeEvent('death', 'Manu ha caído', 1);
     state.addNarrativeEvent('death', 'Manu ha caído', 1);
-    for (let i = 0; i < 6; i++) ai.addToHistory(`user${i}`, `Mira debajo del asiento del copiloto, número ${i} del mapa`);
+    for (let i = 0; i < 6; i++)
+      ai.addToHistory(`user${i}`, `Mira debajo del asiento del copiloto, número ${i} del mapa`);
   });
 
   test('si el contador cambia mientras la IA escribe, rehace el resumen con el estado actual', async () => {
@@ -342,7 +458,9 @@ describe('un solo aviso de inicio y de raid', () => {
     assert.equal(sent.length, 1, 'el repetido no se agradece otra vez');
   });
   test('raid: si la IA falla o no nombra a quien hace el raid, sale solo el mensaje fijo', async () => {
-    stubModels(() => { throw new Error('sin IA'); });
+    stubModels(() => {
+      throw new Error('sin IA');
+    });
     await alerts.onRaid(client, '#parlusorum', 'Otro_Canal', 12);
     assert.equal(sent.length, 1);
     assert.match(sent[0], /RAID de @Otro_Canal con 12 viewers/);
@@ -354,9 +472,11 @@ describe('un solo aviso de inicio y de raid', () => {
   });
   test('la narrativa describe a los raiders como visitantes, no como viewers del canal', async () => {
     state.resetStreamNarrative();
-    stubModels(() => { throw new Error('sin IA'); });
+    stubModels(() => {
+      throw new Error('sin IA');
+    });
     await alerts.onRaid(client, '#parlusorum', 'Cuarto', 6);
-    const ev = state.getStreamNarrative().find(e => e.type === 'raid');
+    const ev = state.getStreamNarrative().find((e) => e.type === 'raid');
     assert.match(ev.description, /raiders/);
     assert.match(ev.description, /visitantes/);
   });
@@ -365,7 +485,7 @@ describe('un solo aviso de inicio y de raid', () => {
 // ─────────────────────────────── Casos reales del eval ───────────────────────────────
 // Los casos del selector de test/eval-cases.json tienen la forma que espera scripts/eval.js (las reglas puras viven en frases-reales.test.js)
 test('eval-cases: los casos del selector están bien formados', () => {
-  const picks = require('./eval-cases.json').filter(c => c.filter === 'pick');
+  const picks = require('./eval-cases.json').filter((c) => c.filter === 'pick');
   assert.ok(picks.length >= 4);
   for (const c of picks) assert.ok(c.candidates.length >= 2 && c.expect.pick !== undefined, c.id);
 });
@@ -379,12 +499,26 @@ test('"quién desarrolló el Phantom Blade 0" es una pregunta de juego, no de id
 
 describe('mayúsculas raras: los nombres propios y los nicks no cuentan', () => {
   test('nicks reales en mayúsculas mixtas, con o sin @ y con números', () => {
-    for (const t of ['Claro, EvalUser, vamos allá.', '@EvalUser12 vamos allá', 'Ahí va EvalUser12, a tope.', 'Gracias SrPatataFrita por el apoyo', 'Eso lo dijo xXDarkWolfXx ayer']) {
+    for (const t of [
+      'Claro, EvalUser, vamos allá.',
+      '@EvalUser12 vamos allá',
+      'Ahí va EvalUser12, a tope.',
+      'Gracias SrPatataFrita por el apoyo',
+      'Eso lo dijo xXDarkWolfXx ayer',
+    ]) {
       assert.equal(q.oddCaps(t, ['EvalUser', 'EvalUser12', 'SrPatataFrita', 'xXDarkWolfXx']), '', t);
     }
   });
   test('nombres del canal y del lore, sin pasarlos', () => {
-    for (const t of ['ParLusorum manda hoy', '@ParLusorum a tope', 'P1X3LUS sabe de esto', 'Dios_Fua lo ve', 'vlxj97 creó el bot', 'StreamElements avisa']) assert.equal(q.oddCaps(t), '', t);
+    for (const t of [
+      'ParLusorum manda hoy',
+      '@ParLusorum a tope',
+      'P1X3LUS sabe de esto',
+      'Dios_Fua lo ve',
+      'vlxj97 creó el bot',
+      'StreamElements avisa',
+    ])
+      assert.equal(q.oddCaps(t), '', t);
   });
   test('sigue rechazando mayúsculas raras que no son nombres', () => {
     assert.equal(q.oddCaps('Menudo MasterClass de sufrir', ['EvalUser']), 'MasterClass');

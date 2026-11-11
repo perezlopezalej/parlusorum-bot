@@ -10,11 +10,22 @@ const apiPath = require.resolve('../src/twitch/api');
 require(apiPath);
 const api = require.cache[apiPath].exports;
 const lookups = [];
-const PHANTOM = { name: 'Phantom Blade Zero', released: '2026', developers: 'S-Game', country: 'China', publishers: 'S-Game', genres: 'Acción, Aventura', description: 'Acción de espadas en la China antigua.' };
+const PHANTOM = {
+  name: 'Phantom Blade Zero',
+  released: '2026',
+  developers: 'S-Game',
+  country: 'China',
+  publishers: 'S-Game',
+  genres: 'Acción, Aventura',
+  description: 'Acción de espadas en la China antigua.',
+};
 api.getCurrentGame = async () => ({ game: 'Hell Is Us' });
 api.getGameInfo = async () => null;
 api.getChannelInfo = async () => ({ game_name: 'Dark Souls: Remastered' });
-api.lookupGameInfo = async (name) => { lookups.push(name); return /phantom blade/i.test(name) ? { info: PHANTOM } : { info: null }; };
+api.lookupGameInfo = async (name) => {
+  lookups.push(name);
+  return /phantom blade/i.test(name) ? { info: PHANTOM } : { info: null };
+};
 
 const router = require('../src/utils/ai-router');
 const state = require('../src/utils/state');
@@ -22,15 +33,26 @@ const q = require('../src/ai/quality');
 const ai = require('../src/ai/handler');
 
 let sent, calls;
-const client = { say: (ch, msg) => { sent.push(msg); } };
-const text = c => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
+const client = {
+  say: (ch, msg) => {
+    sent.push(msg);
+  },
+};
+const text = (c) => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
 let userId = 100;
 const tags = () => ({ 'display-name': 'gangar79', 'user-id': String(userId++), username: 'gangar79', badges: {} });
 
 beforeEach(() => {
-  sent = []; calls = []; lookups.length = 0;
-  state.resetAiBlocks(); state.resetAiUsage();
-  router.setTransport('groq', async p => { if (!/Eres Dios Fua/.test(p.messages[0].content)) return text('NO'); calls.push(p); return text('Phantom Blade Zero es de S-Game, un estudio de China, y sale en 2026; el FUA lo aprueba.'); });
+  sent = [];
+  calls = [];
+  lookups.length = 0;
+  state.resetAiBlocks();
+  state.resetAiUsage();
+  router.setTransport('groq', async (p) => {
+    if (!/Eres Dios Fua/.test(p.messages[0].content)) return text('NO');
+    calls.push(p);
+    return text('Phantom Blade Zero es de S-Game, un estudio de China, y sale en 2026; el FUA lo aprueba.');
+  });
 });
 
 describe('extractGameMention (nombre de juego en la pregunta)', () => {
@@ -42,15 +64,32 @@ describe('extractGameMention (nombre de juego en la pregunta)', () => {
     ['que tal es Black Myth: Wukong, merece la pena?', 'Black Myth: Wukong'],
     ['cuéntame de qué va Silent Hill F', 'Silent Hill F'],
   ];
-  for (const [input, name] of cases) test(`"${input}" → ${name}`, () => assert.equal(q.extractGameMention(input), name));
-  for (const input of ['por qué el cielo es azul?', 'quién es el mejor streamer?', 'qué opinas de tu creador', 'cuántas abejas hay']) {
+  for (const [input, name] of cases)
+    test(`"${input}" → ${name}`, () => assert.equal(q.extractGameMention(input), name));
+  for (const input of [
+    'por qué el cielo es azul?',
+    'quién es el mejor streamer?',
+    'qué opinas de tu creador',
+    'cuántas abejas hay',
+  ]) {
     test(`sin juego: "${input}"`, () => assert.equal(q.extractGameMention(input), null));
   }
 });
 
 describe('!dios_fua con ficha previa', () => {
   test('el código busca la ficha, se la pasa en el mensaje y no ofrece la herramienta', async () => {
-    await ai.handleQuestion(client, '#parlusorum', tags(), ['!dios_fua', 'quien', 'desarrollo', 'el', 'phantom', 'blade', '0?', 'japoneses', 'o', 'chinos?']);
+    await ai.handleQuestion(client, '#parlusorum', tags(), [
+      '!dios_fua',
+      'quien',
+      'desarrollo',
+      'el',
+      'phantom',
+      'blade',
+      '0?',
+      'japoneses',
+      'o',
+      'chinos?',
+    ]);
     assert.deepEqual(lookups, ['phantom blade 0']);
     assert.equal(calls.length, 1, 'una sola llamada: sin ronda de herramienta');
     assert.equal(calls[0].tools, undefined);

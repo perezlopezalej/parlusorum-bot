@@ -58,7 +58,10 @@ async function checkStreamStatus(client, channel) {
 async function onWarmupMode(client, channel, game) {
   if (!canMakeRequest()) return;
   // Un solo mensaje de inicio: si el aviso normal ya salió, el calentamiento no añade otro
-  if (!claimStartAnnouncement()) { logger.info('Warmup: ya salió el mensaje de inicio, no se añade otro'); return; }
+  if (!claimStartAnnouncement()) {
+    logger.info('Warmup: ya salió el mensaje de inicio, no se añade otro');
+    return;
+  }
   try {
     const gameContext = game ? ` El juego de hoy: "${game}".` : '';
     const response = await aiChat('alert', {
@@ -66,10 +69,10 @@ async function onWarmupMode(client, channel, game) {
       messages: [
         {
           role: 'system',
-          content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Canal: ${channelConfig.vibe}. Emotes si encajan: ${(channelConfig.channel_emotes || []).join(', ')}. El stream acaba de empezar y hay pocos viewers — momento ideal para calentar el chat.${gameContext} Genera un mensaje de calentamiento: una bienvenida energetica + UNA pregunta directa al chat sobre ${game ? 'el juego de hoy' : 'lo que se viene'} que invite a responder. SIEMPRE en espanol. Max 2 frases. Usa FUA. Sin presentarte.`
+          content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Canal: ${channelConfig.vibe}. Emotes si encajan: ${(channelConfig.channel_emotes || []).join(', ')}. El stream acaba de empezar y hay pocos viewers — momento ideal para calentar el chat.${gameContext} Genera un mensaje de calentamiento: una bienvenida energetica + UNA pregunta directa al chat sobre ${game ? 'el juego de hoy' : 'lo que se viene'} que invite a responder. SIEMPRE en espanol. Max 2 frases. Usa FUA. Sin presentarte.`,
         },
-        { role: 'user', content: `Calienta el chat` }
-      ]
+        { role: 'user', content: `Calienta el chat` },
+      ],
     });
     client.say(channel, truncate(quality.vetAuto(response.choices[0].message.content)));
     logger.info(`🔥 Warmup mode activado`);

@@ -1,13 +1,14 @@
 // Política de emotes: cuántos caben, dónde van y cómo se recortan.
 
 // --- Emotes: como mucho 1 de cada 3 mensajes ---
-const emoteRe = emotes => new RegExp(`(?:${emotes.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+const emoteRe = (emotes) =>
+  new RegExp(`(?:${emotes.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
 
 const hasEmote = (text, emotes) => emotes.length > 0 && emoteRe(emotes).test(text);
 
 // Se permite emote solo si ninguno de los 2 últimos mensajes del bot (más recientes al final) llevó
 function emoteAllowed(recentBotMessages, emotes) {
-  return !recentBotMessages.slice(-2).some(m => hasEmote(m, emotes));
+  return !recentBotMessages.slice(-2).some((m) => hasEmote(m, emotes));
 }
 
 // Espacio sobrante antes de signos de puntuación; no toca "usa !comando" (el signo va pegado a una palabra)
@@ -23,7 +24,11 @@ function moveEmotesToEnd(text, emotes) {
   if (!emotes.length) return text;
   const found = String(text).match(emoteRe(emotes));
   if (!found) return text;
-  const body = String(text).replace(emoteRe(emotes), '').replace(/ {2,}/g, ' ').replace(SPACE_BEFORE_PUNCT_RE, '$1').trim();
+  const body = String(text)
+    .replace(emoteRe(emotes), '')
+    .replace(/ {2,}/g, ' ')
+    .replace(SPACE_BEFORE_PUNCT_RE, '$1')
+    .trim();
   return body ? `${body} ${found[0]}` : found[0];
 }
 
@@ -34,8 +39,13 @@ function dropPartialEmote(text, emotes) {
   if (!m || !emotes.length) return t;
   const tail = m[1].replace(/[.,;:!?¡¿…]+$/, '').toLowerCase();
   if (tail.length < 4) return t;
-  const partial = emotes.some(e => e.toLowerCase().startsWith(tail) && e.toLowerCase() !== tail);
-  return partial ? t.slice(0, m.index).replace(/[\s,;:¡¿-]+$/, '').trimEnd() : t;
+  const partial = emotes.some((e) => e.toLowerCase().startsWith(tail) && e.toLowerCase() !== tail);
+  return partial
+    ? t
+        .slice(0, m.index)
+        .replace(/[\s,;:¡¿-]+$/, '')
+        .trimEnd()
+    : t;
 }
 
 // Ajusta un mensaje al límite de Twitch sin partir un emote: si no cabe entero, se quitan los emotes (antes de cortar el texto)
@@ -50,8 +60,20 @@ function applyEmotePolicy(text, allowed, emotes) {
   if (!emotes.length) return text;
   if (!allowed) return stripEmotes(text, emotes);
   let seen = false;
-  const single = text.replace(emoteRe(emotes), m => (seen ? '' : (seen = true, m))).replace(/ {2,}/g, ' ').replace(SPACE_BEFORE_PUNCT_RE, '$1').trim();
+  const single = text
+    .replace(emoteRe(emotes), (m) => (seen ? '' : ((seen = true), m)))
+    .replace(/ {2,}/g, ' ')
+    .replace(SPACE_BEFORE_PUNCT_RE, '$1')
+    .trim();
   return moveEmotesToEnd(single, emotes);
 }
 
-module.exports = { hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, dropPartialEmote, fitWithEmotes, moveEmotesToEnd };
+module.exports = {
+  hasEmote,
+  emoteAllowed,
+  stripEmotes,
+  applyEmotePolicy,
+  dropPartialEmote,
+  fitWithEmotes,
+  moveEmotesToEnd,
+};

@@ -19,22 +19,29 @@ function fakeFetch(sendResponse) {
     requests.push({ url: String(url), opts });
     if (String(url).includes('id.twitch.tv/oauth2/token')) return json(200, { access_token: 'APPTOKEN' });
     if (String(url).includes('/users?login=')) return json(200, { data: [{ id: '777' }] });
-    if (String(url).endsWith('/chat/messages')) return typeof sendResponse === 'function' ? sendResponse(opts) : sendResponse;
+    if (String(url).endsWith('/chat/messages'))
+      return typeof sendResponse === 'function' ? sendResponse(opts) : sendResponse;
     return json(404, {});
   };
 }
 
 describe('Send Chat Message', () => {
   let realFetch;
-  beforeEach(() => { requests = []; realFetch = global.fetch; api._setDeps({ botUserId: null, reset: true }); });
-  afterEach(() => { global.fetch = realFetch; });
+  beforeEach(() => {
+    requests = [];
+    realFetch = global.fetch;
+    api._setDeps({ botUserId: null, reset: true });
+  });
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
 
   test('envía con el token de aplicación, el ID del bot y el del canal', async () => {
     global.fetch = fakeFetch(json(200, { data: [{ message_id: 'm1', is_sent: true }] }));
     api._setDeps({ fetch: (...a) => global.fetch(...a) });
     const r = await api.sendChatMessage('hola chat');
     assert.deepEqual(r, { sent: true, id: 'm1' });
-    const post = requests.find(x => x.url.endsWith('/chat/messages'));
+    const post = requests.find((x) => x.url.endsWith('/chat/messages'));
     assert.equal(post.opts.method, 'POST');
     assert.equal(post.opts.headers.Authorization, 'Bearer APPTOKEN');
     const body = JSON.parse(post.opts.body);
@@ -44,7 +51,9 @@ describe('Send Chat Message', () => {
   });
 
   test('un mensaje descartado por Twitch devuelve el motivo, sin lanzar', async () => {
-    global.fetch = fakeFetch(json(200, { data: [{ message_id: '', is_sent: false, drop_reason: { code: 'msg_duplicate', message: 'dup' } }] }));
+    global.fetch = fakeFetch(
+      json(200, { data: [{ message_id: '', is_sent: false, drop_reason: { code: 'msg_duplicate', message: 'dup' } }] }),
+    );
     api._setDeps({ fetch: (...a) => global.fetch(...a) });
     const r = await api.sendChatMessage('otra vez');
     assert.equal(r.sent, false);
@@ -55,40 +64,57 @@ describe('Send Chat Message', () => {
     let now = 1_000_000;
     global.fetch = fakeFetch(json(403, {}));
     api._setDeps({ fetch: (...a) => global.fetch(...a), now: () => now });
-    await assert.rejects(api.sendChatMessage('x'), e => e.auth === true && e.status === 403);
+    await assert.rejects(api.sendChatMessage('x'), (e) => e.auth === true && e.status === 403);
     const before = requests.length;
-    await assert.rejects(api.sendChatMessage('x'), e => /desactivada/.test(e.message));
+    await assert.rejects(api.sendChatMessage('x'), (e) => /desactivada/.test(e.message));
     assert.equal(requests.length, before, 'no vuelve a llamar mientras está desactivada');
     now += 11 * 60 * 1000;
     global.fetch = fakeFetch(json(429, {}));
-    await assert.rejects(api.sendChatMessage('x'), e => e.status === 429 && !e.auth);
+    await assert.rejects(api.sendChatMessage('x'), (e) => e.status === 429 && !e.auth);
   });
 
   test('corta a 500 caracteres', async () => {
     global.fetch = fakeFetch(json(200, { data: [{ message_id: 'm', is_sent: true }] }));
     api._setDeps({ fetch: (...a) => global.fetch(...a) });
     await api.sendChatMessage('a'.repeat(700));
-    assert.equal(JSON.parse(requests.find(x => x.url.endsWith('/chat/messages')).opts.body).message.length, 500);
+    assert.equal(JSON.parse(requests.find((x) => x.url.endsWith('/chat/messages')).opts.body).message.length, 500);
   });
 });
 
 describe('cola de salida con la API', () => {
-  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   // Espera a la condición (sondeo) en vez de dormir un tiempo fijo: estable aunque la máquina vaya lenta
-  const until = async (fn, ms = 3000) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await wait(5); };
-  beforeEach(() => { _testHooks({ gapMs: 5, sayTimeoutMs: 200, reset: true }); state.setStreamIsLive(true); state.setStreamEndGraceUntil(0); state.resetRecentUserTexts(); state.resetFilterStats(); });
+  const until = async (fn, ms = 3000) => {
+    const t = Date.now();
+    while (!fn() && Date.now() - t < ms) await wait(5);
+  };
+  beforeEach(() => {
+    _testHooks({ gapMs: 5, sayTimeoutMs: 200, reset: true });
+    state.setStreamIsLive(true);
+    state.setStreamEndGraceUntil(0);
+    state.resetRecentUserTexts();
+    state.resetFilterStats();
+  });
   afterEach(() => setApiSender(null));
 
   function makeClient(open = true) {
     const irc = [];
-    const client = { say: async (c, m) => { irc.push(m); }, readyState: () => (open ? 'OPEN' : 'CLOSED') };
+    const client = {
+      say: async (c, m) => {
+        irc.push(m);
+      },
+      readyState: () => (open ? 'OPEN' : 'CLOSED'),
+    };
     wrapClientSay(client);
     return { client, irc };
   }
 
   test('con la API activa el mensaje sale por la API y no por IRC', async () => {
     const viaApi = [];
-    setApiSender(async m => { viaApi.push(m); return { sent: true }; });
+    setApiSender(async (m) => {
+      viaApi.push(m);
+      return { sent: true };
+    });
     const { client, irc } = makeClient();
     client.say('#c', 'por la api', { origin: 'comando' });
     await until(() => viaApi.length);
@@ -97,7 +123,9 @@ describe('cola de salida con la API', () => {
   });
 
   test('si la API falla, el mensaje sale por IRC', async () => {
-    setApiSender(async () => { throw new Error('HTTP 500'); });
+    setApiSender(async () => {
+      throw new Error('HTTP 500');
+    });
     const { client, irc } = makeClient();
     client.say('#c', 'respaldo', { origin: 'comando' });
     await until(() => irc.length);
@@ -115,7 +143,10 @@ describe('cola de salida con la API', () => {
 
   test('con la API activa, un IRC caído no impide enviar', async () => {
     const viaApi = [];
-    setApiSender(async m => { viaApi.push(m); return { sent: true }; });
+    setApiSender(async (m) => {
+      viaApi.push(m);
+      return { sent: true };
+    });
     const { client } = makeClient(false);
     client.say('#c', 'sigue', { origin: 'comando' });
     await until(() => viaApi.length);

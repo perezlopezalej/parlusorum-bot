@@ -10,7 +10,7 @@ function getToken() {
 function getHeaders() {
   return {
     'Client-ID': process.env.CLIENT_ID,
-    'Authorization': `Bearer ${getToken()}`
+    Authorization: `Bearer ${getToken()}`,
   };
 }
 
@@ -31,11 +31,13 @@ async function refreshBroadcasterToken() {
         refresh_token: refreshToken,
         client_id: process.env.CLIENT_ID,
         client_secret: process.env.CLIENT_SECRET,
-      })
+      }),
     });
     const data = await res.json();
     if (!res.ok || !data.access_token) {
-      logger.error(`🔴 Refresh de BROADCASTER_TOKEN fallido (${res.status}: ${data.message || 'sin detalle'}) — regenera el token manualmente.`);
+      logger.error(
+        `🔴 Refresh de BROADCASTER_TOKEN fallido (${res.status}: ${data.message || 'sin detalle'}) — regenera el token manualmente.`,
+      );
       return false;
     }
     process.env.BROADCASTER_TOKEN = data.access_token;
@@ -45,7 +47,7 @@ async function refreshBroadcasterToken() {
     await saveTokens({
       broadcaster_token: data.access_token,
       broadcaster_refresh_token: data.refresh_token || refreshToken,
-    }).catch(e => logger.warn(`No se pudieron persistir tokens: ${e.message}`));
+    }).catch((e) => logger.warn(`No se pudieron persistir tokens: ${e.message}`));
     return true;
   } catch (e) {
     logger.error(`Error en refreshBroadcasterToken: ${e.message}`);
@@ -91,7 +93,7 @@ async function validateBotToken(token = process.env.BOT_TOKEN) {
   const clean = stripOauth(token);
   if (!clean) return { valid: false, expiresIn: 0, login: null };
   try {
-    const res = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { 'Authorization': `OAuth ${clean}` } });
+    const res = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { Authorization: `OAuth ${clean}` } });
     if (!res.ok) return { valid: false, expiresIn: 0, login: null };
     const data = await res.json();
     return { valid: true, expiresIn: data.expires_in || 0, login: data.login || null };
@@ -116,11 +118,13 @@ async function refreshBotToken() {
         refresh_token: refreshToken,
         client_id: process.env.CLIENT_ID,
         client_secret: process.env.CLIENT_SECRET,
-      })
+      }),
     });
     const data = await res.json();
     if (!res.ok || !data.access_token) {
-      logger.error(`🔴 Refresh de BOT_TOKEN fallido (${res.status}: ${data.message || 'sin detalle'}) — regenera el token con scripts/get-bot-token.js.`);
+      logger.error(
+        `🔴 Refresh de BOT_TOKEN fallido (${res.status}: ${data.message || 'sin detalle'}) — regenera el token con scripts/get-bot-token.js.`,
+      );
       return false;
     }
     process.env.BOT_TOKEN = data.access_token;
@@ -130,7 +134,7 @@ async function refreshBotToken() {
     await saveTokens({
       bot_token: data.access_token,
       bot_refresh_token: data.refresh_token || refreshToken,
-    }).catch(e => logger.warn(`No se pudieron persistir tokens del bot: ${e.message}`));
+    }).catch((e) => logger.warn(`No se pudieron persistir tokens del bot: ${e.message}`));
     return true;
   } catch (e) {
     logger.error(`Error en refreshBotToken: ${e.message}`);
@@ -185,20 +189,20 @@ async function getStreamInfo() {
 
   try {
     const broadcasterId = channelConfig.broadcaster_id;
-    const res = await helixFetch(
-      `https://api.twitch.tv/helix/streams?user_id=${broadcasterId}`
-    );
+    const res = await helixFetch(`https://api.twitch.tv/helix/streams?user_id=${broadcasterId}`);
     const data = await res.json();
     const stream = data.data?.[0];
 
-    streamCache = stream ? {
-      live: true,
-      viewers: stream.viewer_count || 0,
-      game: stream.game_name || null,
-      title: stream.title || null,
-      startedAt: stream.started_at || null,
-      streamId: stream.id || null
-    } : { live: false, viewers: 0, game: null, title: null, startedAt: null, streamId: null };
+    streamCache = stream
+      ? {
+          live: true,
+          viewers: stream.viewer_count || 0,
+          game: stream.game_name || null,
+          title: stream.title || null,
+          startedAt: stream.started_at || null,
+          streamId: stream.id || null,
+        }
+      : { live: false, viewers: 0, game: null, title: null, startedAt: null, streamId: null };
 
     lastStreamCheck = now;
     return streamCache;
@@ -224,9 +228,7 @@ async function getCurrentGame() {
 
   try {
     const broadcasterId = channelConfig.broadcaster_id;
-    const res = await helixFetch(
-      `https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`
-    );
+    const res = await helixFetch(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`);
     const data = await res.json();
     const channel = data.data?.[0];
 
@@ -235,7 +237,8 @@ async function getCurrentGame() {
       if (currentGameCache.game) {
         logger.info(`🎮 Juego actual: ${currentGameCache.game}`);
         // Ficha precalentada (con detalle): si las fuentes caen después, el juego actual sigue respondiendo
-        if (!gameInfoCache.has(`${currentGameCache.game}|detail`)) lookupGameInfo(currentGameCache.game, { detail: true }).catch(() => {});
+        if (!gameInfoCache.has(`${currentGameCache.game}|detail`))
+          lookupGameInfo(currentGameCache.game, { detail: true }).catch(() => {});
       }
     }
     lastGameCheck = now;
@@ -250,10 +253,9 @@ async function getCurrentGame() {
 async function createClip() {
   try {
     const broadcasterId = channelConfig.broadcaster_id;
-    const res = await helixFetch(
-      `https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`,
-      { method: 'POST' }
-    );
+    const res = await helixFetch(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`, {
+      method: 'POST',
+    });
     const data = await res.json();
     const clip = data.data?.[0];
     if (clip?.edit_url) {
@@ -276,12 +278,15 @@ const CURRENT_GAME_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 const gameInfoCache = new Map(); // valores: { data, ts, ttl }
 
 // Purga entradas expiradas cada 6h para evitar memory leak de juegos que ya no se streamean
-const gameCacheCleanupInterval = setInterval(() => {
-  const now = Date.now();
-  for (const [key, cached] of gameInfoCache) {
-    if (now - cached.ts > (cached.ttl || GAME_INFO_TTL)) gameInfoCache.delete(key);
-  }
-}, 6 * 60 * 60 * 1000);
+const gameCacheCleanupInterval = setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, cached] of gameInfoCache) {
+      if (now - cached.ts > (cached.ttl || GAME_INFO_TTL)) gameInfoCache.delete(key);
+    }
+  },
+  6 * 60 * 60 * 1000,
+);
 gameCacheCleanupInterval.unref();
 
 // detail=true recorta la descripción a 600 en vez de 300 (solo !dios_fua y la trivia lo usan).
@@ -305,8 +310,14 @@ async function lookupGameInfo(gameName, { detail = false } = {}) {
 
   if (info) {
     const current = currentGameName();
-    const isCurrent = current && (info.name.toLowerCase() === current.toLowerCase() || gameName.toLowerCase() === current.toLowerCase());
-    gameInfoCache.set(cacheKey, { data: info, ts: Date.now(), ttl: isCurrent ? CURRENT_GAME_CACHE_TTL : GAME_INFO_TTL });
+    const isCurrent =
+      current &&
+      (info.name.toLowerCase() === current.toLowerCase() || gameName.toLowerCase() === current.toLowerCase());
+    gameInfoCache.set(cacheKey, {
+      data: info,
+      ts: Date.now(),
+      ttl: isCurrent ? CURRENT_GAME_CACHE_TTL : GAME_INFO_TTL,
+    });
     return { info, error: false };
   }
   if (answered) return { info: null, error: false };
@@ -325,7 +336,9 @@ function currentGameName() {
 function staleCurrentGame(query, detail) {
   const current = currentGameName();
   if (!current || classifyGameMatch(query, current) !== 'match') return null;
-  return (gameInfoCache.get(detail ? `${current}|detail` : current) || gameInfoCache.get(`${current}|detail`))?.data || null;
+  return (
+    (gameInfoCache.get(detail ? `${current}|detail` : current) || gameInfoCache.get(`${current}|detail`))?.data || null
+  );
 }
 
 async function getGameInfo(gameName, opts) {
@@ -335,9 +348,7 @@ async function getGameInfo(gameName, opts) {
 // --- Seguidores ---
 async function getFollowerCount(broadcasterId) {
   try {
-    const res = await helixFetch(
-      `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${broadcasterId}`
-    );
+    const res = await helixFetch(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${broadcasterId}`);
     const data = await res.json();
     return data.total ?? null;
   } catch (e) {
@@ -348,7 +359,10 @@ async function getFollowerCount(broadcasterId) {
 
 // user_id de Twitch a partir del login (null si no existe o falla la consulta)
 async function getUserIdByLogin(login) {
-  const clean = String(login || '').replace(/^@/, '').trim().toLowerCase();
+  const clean = String(login || '')
+    .replace(/^@/, '')
+    .trim()
+    .toLowerCase();
   if (!/^\w{1,25}$/.test(clean)) return null;
   try {
     const res = await helixFetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(clean)}`);
@@ -363,16 +377,12 @@ async function getUserIdByLogin(login) {
 // --- Info del canal de un raider ---
 async function getChannelInfo(username) {
   try {
-    const userRes = await helixFetch(
-      `https://api.twitch.tv/helix/users?login=${username}`
-    );
+    const userRes = await helixFetch(`https://api.twitch.tv/helix/users?login=${username}`);
     const userData = await userRes.json();
     const userId = userData.data?.[0]?.id;
     if (!userId) return null;
 
-    const channelRes = await helixFetch(
-      `https://api.twitch.tv/helix/channels?broadcaster_id=${userId}`
-    );
+    const channelRes = await helixFetch(`https://api.twitch.tv/helix/channels?broadcaster_id=${userId}`);
     const channelData = await channelRes.json();
     return channelData.data?.[0] || null;
   } catch (e) {
@@ -386,17 +396,14 @@ async function getChannelInfo(username) {
 async function createStreamMarker(description = 'Momento epico') {
   const broadcasterId = channelConfig.broadcaster_id;
   try {
-    const res = await helixFetch(
-      'https://api.twitch.tv/helix/streams/markers',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: broadcasterId,
-          description: description.slice(0, 140)
-        })
-      }
-    );
+    const res = await helixFetch('https://api.twitch.tv/helix/streams/markers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: broadcasterId,
+        description: description.slice(0, 140),
+      }),
+    });
     const data = await res.json();
     if (data.data && data.data[0] && data.data[0].id) {
       logger.info('Marker creado: ' + data.data[0].id + ' - ' + description);
@@ -411,8 +418,19 @@ async function createStreamMarker(description = 'Momento epico') {
 }
 
 module.exports = {
-  getStreamInfo, getCurrentGame,
-  createClip, createStreamMarker, getGameInfo, lookupGameInfo, getFollowerCount, getChannelInfo, getUserIdByLogin,
-  refreshBroadcasterToken, loadBroadcasterTokens,
-  validateBotToken, refreshBotToken, ensureBotToken, refreshBotTokenIfNeeded,
+  getStreamInfo,
+  getCurrentGame,
+  createClip,
+  createStreamMarker,
+  getGameInfo,
+  lookupGameInfo,
+  getFollowerCount,
+  getChannelInfo,
+  getUserIdByLogin,
+  refreshBroadcasterToken,
+  loadBroadcasterTokens,
+  validateBotToken,
+  refreshBotToken,
+  ensureBotToken,
+  refreshBotTokenIfNeeded,
 };

@@ -13,11 +13,10 @@ require('dotenv').config();
 const API = 'https://api.twitch.tv/helix/eventsub/subscriptions';
 const args = process.argv.slice(2);
 const PRUNE = args.includes('--prune');
-const urlArg = args.find(a => a.startsWith('http'));
+const urlArg = args.find((a) => a.startsWith('http'));
 
 const DEFAULT_URL = 'https://parlusorum-bot-0j8s.onrender.com';
-const expectedBase = (urlArg || process.env.PUBLIC_URL || DEFAULT_URL)
-  .trim().replace(/\/+$/, '');
+const expectedBase = (urlArg || process.env.PUBLIC_URL || DEFAULT_URL).trim().replace(/\/+$/, '');
 const expectedCallback = `${expectedBase}/eventsub`;
 
 async function getAppToken() {
@@ -27,8 +26,8 @@ async function getAppToken() {
     body: new URLSearchParams({
       client_id: process.env.CLIENT_ID,
       client_secret: process.env.CLIENT_SECRET,
-      grant_type: 'client_credentials'
-    })
+      grant_type: 'client_credentials',
+    }),
   });
   const data = await res.json();
   if (!data.access_token) throw new Error(`No se pudo obtener app token: ${JSON.stringify(data)}`);
@@ -58,7 +57,10 @@ async function report(label, headers) {
     console.log(`  ❌ No se pudo listar: ${e.message}`);
     return;
   }
-  if (subs.length === 0) { console.log('  (ninguna suscripción)'); return; }
+  if (subs.length === 0) {
+    console.log('  (ninguna suscripción)');
+    return;
+  }
 
   const stale = [];
   for (const s of subs) {
@@ -71,7 +73,10 @@ async function report(label, headers) {
 
   if (stale.length === 0) return;
   console.log(`\n  ${stale.length} suscripción(es) apuntan a otra URL.`);
-  if (!PRUNE) { console.log('  Ejecuta con --prune para borrarlas.'); return; }
+  if (!PRUNE) {
+    console.log('  Ejecuta con --prune para borrarlas.');
+    return;
+  }
   for (const s of stale) {
     const res = await fetch(`${API}?id=${s.id}`, { method: 'DELETE', headers });
     console.log(res.ok ? `  🗑️  Borrada ${s.type} (${s.id})` : `  ❌ Error borrando ${s.type}: HTTP ${res.status}`);
@@ -88,8 +93,11 @@ async function report(label, headers) {
   const appToken = await getAppToken();
   await report('App token', {
     'Client-ID': process.env.CLIENT_ID,
-    'Authorization': `Bearer ${appToken}`
+    Authorization: `Bearer ${appToken}`,
   });
 
   console.log('');
-})().catch(e => { console.error(`❌ ${e.message}`); process.exit(1); });
+})().catch((e) => {
+  console.error(`❌ ${e.message}`);
+  process.exit(1);
+});

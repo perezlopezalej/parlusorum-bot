@@ -21,7 +21,7 @@ function getClient() {
       return null;
     }
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-      db: { schema: 'public' }
+      db: { schema: 'public' },
     });
   }
   return supabase;
@@ -31,7 +31,10 @@ function getClient() {
 function forgetUserInCache(userIds) {
   for (const id of userIds || []) {
     const key = String(id);
-    if (pendingSaves.has(key)) { clearTimeout(pendingSaves.get(key)); pendingSaves.delete(key); }
+    if (pendingSaves.has(key)) {
+      clearTimeout(pendingSaves.get(key));
+      pendingSaves.delete(key);
+    }
     if (usersCache) delete usersCache[key];
   }
 }
@@ -57,14 +60,21 @@ async function loadUsers() {
   if (usersCache && Date.now() - cacheLastLoaded < CACHE_TTL) return usersCache;
 
   const db = getClient();
-  if (!db) { usersCache = usersCache || {}; return usersCache; }
+  if (!db) {
+    usersCache = usersCache || {};
+    return usersCache;
+  }
 
   try {
     // Supabase corta en 1000 filas por petición: paginar con range()
     const PAGE = 1000;
     const rows = [];
     for (let from = 0; ; from += PAGE) {
-      const { data, error } = await db.from('users').select('*').order('user_id').range(from, from + PAGE - 1);
+      const { data, error } = await db
+        .from('users')
+        .select('*')
+        .order('user_id')
+        .range(from, from + PAGE - 1);
       if (error) throw error;
       rows.push(...(data || []));
       if (!data || data.length < PAGE) break;
@@ -78,7 +88,7 @@ async function loadUsers() {
         firstSeen: row.first_seen,
         lastSeen: row.last_seen,
         messageCount: row.message_count,
-        achievements: row.achievements || []
+        achievements: row.achievements || [],
       };
     }
     cacheLastLoaded = Date.now();
@@ -99,26 +109,32 @@ async function saveUser(userId, userData) {
 
   // Debounce por usuario — 3 segundos
   if (pendingSaves.has(userId)) clearTimeout(pendingSaves.get(userId));
-  pendingSaves.set(userId, setTimeout(async () => {
-    pendingSaves.delete(userId);
-    const db = getClient();
-    if (!db) return;
+  pendingSaves.set(
+    userId,
+    setTimeout(async () => {
+      pendingSaves.delete(userId);
+      const db = getClient();
+      if (!db) return;
 
-    try {
-      const { error } = await db.from('users').upsert({
-        user_id: userId,
-        username: userData.username,
-        first_seen: userData.firstSeen,
-        last_seen: userData.lastSeen,
-        message_count: userData.messageCount || 0,
-        achievements: userData.achievements || []
-      }, { onConflict: 'user_id' });
+      try {
+        const { error } = await db.from('users').upsert(
+          {
+            user_id: userId,
+            username: userData.username,
+            first_seen: userData.firstSeen,
+            last_seen: userData.lastSeen,
+            message_count: userData.messageCount || 0,
+            achievements: userData.achievements || [],
+          },
+          { onConflict: 'user_id' },
+        );
 
-      if (error) throw error;
-    } catch (e) {
-      logger.error(`Error guardando usuario ${userId}: ${e.message}`);
-    }
-  }, 3000));
+        if (error) throw error;
+      } catch (e) {
+        logger.error(`Error guardando usuario ${userId}: ${e.message}`);
+      }
+    }, 3000),
+  );
 }
 
 // Compatibilidad con el sistema antiguo — saveUsers recibe el objeto completo
@@ -139,10 +155,14 @@ async function startStreamSession(game) {
   if (!db) return null;
 
   try {
-    const { data, error } = await db.from('stream_sessions').insert({
-      started_at: new Date().toISOString(),
-      game: game || null
-    }).select().single();
+    const { data, error } = await db
+      .from('stream_sessions')
+      .insert({
+        started_at: new Date().toISOString(),
+        game: game || null,
+      })
+      .select()
+      .single();
 
     if (error) throw error;
     currentSessionId = data.id;
@@ -159,15 +179,18 @@ async function endStreamSession(stats) {
   if (!db || !currentSessionId) return;
 
   try {
-    const { error } = await db.from('stream_sessions').update({
-      ended_at: new Date().toISOString(),
-      duration_minutes: stats.durationMinutes || 0,
-      game: stats.game || null,
-      peak_viewers: stats.peakViewers || 0,
-      total_messages: stats.totalMessages || 0,
-      death_count: stats.deathCount || 0,
-      top_commands: stats.topCommands || {}
-    }).eq('id', currentSessionId);
+    const { error } = await db
+      .from('stream_sessions')
+      .update({
+        ended_at: new Date().toISOString(),
+        duration_minutes: stats.durationMinutes || 0,
+        game: stats.game || null,
+        peak_viewers: stats.peakViewers || 0,
+        total_messages: stats.totalMessages || 0,
+        death_count: stats.deathCount || 0,
+        top_commands: stats.topCommands || {},
+      })
+      .eq('id', currentSessionId);
 
     if (error) throw error;
     logger.info(`📺 Sesión de stream cerrada: ID ${currentSessionId}`);
@@ -176,7 +199,9 @@ async function endStreamSession(stats) {
   }
 }
 
-function getCurrentSessionId() { return currentSessionId; }
+function getCurrentSessionId() {
+  return currentSessionId;
+}
 
 // ─── MUERTES DE LA SESIÓN ─────────────────────────────────────────────────────
 // Usa stream_sessions.death_count (ya existe): se escribe con retardo y se lee al arrancar.
@@ -213,7 +238,10 @@ function saveSessionBosses(count) {
       const { error } = await db.from('stream_sessions').update({ boss_count: count }).eq('id', currentSessionId);
       if (error) throw error;
     } catch (e) {
-      if (!_bossWarned) { _bossWarned = true; logger.warn(`Jefes no persistidos (¿falta la migración 008?): ${e.message}`); }
+      if (!_bossWarned) {
+        _bossWarned = true;
+        logger.warn(`Jefes no persistidos (¿falta la migración 008?): ${e.message}`);
+      }
     }
   }, DEATHS_SAVE_DELAY_MS);
   _bossTimer.unref?.();
@@ -238,7 +266,8 @@ async function getSessionsBossesByGame() {
   const db = getClient();
   if (!db) return [];
   try {
-    const { data, error } = await db.from('stream_sessions')
+    const { data, error } = await db
+      .from('stream_sessions')
       .select('id, game, boss_count')
       .not('game', 'is', null)
       .gt('boss_count', 0)
@@ -254,9 +283,11 @@ async function getSessionsBossesByGame() {
 // Sesión abierta (sin ended_at) más reciente que empezó con el stream en curso
 function pickOpenSession(rows, streamStartedAtMs) {
   if (!Number.isFinite(streamStartedAtMs)) return null;
-  return (rows || [])
-    .filter(r => !r.ended_at && new Date(r.started_at).getTime() >= streamStartedAtMs - SESSION_MATCH_TOLERANCE_MS)
-    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0] || null;
+  return (
+    (rows || [])
+      .filter((r) => !r.ended_at && new Date(r.started_at).getTime() >= streamStartedAtMs - SESSION_MATCH_TOLERANCE_MS)
+      .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0] || null
+  );
 }
 
 // Al arrancar con el stream en directo: recupera la sesión abierta y devuelve sus muertes (o null)
@@ -264,7 +295,8 @@ async function restoreOpenSession(streamStartedAtMs) {
   const db = getClient();
   if (!db) return null;
   try {
-    const { data, error } = await db.from('stream_sessions')
+    const { data, error } = await db
+      .from('stream_sessions')
       .select('id, started_at, ended_at, death_count')
       .is('ended_at', null)
       .order('started_at', { ascending: false })
@@ -297,7 +329,10 @@ function saveSessionNarrative(events) {
       const { error } = await db.from('stream_sessions').update({ narrative: events }).eq('id', currentSessionId);
       if (error) throw error;
     } catch (e) {
-      if (!_narrativeWarned) { _narrativeWarned = true; logger.warn(`Narrativa no persistida (¿falta la columna narrative?): ${e.message}`); }
+      if (!_narrativeWarned) {
+        _narrativeWarned = true;
+        logger.warn(`Narrativa no persistida (¿falta la columna narrative?): ${e.message}`);
+      }
     }
   }, NARRATIVE_SAVE_DELAY_MS);
   _narrativeTimer.unref?.();
@@ -322,7 +357,8 @@ async function getSessionsDeathsByGame() {
   const db = getClient();
   if (!db) return [];
   try {
-    const { data, error } = await db.from('stream_sessions')
+    const { data, error } = await db
+      .from('stream_sessions')
       .select('id, game, death_count')
       .not('game', 'is', null)
       .gt('death_count', 0)
@@ -340,7 +376,10 @@ async function countSessionsOfGame(game) {
   const db = getClient();
   if (!db || !game) return null;
   try {
-    const { count, error } = await db.from('stream_sessions').select('id', { count: 'exact', head: true }).eq('game', game);
+    const { count, error } = await db
+      .from('stream_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('game', game);
     if (error) throw error;
     return Number.isInteger(count) ? count : null;
   } catch (e) {
@@ -384,7 +423,7 @@ async function saveStreamMemory(memoryData) {
       summary: memoryData.summary || null,
       highlights: memoryData.highlights || [],
       recurring_phrases: memoryData.recurringPhrases || [],
-      active_users: [] // privacidad: ya no se guardan nicks (nunca se leían)
+      active_users: [], // privacidad: ya no se guardan nicks (nunca se leían)
     });
 
     if (error) throw error;
@@ -425,7 +464,7 @@ async function saveHighlight(triggerMessages, markerId, description) {
       session_id: currentSessionId,
       trigger_messages: [], // privacidad: ya no se guardan mensajes literales del chat
       marker_id: markerId || null,
-      description: description || null
+      description: description || null,
     });
     return { error: error || null };
   } catch (e) {
@@ -455,12 +494,12 @@ async function incrementChannelStat(field, delta = 1) {
   const db = getClient();
   if (!db) return;
   try {
-    const current = channelStatsCache || await getChannelStats() || { total_wins: 0, total_losses: 0 };
+    const current = channelStatsCache || (await getChannelStats()) || { total_wins: 0, total_losses: 0 };
     const updated = {
       id: 1,
       total_wins: current.total_wins || 0,
       total_losses: current.total_losses || 0,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     };
     updated[field] = Math.max(0, (updated[field] || 0) + delta);
     channelStatsCache = { ...updated };
@@ -478,14 +517,17 @@ async function saveTokens({ broadcaster_token, broadcaster_refresh_token, bot_to
   const db = getClient();
   if (!db) return;
   try {
-    const { error } = await db.from('channel_config').upsert({
-      id: 'broadcaster',
-      broadcaster_token,
-      broadcaster_refresh_token,
-      bot_token,
-      bot_refresh_token,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'id' });
+    const { error } = await db.from('channel_config').upsert(
+      {
+        id: 'broadcaster',
+        broadcaster_token,
+        broadcaster_refresh_token,
+        bot_token,
+        bot_refresh_token,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    );
     if (error) throw error;
     logger.info('💾 Tokens persistidos en Supabase');
   } catch (e) {
@@ -525,9 +567,7 @@ async function migrateFromNpoint() {
 
   try {
     // Comprobar si ya hay usuarios en Supabase
-    const { count, error: countError } = await db
-      .from('users')
-      .select('*', { count: 'exact', head: true });
+    const { count, error: countError } = await db.from('users').select('*', { count: 'exact', head: true });
 
     if (countError) throw countError;
     if (count > 0) {
@@ -551,7 +591,7 @@ async function migrateFromNpoint() {
       first_seen: userData.firstSeen || new Date().toISOString(),
       last_seen: userData.lastSeen || new Date().toISOString(),
       message_count: userData.messageCount || 0,
-      achievements: userData.achievements || []
+      achievements: userData.achievements || [],
     }));
 
     if (rows.length === 0) return;
@@ -595,7 +635,9 @@ function persistCooldown(key, expiresAt) {
   if (!db) return;
   db.from('cooldowns')
     .upsert({ key, expires_at: new Date(expiresAt).toISOString() }, { onConflict: 'key' })
-    .then(({ error }) => { if (error) logger.warn(`persistCooldown ${key}: ${error.message}`); })
+    .then(({ error }) => {
+      if (error) logger.warn(`persistCooldown ${key}: ${error.message}`);
+    })
     .catch(() => {});
 }
 
@@ -605,7 +647,9 @@ function deleteCooldown(key) {
   db.from('cooldowns')
     .delete()
     .eq('key', key)
-    .then(({ error }) => { if (error) logger.warn(`deleteCooldown ${key}: ${error.message}`); })
+    .then(({ error }) => {
+      if (error) logger.warn(`deleteCooldown ${key}: ${error.message}`);
+    })
     .catch(() => {});
 }
 
@@ -617,14 +661,20 @@ const FACT_CONFLICT = 'user_id,channel,fact_type';
 function saveUserFact(userId, factType, value) {
   const db = getClient();
   if (!db || !userId) return;
-  db.from('user_facts').upsert({
-    user_id: String(userId),
-    channel: CHANNEL_NAME,
-    fact_type: factType,
-    value: String(value),
-    updated_at: new Date().toISOString()
-  }, { onConflict: FACT_CONFLICT })
-    .then(({ error }) => { if (error) logger.warn(`saveUserFact ${factType}: ${error.message}`); })
+  db.from('user_facts')
+    .upsert(
+      {
+        user_id: String(userId),
+        channel: CHANNEL_NAME,
+        fact_type: factType,
+        value: String(value),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: FACT_CONFLICT },
+    )
+    .then(({ error }) => {
+      if (error) logger.warn(`saveUserFact ${factType}: ${error.message}`);
+    })
     .catch(() => {});
 }
 
@@ -654,17 +704,25 @@ async function incrementUserCounter(userId, factType) {
   if (!db || !userId) return null;
   try {
     const id = String(userId);
-    const { data, error } = await db.from('user_facts').select('value')
-      .eq('user_id', id).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
+    const { data, error } = await db
+      .from('user_facts')
+      .select('value')
+      .eq('user_id', id)
+      .eq('channel', CHANNEL_NAME)
+      .eq('fact_type', factType)
+      .maybeSingle();
     if (error) throw error;
     const next = (parseInt(data?.value, 10) || 0) + 1;
-    const { error: upErr } = await db.from('user_facts').upsert({
-      user_id: id,
-      channel: CHANNEL_NAME,
-      fact_type: factType,
-      value: String(next),
-      updated_at: new Date().toISOString()
-    }, { onConflict: FACT_CONFLICT });
+    const { error: upErr } = await db.from('user_facts').upsert(
+      {
+        user_id: id,
+        channel: CHANNEL_NAME,
+        fact_type: factType,
+        value: String(next),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: FACT_CONFLICT },
+    );
     if (upErr) throw upErr;
     return next;
   } catch (e) {
@@ -678,8 +736,13 @@ async function getUserCounter(userId, factType) {
   const db = getClient();
   if (!db || !userId) return 0;
   try {
-    const { data, error } = await db.from('user_facts').select('value')
-      .eq('user_id', String(userId)).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
+    const { data, error } = await db
+      .from('user_facts')
+      .select('value')
+      .eq('user_id', String(userId))
+      .eq('channel', CHANNEL_NAME)
+      .eq('fact_type', factType)
+      .maybeSingle();
     if (error) throw error;
     return parseInt(data?.value, 10) || 0;
   } catch (e) {
@@ -693,20 +756,31 @@ async function getCounterLeaderboard(factType, limit) {
   const db = getClient();
   if (!db) return [];
   try {
-    const { data, error } = await db.from('user_facts').select('user_id, value')
-      .eq('channel', CHANNEL_NAME).eq('fact_type', factType);
+    const { data, error } = await db
+      .from('user_facts')
+      .select('user_id, value')
+      .eq('channel', CHANNEL_NAME)
+      .eq('fact_type', factType);
     if (error) throw error;
     const top = (data || [])
-      .filter(r => r.user_id)
-      .map(r => ({ userId: r.user_id, count: parseInt(r.value, 10) || 0 }))
-      .filter(r => r.count > 0)
+      .filter((r) => r.user_id)
+      .map((r) => ({ userId: r.user_id, count: parseInt(r.value, 10) || 0 }))
+      .filter((r) => r.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, limit);
     if (!top.length) return [];
-    const { data: users, error: uErr } = await db.from('users').select('user_id, username').in('user_id', top.map(r => r.userId));
+    const { data: users, error: uErr } = await db
+      .from('users')
+      .select('user_id, username')
+      .in(
+        'user_id',
+        top.map((r) => r.userId),
+      );
     if (uErr) throw uErr;
-    const names = new Map((users || []).map(u => [u.user_id, u.username]));
-    return top.filter(r => names.get(r.userId)).map(r => ({ ...r, username: String(names.get(r.userId)).toLowerCase() }));
+    const names = new Map((users || []).map((u) => [u.user_id, u.username]));
+    return top
+      .filter((r) => names.get(r.userId))
+      .map((r) => ({ ...r, username: String(names.get(r.userId)).toLowerCase() }));
   } catch (e) {
     logger.warn(`getCounterLeaderboard ${factType}: ${e.message}`);
     return [];
@@ -726,7 +800,7 @@ async function purgeInactiveUsers({ usersBefore, factsBefore }) {
   let facts = 0;
   const { data, error } = await db.from('users').select('user_id').lt('last_seen', usersBefore);
   if (error) throw error;
-  const ids = (data || []).map(r => r.user_id);
+  const ids = (data || []).map((r) => r.user_id);
   for (const part of chunk(ids, 100)) {
     const f = await db.from('user_facts').delete({ count: 'exact' }).in('user_id', part);
     if (f.error) throw f.error;
@@ -736,10 +810,18 @@ async function purgeInactiveUsers({ usersBefore, factsBefore }) {
     users += u.count || 0;
     if (usersCache) for (const id of part) delete usersCache[id];
   }
-  const stale = await db.from('user_facts').delete({ count: 'exact' }).neq('fact_type', 'trivia_wins').lt('updated_at', factsBefore);
+  const stale = await db
+    .from('user_facts')
+    .delete({ count: 'exact' })
+    .neq('fact_type', 'trivia_wins')
+    .lt('updated_at', factsBefore);
   if (stale.error) throw stale.error;
   facts += stale.count || 0;
-  const orphan = await db.from('user_facts').delete({ count: 'exact' }).eq('fact_type', 'trivia_wins').lt('updated_at', usersBefore);
+  const orphan = await db
+    .from('user_facts')
+    .delete({ count: 'exact' })
+    .eq('fact_type', 'trivia_wins')
+    .lt('updated_at', usersBefore);
   if (orphan.error) throw orphan.error;
   facts += orphan.count || 0;
   return { users, facts };
@@ -783,8 +865,10 @@ async function upsertLoreRows(rows) {
   const db = getClient();
   if (!db || !rows.length) return false;
   try {
-    const { error } = await db.from('channel_lore')
-      .upsert(rows.map(r => ({ ...r, channel: CHANNEL_NAME })), { onConflict: 'channel,term_key' });
+    const { error } = await db.from('channel_lore').upsert(
+      rows.map((r) => ({ ...r, channel: CHANNEL_NAME })),
+      { onConflict: 'channel,term_key' },
+    );
     if (error) throw error;
     return true;
   } catch (e) {
@@ -804,10 +888,14 @@ async function updateLoreStatus(id, status, fromStatuses, approver = null) {
     patch.approved_by = approver ? String(approver).slice(0, 50) : 'mod';
     patch.approved_at = new Date().toISOString();
   }
-  const { data, error } = await db.from('channel_lore')
+  const { data, error } = await db
+    .from('channel_lore')
     .update(patch)
-    .eq('id', id).eq('channel', CHANNEL_NAME).in('status', fromStatuses)
-    .select().maybeSingle();
+    .eq('id', id)
+    .eq('channel', CHANNEL_NAME)
+    .in('status', fromStatuses)
+    .select()
+    .maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -835,8 +923,12 @@ async function getSessionChatLog(sessionId) {
   if (!db || !sessionId) return [];
   const out = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from('chat_log').select('*')
-      .eq('session_id', sessionId).order('created_at', { ascending: true }).range(from, from + 999);
+    const { data, error } = await db
+      .from('chat_log')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
+      .range(from, from + 999);
     if (error) throw error;
     out.push(...(data || []));
     if (!data || data.length < 1000) break;
@@ -857,15 +949,19 @@ async function insertQualityLog(rows) {
 async function getSessionsWithoutQualityLog(olderThan) {
   const db = getClient();
   if (!db) return [];
-  const { data, error } = await db.from('chat_log').select('session_id')
-    .lt('created_at', olderThan).not('session_id', 'is', null).limit(5000);
+  const { data, error } = await db
+    .from('chat_log')
+    .select('session_id')
+    .lt('created_at', olderThan)
+    .not('session_id', 'is', null)
+    .limit(5000);
   if (error) throw error;
-  const ids = [...new Set((data || []).map(r => r.session_id))];
+  const ids = [...new Set((data || []).map((r) => r.session_id))];
   if (!ids.length) return [];
   const done = await db.from('quality_log').select('session_id').eq('kind', 'summary').in('session_id', ids);
   if (done.error) throw done.error;
-  const have = new Set((done.data || []).map(r => r.session_id));
-  return ids.filter(id => !have.has(id));
+  const have = new Set((done.data || []).map((r) => r.session_id));
+  return ids.filter((id) => !have.has(id));
 }
 
 // Devuelve cuántas filas borró
@@ -884,7 +980,9 @@ async function saveBotState(value) {
   const db = getClient();
   if (!db) return false;
   try {
-    const { error } = await db.from('bot_state').upsert({ key: 'main', value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    const { error } = await db
+      .from('bot_state')
+      .upsert({ key: 'main', value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     if (error) throw error;
     return true;
   } catch (e) {

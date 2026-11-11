@@ -10,23 +10,57 @@
     { "name": "estadisticas", "help": "Stats del stream en tiempo real." },
     { "name": "uptime", "help": "Tiempo que lleva activo el stream (o el bot si está offline)." },
     { "name": "score", "help": "Marcador de bosses y muertes. Session actual + total histórico." },
-    { "name": "muertes", "help": "Contador de muertes. Mods: !muertes +N (1-10) / !muertes reset. Total de un juego: !muertes <juego>" },
-    { "name": "tiempo", "help": "Desde cuándo te tiene fichado el bot (tu primer mensaje registrado, no el follow). Uso: !tiempo [@usuario]" },
-    { "name": "fua_olvidame", "help": "Borra todos tus datos del bot (chat, registro, estadísticas, memoria y lore que te mencione)." },
+    {
+      "name": "muertes",
+      "help": "Contador de muertes. Mods: !muertes +N (1-10) / !muertes reset. Total de un juego: !muertes <juego>"
+    },
+    {
+      "name": "tiempo",
+      "help": "Desde cuándo te tiene fichado el bot (tu primer mensaje registrado, no el follow). Uso: !tiempo [@usuario]"
+    },
+    {
+      "name": "fua_olvidame",
+      "help": "Borra todos tus datos del bot (chat, registro, estadísticas, memoria y lore que te mencione)."
+    },
     { "name": "privacidad", "help": "Qué guarda el bot, cuánto tiempo y cómo borrarlo." },
     { "name": "comandos", "help": "Lista de comandos disponibles." },
     { "name": "ayuda", "help": "Ayuda de un comando. Uso: !ayuda [comando]" },
     { "name": "silencio", "mod": true, "help": "(Mods) Activa/desactiva todos los mensajes automaticos del bot." },
-     { "name": "fua_callate", "mod": true, "help": "(Mods) Silencio temporal que se levanta solo. Uso: !fua_callate <minutos> (1-120); !fua_callate 0 lo cancela." },
-    { "name": "fua_modo", "mod": true, "help": "(Mods) !fua_modo reactivo: solo responde a menciones y comandos (sin cohost, timers, hooks ni resumen). !fua_modo normal lo desactiva." },
-   { "name": "juega", "mod": true, "help": "(Mods) Indica quién juega ahora. Uso: !juega pao | manu | ambos (también «los dos»; vuelve a Manu al empezar cada stream)." },
+    {
+      "name": "fua_callate",
+      "mod": true,
+      "help": "(Mods) Silencio temporal que se levanta solo. Uso: !fua_callate <minutos> (1-120); !fua_callate 0 lo cancela."
+    },
+    {
+      "name": "fua_modo",
+      "mod": true,
+      "help": "(Mods) !fua_modo reactivo: solo responde a menciones y comandos (sin cohost, timers, hooks ni resumen). !fua_modo normal lo desactiva."
+    },
+    {
+      "name": "juega",
+      "mod": true,
+      "help": "(Mods) Indica quién juega ahora. Uso: !juega pao | manu | ambos (también «los dos»; vuelve a Manu al empezar cada stream)."
+    },
     { "name": "brb", "mod": true, "help": "(Mods) Avisa de ausencia del streamer con recordatorio cada 5 min." },
     { "name": "so", "mod": true, "help": "(Mods) Shoutout con IA. Uso: !so @usuario" },
-    { "name": "boss", "help": "Jefes derrotados en el stream. Mods: !boss +N (1-10) / !boss -N (sin bajar de 0) / !boss reset. Total de un juego: !boss <juego>" },
+    {
+      "name": "boss",
+      "help": "Jefes derrotados en el stream. Mods: !boss +N (1-10) / !boss -N (sin bajar de 0) / !boss reset. Total de un juego: !boss <juego>"
+    },
     { "name": "clip", "mod": true, "help": "(Mods) Crea un clip del momento actual." },
     { "name": "marker", "mod": true, "help": "(Mods) Marca un momento en el VOD. Uso: !marker [descripcion]" },
     { "name": "resumen", "mod": true, "help": "(Mods) Resumen completo del stream actual." },
-    { "name": "fua_olvidar", "mod": true, "modOnlyVisible": true, "help": "(Mods) Borra todos los datos de un usuario. Uso: !fua_olvidar @usuario" },
-    { "name": "lore", "mod": true, "modOnlyVisible": true, "help": "(Mods) Lore del canal. Uso: !lore | !lore aprobar <id> | !lore borrar <id>" }
+    {
+      "name": "fua_olvidar",
+      "mod": true,
+      "modOnlyVisible": true,
+      "help": "(Mods) Borra todos los datos de un usuario. Uso: !fua_olvidar @usuario"
+    },
+    {
+      "name": "lore",
+      "mod": true,
+      "modOnlyVisible": true,
+      "help": "(Mods) Lore del canal. Uso: !lore | !lore aprobar <id> | !lore borrar <id>"
+    }
   ]
 }

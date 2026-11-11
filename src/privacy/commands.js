@@ -11,14 +11,27 @@ const { forgetUser } = require('./forget');
 const COOLDOWN_MS = 60 * 1000;
 const PRIVACY_COOLDOWN_MS = 30 * 1000;
 const cooldowns = new Map(); // `${comando}-${quien}` → hasta cuándo
-setInterval(() => { const now = Date.now(); for (const [k, v] of cooldowns) if (v < now) cooldowns.delete(k); }, 10 * 60 * 1000).unref();
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [k, v] of cooldowns) if (v < now) cooldowns.delete(k);
+  },
+  10 * 60 * 1000,
+).unref();
 
 const fill = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
 
 // Cuentas a las que un mod no puede borrar los datos: el bot, el streamer y el canal
 function protectedNames() {
-  return new Set([process.env.BOT_USERNAME, process.env.CHANNEL, channelConfig.streamer_username, channelConfig.creator_username]
-    .map(n => String(n || '').trim().toLowerCase()).filter(Boolean));
+  return new Set(
+    [process.env.BOT_USERNAME, process.env.CHANNEL, channelConfig.streamer_username, channelConfig.creator_username]
+      .map((n) =>
+        String(n || '')
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean),
+  );
 }
 
 function onCooldown(key, ms, now) {
@@ -34,10 +47,14 @@ async function resolveUserId(login) {
     const users = await loadUsers();
     const entry = Object.entries(users || {}).find(([, u]) => String(u.username || '').toLowerCase() === login);
     if (entry) return entry[0];
-  } catch (e) { logger.warn(`!fua_olvidar: no se pudo leer users: ${e.message}`); }
+  } catch (e) {
+    logger.warn(`!fua_olvidar: no se pudo leer users: ${e.message}`);
+  }
   try {
     return await require('../twitch/api').getUserIdByLogin(login);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // !fua_olvidame: cualquiera borra sus propios datos
@@ -66,7 +83,10 @@ async function handleForgetUser(client, channel, tags, args, isMod, deps = {}) {
   const { forget = forgetUser, resolveId = resolveUserId, now = Date.now() } = deps;
   const username = tags['display-name'] || tags.username;
   if (!isMod) return client.say(channel, truncate(fill(messages.mods_only, { username })));
-  const target = String(args[1] || '').replace(/^@/, '').trim().toLowerCase();
+  const target = String(args[1] || '')
+    .replace(/^@/, '')
+    .trim()
+    .toLowerCase();
   if (!/^\w{3,25}$/.test(target)) return client.say(channel, truncate(fill(messages.usage_olvidar, { username })));
   if (protectedNames().has(target)) return client.say(channel, truncate(fill(messages.not_allowed, { username })));
   if (onCooldown(`olvidar-${tags['user-id'] || username}`, COOLDOWN_MS / 2, now)) {
@@ -77,7 +97,10 @@ async function handleForgetUser(client, channel, tags, args, isMod, deps = {}) {
     const res = await forget({ userId, login: target });
     if (res.ok) logger.info(`🧹 Datos de ${target} olvidados a petición del mod ${username}`);
     else logger.warn(`!fua_olvidar ${target}: ${res.errors.join('; ')}`);
-    return client.say(channel, truncate(fill(res.ok ? messages.forgot_user : messages.forgot_error, { username, target })));
+    return client.say(
+      channel,
+      truncate(fill(res.ok ? messages.forgot_user : messages.forgot_error, { username, target })),
+    );
   } catch (e) {
     logger.error(`!fua_olvidar: ${e.message}`);
     return client.say(channel, truncate(fill(messages.forgot_error, { username, target })));

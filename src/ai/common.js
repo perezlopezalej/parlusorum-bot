@@ -20,7 +20,9 @@ function getFallback(type, mention = '') {
   return mention ? `${mention} ${msg}` : msg;
 }
 
-function getEventSubLiveStatus() { return getStreamIsLive(); }
+function getEventSubLiveStatus() {
+  return getStreamIsLive();
+}
 
 function getUserType(username, tags) {
   const lower = username.toLowerCase();
@@ -41,16 +43,28 @@ function isDirectedElsewhere(message) {
   return login !== BOT_LOGIN && login !== STREAMER_USERNAME && login !== 'parlusorum';
 }
 
-function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 // Respuesta fija a una pregunta de identidad (config/identity-replies.json): rota sin repetir la última de ese tipo
 const lastIdentityReply = {};
 
 function pickIdentityReply(kind) {
-  const pool = (identityReplies[kind] || []).filter(r => r !== lastIdentityReply[kind]);
+  const pool = (identityReplies[kind] || []).filter((r) => r !== lastIdentityReply[kind]);
   const pick = pool[Math.floor(Math.random() * pool.length)] || '';
   lastIdentityReply[kind] = pick;
   return pick;
 }
 
-module.exports = { CREATOR_USERNAME, STREAMER_USERNAME, isDirectedElsewhere, getEventSubLiveStatus, pickRandom, getUserType, GENERAL_TEMPERATURE, getFallback, pickIdentityReply };
+module.exports = {
+  CREATOR_USERNAME,
+  STREAMER_USERNAME,
+  isDirectedElsewhere,
+  getEventSubLiveStatus,
+  pickRandom,
+  getUserType,
+  GENERAL_TEMPERATURE,
+  getFallback,
+  pickIdentityReply,
+};

@@ -7,7 +7,7 @@ const supabase = require('../src/utils/supabase');
 const { runRetention } = require('../src/privacy/retention');
 
 const NOW = Date.parse('2026-11-11T12:00:00Z');
-const ago = ms => new Date(NOW - ms).toISOString();
+const ago = (ms) => new Date(NOW - ms).toISOString();
 const H = 3600_000;
 const D = 24 * H;
 
@@ -47,18 +47,33 @@ describe('caducidad de datos', () => {
   test('chat_log: borra lo de más de 24 h y conserva lo reciente', async () => {
     const r = await runRetention({ now: NOW });
     assert.equal(r.chat, 1);
-    assert.deepEqual(fake.rows('chat_log').map(x => x.id), [2]);
+    assert.deepEqual(
+      fake.rows('chat_log').map((x) => x.id),
+      [2],
+    );
   });
 
   test('quality_log: 30 días', async () => {
     await runRetention({ now: NOW });
-    assert.deepEqual(fake.rows('quality_log').map(x => x.id), [2]);
+    assert.deepEqual(
+      fake.rows('quality_log').map((x) => x.id),
+      [2],
+    );
   });
 
   test('usuarios: contadores caducan al año; hechos de texto a los 90 días', async () => {
     const r = await runRetention({ now: NOW });
-    assert.deepEqual(fake.rows('users').map(x => x.user_id).sort(), ['u-activo', 'u-medio']);
-    const facts = fake.rows('user_facts').map(f => `${f.user_id}/${f.fact_type}`).sort();
+    assert.deepEqual(
+      fake
+        .rows('users')
+        .map((x) => x.user_id)
+        .sort(),
+      ['u-activo', 'u-medio'],
+    );
+    const facts = fake
+      .rows('user_facts')
+      .map((f) => `${f.user_id}/${f.fact_type}`)
+      .sort();
     // u-viejo desaparece entero; u-medio conserva su contador (<1 año) pero pierde el hecho de texto (>90 d)
     assert.deepEqual(facts, ['u-activo/is_regular', 'u-activo/trivia_wins', 'u-medio/trivia_wins']);
     assert.equal(r.users, 1);
@@ -66,25 +81,44 @@ describe('caducidad de datos', () => {
 
   test('cooldowns: solo los caducados', async () => {
     await runRetention({ now: NOW });
-    assert.deepEqual(fake.rows('cooldowns').map(x => x.key), ['b']);
+    assert.deepEqual(
+      fake.rows('cooldowns').map((x) => x.key),
+      ['b'],
+    );
   });
 
   test('el registro de calidad se genera antes de borrar el chat', async () => {
     const order = [];
-    await runRetention({ now: NOW, beforeChatPurge: async () => { order.push('calidad'); assert.equal(fake.rows('chat_log').length, 2); } });
+    await runRetention({
+      now: NOW,
+      beforeChatPurge: async () => {
+        order.push('calidad');
+        assert.equal(fake.rows('chat_log').length, 2);
+      },
+    });
     order.push('hecho');
     assert.deepEqual(order, ['calidad', 'hecho']);
     assert.equal(fake.rows('chat_log').length, 1);
   });
 
   test('si el registro de calidad falla, el chat de 25 h aún se conserva (margen hasta 48 h)', async () => {
-    const r = await runRetention({ now: NOW, beforeChatPurge: async () => { throw new Error('fallo'); } });
+    const r = await runRetention({
+      now: NOW,
+      beforeChatPurge: async () => {
+        throw new Error('fallo');
+      },
+    });
     assert.equal(fake.rows('chat_log').length, 2);
     assert.match(r.errors[0], /registro de calidad/);
   });
 
   test('un fallo en un paso no impide los demás', async () => {
-    const db = { ...supabase, deleteQualityLogBefore: async () => { throw new Error('caído'); } };
+    const db = {
+      ...supabase,
+      deleteQualityLogBefore: async () => {
+        throw new Error('caído');
+      },
+    };
     const r = await runRetention({ now: NOW, db });
     assert.equal(r.chat, 1);
     assert.equal(r.users, 1);

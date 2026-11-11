@@ -6,7 +6,10 @@ const MAX_DEATHS_ADD = 10;
 // Interpreta los argumentos de !muertes (args[0] es el comando)
 // → { type: 'show' | 'reset' | 'add' | 'bad_format' | 'game', n?, game? }
 function parseMuertesArgs(args) {
-  const rest = args.slice(1).map(a => String(a).trim()).filter(Boolean);
+  const rest = args
+    .slice(1)
+    .map((a) => String(a).trim())
+    .filter(Boolean);
   if (rest.length === 0) return { type: 'show' };
   const first = rest[0].toLowerCase();
   if (first === 'reset' && rest.length === 1) return { type: 'reset' };
@@ -23,7 +26,10 @@ function parseMuertesArgs(args) {
 // !boss → muestra; +N suma, -N resta (mods), reset (mods), <juego> → total del juego
 // → { type: 'show' | 'add' | 'sub' | 'reset' | 'game' | 'bad_format', n?, game? }
 function parseBossArgs(args) {
-  const rest = args.slice(1).map(a => String(a).trim()).filter(Boolean);
+  const rest = args
+    .slice(1)
+    .map((a) => String(a).trim())
+    .filter(Boolean);
   if (!rest.length) return { type: 'show' };
   const first = rest[0].toLowerCase();
   if (first === 'reset' && rest.length === 1) return { type: 'reset' };
@@ -58,7 +64,7 @@ function sumGameDeaths(query, rows, liveSession = null, field = 'death_count') {
     if (!r.game || classifyGameMatch(query, r.game) !== 'match') continue;
     const live = liveSession && r.id === liveSession.id;
     if (live) seenLive = true;
-    const deaths = live ? liveSession.deaths : (r[field] || 0);
+    const deaths = live ? liveSession.deaths : r[field] || 0;
     if (deaths <= 0) continue;
     total += deaths;
     streams++;
@@ -89,10 +95,21 @@ function formatSince(fromMs, nowMs = Date.now()) {
 
 // Busca un usuario por nombre en el mapa { userId: { username, firstSeen } }
 function findUserByName(users, name) {
-  const target = String(name || '').replace(/^@/, '').trim().toLowerCase();
+  const target = String(name || '')
+    .replace(/^@/, '')
+    .trim()
+    .toLowerCase();
   if (!target) return null;
-  return Object.values(users || {}).find(u => String(u.username || '').toLowerCase() === target) || null;
+  return Object.values(users || {}).find((u) => String(u.username || '').toLowerCase() === target) || null;
 }
 
 module.exports = {
-  gameTotalReply, MAX_DEATHS_ADD, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName };
+  gameTotalReply,
+  MAX_DEATHS_ADD,
+  parseMuertesArgs,
+  parseBossArgs,
+  applyBossDelta,
+  sumGameDeaths,
+  formatSince,
+  findUserByName,
+};

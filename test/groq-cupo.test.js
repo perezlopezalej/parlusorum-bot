@@ -48,7 +48,10 @@ describe('contador de tokens por modelo', () => {
   });
 
   test('formatTokenUse muestra % del cupo y lo que queda', () => {
-    const txt = formatTokenUse({ stream: { m1: { total: 1000, calls: 3 } }, day: { m1: { total: 50000, calls: 9 } } }, 200000);
+    const txt = formatTokenUse(
+      { stream: { m1: { total: 1000, calls: 3 } }, day: { m1: { total: 50000, calls: 9 } } },
+      200000,
+    );
     assert.match(txt, /m1: 1000 este stream \(3 llamadas\), 50000 hoy \(25% de 200000, quedan ~150000\)/);
     assert.match(formatTokenUse({ stream: {}, day: {} }), /sin llamadas/);
   });

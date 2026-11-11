@@ -9,8 +9,14 @@ const say = [];
 const client = { say: (ch, msg) => say.push(msg) };
 const tags = (over = {}) => ({ 'display-name': 'Ana_Pro', username: 'ana_pro', 'user-id': 'A1', ...over });
 let calls;
-const okForget = async args => { calls.push(args); return { ok: true, counts: {}, errors: [], ids: [args.userId] }; };
-const failForget = async args => { calls.push(args); return { ok: false, counts: {}, errors: ['quality_log: boom'], ids: [] }; };
+const okForget = async (args) => {
+  calls.push(args);
+  return { ok: true, counts: {}, errors: [], ids: [args.userId] };
+};
+const failForget = async (args) => {
+  calls.push(args);
+  return { ok: false, counts: {}, errors: ['quality_log: boom'], ids: [] };
+};
 
 beforeEach(() => {
   say.length = 0;
@@ -33,7 +39,11 @@ describe('!fua_olvidame', () => {
   });
 
   test('si el borrado lanza una excepción, responde con error y no revienta', async () => {
-    await cmds.handleForgetMe(client, '#c', tags(), { forget: async () => { throw new Error('caído'); } });
+    await cmds.handleForgetMe(client, '#c', tags(), {
+      forget: async () => {
+        throw new Error('caído');
+      },
+    });
     assert.match(say[0], /no he podido borrar todo/);
   });
 
@@ -43,7 +53,10 @@ describe('!fua_olvidame', () => {
     await cmds.handleForgetMe(client, '#c', tags(), { forget: okForget, now: now + 10_000 });
     assert.equal(calls.length, 1);
     assert.match(say[1], /espera un momento/);
-    await cmds.handleForgetMe(client, '#c', tags({ 'display-name': 'Bob', username: 'bob', 'user-id': 'B2' }), { forget: okForget, now: now + 10_000 });
+    await cmds.handleForgetMe(client, '#c', tags({ 'display-name': 'Bob', username: 'bob', 'user-id': 'B2' }), {
+      forget: okForget,
+      now: now + 10_000,
+    });
     assert.equal(calls.length, 2);
     assert.equal(calls[1].userId, 'B2');
     await cmds.handleForgetMe(client, '#c', tags(), { forget: okForget, now: now + 61_000 });
@@ -52,29 +65,41 @@ describe('!fua_olvidame', () => {
 });
 
 describe('!fua_olvidar @usuario', () => {
-  const resolveId = async login => ({ bob_xx: 'B2' }[login] || null);
+  const resolveId = async (login) => ({ bob_xx: 'B2' })[login] || null;
 
   test('un no mod no puede, y no se borra nada', async () => {
-    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', '@bob_xx'], false, { forget: okForget, resolveId });
+    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', '@bob_xx'], false, {
+      forget: okForget,
+      resolveId,
+    });
     assert.equal(calls.length, 0);
     assert.match(say[0], /solo mods/);
   });
 
   test('un mod borra al usuario indicado (con @ y mayúsculas) usando su user_id', async () => {
-    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', '@Bob_XX'], true, { forget: okForget, resolveId });
+    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', '@Bob_XX'], true, {
+      forget: okForget,
+      resolveId,
+    });
     assert.deepEqual(calls, [{ userId: 'B2', login: 'bob_xx' }]);
     assert.match(say[0], /he borrado todos los datos de @bob_xx/);
   });
 
   test('si no se resuelve el id, borra igualmente por nick', async () => {
-    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', 'desconocido'], true, { forget: okForget, resolveId });
+    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', 'desconocido'], true, {
+      forget: okForget,
+      resolveId,
+    });
     assert.deepEqual(calls, [{ userId: null, login: 'desconocido' }]);
   });
 
   test('sin argumento o con uno no válido muestra el uso', async () => {
     for (const arg of [undefined, '', '@', 'a b', '@@@@', 'x'.repeat(30)]) {
       say.length = 0;
-      await cmds.handleForgetUser(client, '#c', tags({ 'user-id': 'M' + String(arg) }), ['fua_olvidar', arg], true, { forget: okForget, resolveId });
+      await cmds.handleForgetUser(client, '#c', tags({ 'user-id': 'M' + String(arg) }), ['fua_olvidar', arg], true, {
+        forget: okForget,
+        resolveId,
+      });
       assert.match(say[0], /uso: !fua_olvidar @usuario/, String(arg));
     }
     assert.equal(calls.length, 0);
@@ -82,14 +107,20 @@ describe('!fua_olvidar @usuario', () => {
 
   test('no se pueden borrar el bot ni el streamer', async () => {
     for (const target of ['dios_fua', '@DIOS_FUA', 'parlusorum']) {
-      await cmds.handleForgetUser(client, '#c', tags({ 'user-id': 'M' + target }), ['fua_olvidar', target], true, { forget: okForget, resolveId });
+      await cmds.handleForgetUser(client, '#c', tags({ 'user-id': 'M' + target }), ['fua_olvidar', target], true, {
+        forget: okForget,
+        resolveId,
+      });
     }
     assert.equal(calls.length, 0);
-    assert.ok(say.every(m => /no puedo borrar los datos de esa cuenta/.test(m)));
+    assert.ok(say.every((m) => /no puedo borrar los datos de esa cuenta/.test(m)));
   });
 
   test('si el borrado falla, avisa sin decir que está hecho', async () => {
-    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', 'bob_xx'], true, { forget: failForget, resolveId });
+    await cmds.handleForgetUser(client, '#c', tags(), ['fua_olvidar', 'bob_xx'], true, {
+      forget: failForget,
+      resolveId,
+    });
     assert.match(say[0], /no he podido borrar todo/);
   });
 });
@@ -114,10 +145,20 @@ describe('aviso de privacidad', () => {
   test('el texto del panel cabe en 300 caracteres y menciona lo esencial', () => {
     const panel = /```\n([\s\S]*?)\n```/.exec(doc)[1];
     assert.ok(panel.length <= 300, `mide ${panel.length}`);
-    for (const word of ['24 h', '30 días', 'Groq', 'interés legítimo', '!fua_olvidame', '!privacidad']) assert.ok(panel.includes(word), word);
+    for (const word of ['24 h', '30 días', 'Groq', 'interés legítimo', '!fua_olvidame', '!privacidad'])
+      assert.ok(panel.includes(word), word);
   });
 
   test('el aviso dice qué proveedor, base legal, retención y cómo borrar', () => {
-    for (const word of ['Groq (EE. UU.)', 'Zero Data Retention', 'Interés legítimo', '24 horas', '30 días', '!fua_olvidame', '!fua_olvidar']) assert.ok(doc.includes(word), word);
+    for (const word of [
+      'Groq (EE. UU.)',
+      'Zero Data Retention',
+      'Interés legítimo',
+      '24 horas',
+      '30 días',
+      '!fua_olvidame',
+      '!fua_olvidar',
+    ])
+      assert.ok(doc.includes(word), word);
   });
 });

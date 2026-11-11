@@ -19,14 +19,23 @@ function flagMessages(scored) {
     const text = String(s.row.message || '');
     const reasons = [];
     if (previous.length && quality.tooSimilar(text, previous.slice(-8))) reasons.push('repetición');
-    if (quality.mentionsMechanics(text) || quality.claimsEnemyKills(text)) reasons.push('posible dato inventado del juego');
-    if (s.negative) reasons.push(`reacción negativa (${s.negUsers.length} usuario/s)`); // sin nicks: el informe se guarda 30 días
+    if (quality.mentionsMechanics(text) || quality.claimsEnemyKills(text))
+      reasons.push('posible dato inventado del juego');
+    if (s.negative)
+      reasons.push(`reacción negativa (${s.negUsers.length} usuario/s)`); // sin nicks: el informe se guarda 30 días
     else if (s.ignored) reasons.push('ignorado');
     previous.push(text);
     if (reasons.length) flagged.push({ origin: s.row.origin, message: text.slice(0, 200), reasons });
   }
   // Primero lo más grave: negativos e inventos antes que ignorados
-  const weight = f => (f.reasons.some(r => r.startsWith('reacción')) ? 0 : f.reasons.some(r => r.startsWith('posible')) ? 1 : f.reasons.includes('repetición') ? 2 : 3);
+  const weight = (f) =>
+    f.reasons.some((r) => r.startsWith('reacción'))
+      ? 0
+      : f.reasons.some((r) => r.startsWith('posible'))
+        ? 1
+        : f.reasons.includes('repetición')
+          ? 2
+          : 3;
   return flagged.sort((a, b) => weight(a) - weight(b)).slice(0, MAX_FLAGGED);
 }
 
@@ -51,7 +60,10 @@ async function reviewStream({ sessionId, metrics = null, botName = process.env.B
     const { persistStream } = require('../privacy/quality-log');
     if (!sessionId) return null;
     const rows = await getSessionChatLog(sessionId);
-    if (!rows.length) { logger.info('📊 Autorrevisión: sin chat registrado en la sesión'); return null; }
+    if (!rows.length) {
+      logger.info('📊 Autorrevisión: sin chat registrado en la sesión');
+      return null;
+    }
 
     const result = reactions.scoreSession(rows, { botName });
     const summary = reactions.summarize(result);
@@ -63,7 +75,11 @@ async function reviewStream({ sessionId, metrics = null, botName = process.env.B
       report = await writeReport(flagged, summary);
     } catch (e) {
       logger.warn(`Autorrevisión: informe IA fallido: ${e.message}`);
-      report = `(sin informe IA) ${flagged.length} mensajes marcados: ${flagged.map(f => `"${f.message.slice(0, 50)}" ${f.reasons.join('/')}`).join(' | ')}`.slice(0, MAX_REPORT_CHARS);
+      report =
+        `(sin informe IA) ${flagged.length} mensajes marcados: ${flagged.map((f) => `"${f.message.slice(0, 50)}" ${f.reasons.join('/')}`).join(' | ')}`.slice(
+          0,
+          MAX_REPORT_CHARS,
+        );
     }
     logger.info(`📝 Autorrevisión del bot: ${report.replace(/\s*\n\s*/g, ' / ')}`);
     // Registro de calidad de 30 días (nicks seudonimizados) con las métricas del stream; el chat completo caduca a las 24 h

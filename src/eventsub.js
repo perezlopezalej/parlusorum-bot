@@ -3,19 +3,54 @@ const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { truncate } = require('./utils/groq-utils');
 const { template } = require('./utils/plantillas');
-const { restoreOpenSession, restoreSessionBosses, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
+const {
+  restoreOpenSession,
+  restoreSessionBosses,
+  restoreSessionNarrative,
+  saveSessionNarrative,
+  getCurrentSessionId,
+} = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
 const { persistBotState } = require('./utils/bot-state');
 const { throttleSay } = require('./alerts/handler');
 const { getAppAccessToken } = require('./twitch/app-token');
 const {
-  setStreamStartedAt, getStreamStartedAt,
-  setStreamIsLive, getStreamIsLive, getFilterStats, resetFilterStats, isSilenced, setSilenceMode, setMuteUntil, setBotMode, setBrbMode, setStreamEndGraceUntil,
-  setSessionStarting, getSessionStarting, clearSessionStarting,
-  getDeathCount, setDeathCount, setBossCount,
-  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory,
-  getActivePrediction, setActivePrediction, clearActivePrediction,
-  getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getAiUsage, resetAiStreamUsage, getCohostStats, resetCohostStats, resetPlayer, resetFreeCohostPause,
+  setStreamStartedAt,
+  getStreamStartedAt,
+  setStreamIsLive,
+  getStreamIsLive,
+  getFilterStats,
+  resetFilterStats,
+  isSilenced,
+  setSilenceMode,
+  setMuteUntil,
+  setBotMode,
+  setBrbMode,
+  setStreamEndGraceUntil,
+  setSessionStarting,
+  getSessionStarting,
+  clearSessionStarting,
+  getDeathCount,
+  setDeathCount,
+  setBossCount,
+  resetStreamNarrative,
+  setStreamNarrative,
+  getStreamNarrative,
+  onNarrativeChange,
+  resetBotHistory,
+  getActivePrediction,
+  setActivePrediction,
+  clearActivePrediction,
+  getGroqFallbackUse,
+  resetGroqFallbackUse,
+  getGroqTokenUse,
+  resetGroqTokenUse,
+  getAiUsage,
+  resetAiStreamUsage,
+  getCohostStats,
+  resetCohostStats,
+  resetPlayer,
+  resetFreeCohostPause,
 } = require('./utils/state');
 
 // La narrativa de la sesión se persiste en Supabase en cada cambio (escritura diferida)
@@ -62,7 +97,9 @@ function getStreamUptime() {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function isLiveViaEventSub() { return getStreamIsLive(); }
+function isLiveViaEventSub() {
+  return getStreamIsLive();
+}
 
 // URL pública del servicio. En Render, RENDER_EXTERNAL_URL se inyecta sola;
 // PUBLIC_URL solo hace falta con dominio propio o en local con ngrok.
@@ -76,37 +113,56 @@ const GROQ_DAILY_TOKEN_LIMIT = parseInt(process.env.GROQ_DAILY_TOKEN_LIMIT || '2
 function formatTokenUse({ stream, day }, limit = GROQ_DAILY_TOKEN_LIMIT) {
   const models = [...new Set([...Object.keys(stream), ...Object.keys(day)])];
   if (!models.length) return 'tokens de Groq: sin llamadas';
-  return 'tokens de Groq — ' + models.map(m => {
-    const s = stream[m]?.total || 0;
-    const d = day[m]?.total || 0;
-    const pct = limit > 0 ? Math.round(d / limit * 100) : 0;
-    return `${m}: ${s} este stream (${stream[m]?.calls || 0} llamadas), ${d} hoy (${pct}% de ${limit}, quedan ~${Math.max(0, limit - d)})`;
-  }).join('; ');
+  return (
+    'tokens de Groq — ' +
+    models
+      .map((m) => {
+        const s = stream[m]?.total || 0;
+        const d = day[m]?.total || 0;
+        const pct = limit > 0 ? Math.round((d / limit) * 100) : 0;
+        return `${m}: ${s} este stream (${stream[m]?.calls || 0} llamadas), ${d} hoy (${pct}% de ${limit}, quedan ~${Math.max(0, limit - d)})`;
+      })
+      .join('; ')
+  );
 }
 
 // Peticiones por modelo: este stream y hoy (UTC)
 function formatAiUsage(usage) {
   const keys = Object.keys(usage);
   if (!keys.length) return 'peticiones de IA: ninguna';
-  return 'peticiones de IA — ' + keys.map(k => {
-    const u = usage[k];
-    return `${k}: ${u.stream.requests} este stream, ${u.day.requests} hoy`;
-  }).join('; ');
+  return (
+    'peticiones de IA — ' +
+    keys
+      .map((k) => {
+        const u = usage[k];
+        return `${k}: ${u.stream.requests} este stream, ${u.day.requests} hoy`;
+      })
+      .join('; ')
+  );
 }
 
 // Tasa de descarte por filtro: descartados / (descartados + enviados) por origen, con los motivos más frecuentes
 function formatFilterStats(stats) {
-  const parts = Object.entries(stats || {}).map(([origin, s]) => {
-    const total = s.discarded + s.sent;
-    if (!total) return null;
-    const reasons = Object.entries(s.reasons).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k} ${n}`).join(', ');
-    return `${origin} ${s.discarded}/${total} (${Math.round((100 * s.discarded) / total)} %)${reasons ? ` [${reasons}]` : ''}`;
-  }).filter(Boolean);
+  const parts = Object.entries(stats || {})
+    .map(([origin, s]) => {
+      const total = s.discarded + s.sent;
+      if (!total) return null;
+      const reasons = Object.entries(s.reasons)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([k, n]) => `${k} ${n}`)
+        .join(', ');
+      return `${origin} ${s.discarded}/${total} (${Math.round((100 * s.discarded) / total)} %)${reasons ? ` [${reasons}]` : ''}`;
+    })
+    .filter(Boolean);
   return `descarte por filtro: ${parts.join('; ') || 'sin mensajes'}`;
 }
 
 function formatCohostStats({ attempts, sent, discards, groq429 }) {
-  const reasons = Object.entries(discards).map(([k, n]) => `${k}: ${n}`).join(', ') || 'ninguno';
+  const reasons =
+    Object.entries(discards)
+      .map(([k, n]) => `${k}: ${n}`)
+      .join(', ') || 'ninguno';
   const total = attempts.event + attempts.free;
   return `cohost: ${total} comentarios intentados (${attempts.event} eventos, ${attempts.free} libres), ${sent.event + sent.free} enviados (${sent.event} eventos, ${sent.free} libres); SKIP del modelo: ${discards.skip || 0}; descartes: ${reasons}; 429 de Groq: ${groq429}`;
 }
@@ -117,15 +173,12 @@ async function initStreamState() {
     const appToken = await getAppAccessToken();
     if (!appToken) return;
 
-    const res = await fetch(
-      `https://api.twitch.tv/helix/streams?user_id=${channelConfig.broadcaster_id}`,
-      {
-        headers: {
-          'Client-ID': process.env.CLIENT_ID,
-          'Authorization': `Bearer ${appToken}`
-        }
-      }
-    );
+    const res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${channelConfig.broadcaster_id}`, {
+      headers: {
+        'Client-ID': process.env.CLIENT_ID,
+        Authorization: `Bearer ${appToken}`,
+      },
+    });
     const data = await res.json();
     const stream = data.data?.[0];
 
@@ -134,10 +187,16 @@ async function initStreamState() {
       setStreamStartedAt(stream.started_at ? new Date(stream.started_at).getTime() : Date.now());
       logger.info(`📺 Stream en directo al arrancar (uptime: ${getStreamUptime()})`);
       const deaths = await restoreOpenSession(getStreamStartedAt());
-      if (deaths) { setDeathCount(deaths); logger.info(`💀 Muertes recuperadas: ${deaths}`); }
+      if (deaths) {
+        setDeathCount(deaths);
+        logger.info(`💀 Muertes recuperadas: ${deaths}`);
+      }
       if (deaths !== null) {
         const bosses = await restoreSessionBosses();
-        if (bosses) { setBossCount(bosses); logger.info(`👹 Jefes recuperados: ${bosses}`); }
+        if (bosses) {
+          setBossCount(bosses);
+          logger.info(`👹 Jefes recuperados: ${bosses}`);
+        }
         setStreamNarrative(await restoreSessionNarrative());
         logger.info(`📖 Narrativa recuperada: ${getStreamNarrative().length} eventos`);
       }
@@ -157,7 +216,7 @@ async function checkLiveNow() {
     const appToken = await getAppAccessToken();
     if (!appToken) return null;
     const res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${channelConfig.broadcaster_id}`, {
-      headers: { 'Client-ID': process.env.CLIENT_ID, 'Authorization': `Bearer ${appToken}` },
+      headers: { 'Client-ID': process.env.CLIENT_ID, Authorization: `Bearer ${appToken}` },
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
@@ -165,7 +224,9 @@ async function checkLiveNow() {
     if (!Array.isArray(data.data)) return null;
     const stream = data.data[0];
     return { live: !!stream, startedAt: stream?.started_at ? new Date(stream.started_at).getTime() : null };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // --- Verificar firma ---
@@ -175,12 +236,17 @@ function verifySignature(req, body) {
   const timestamp = req.headers[TWITCH_MESSAGE_TIMESTAMP];
   const signature = req.headers[TWITCH_MESSAGE_SIGNATURE];
   if (!messageId || !timestamp || !signature) return false;
-  const hmac = 'sha256=' + crypto.createHmac('sha256', EVENTSUB_SECRET)
-    .update(messageId + timestamp + body)
-    .digest('hex');
+  const hmac =
+    'sha256=' +
+    crypto
+      .createHmac('sha256', EVENTSUB_SECRET)
+      .update(messageId + timestamp + body)
+      .digest('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 // --- Mensajes variados de nuevos seguidores ---
@@ -198,12 +264,16 @@ async function deleteStaleSubscriptions(headers, managedTypes) {
   let cursor = null;
   let deleted = 0;
   do {
-    const url = 'https://api.twitch.tv/helix/eventsub/subscriptions' + (cursor ? `?after=${encodeURIComponent(cursor)}` : '');
+    const url =
+      'https://api.twitch.tv/helix/eventsub/subscriptions' + (cursor ? `?after=${encodeURIComponent(cursor)}` : '');
     const res = await fetch(url, { headers });
     const data = await res.json();
-    const stale = (data.data || []).filter(s => s.status !== 'enabled' || managedTypes.has(s.type));
+    const stale = (data.data || []).filter((s) => s.status !== 'enabled' || managedTypes.has(s.type));
     for (const sub of stale) {
-      const del = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, { method: 'DELETE', headers });
+      const del = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, {
+        method: 'DELETE',
+        headers,
+      });
       if (del.ok) deleted++;
       else logger.warn(`⚠️ EventSub: no se pudo borrar ${sub.type} (${sub.status}): HTTP ${del.status}`);
     }
@@ -217,7 +287,11 @@ function subscriptionDefs(broadcasterId) {
   const cond = { broadcaster_user_id: broadcasterId };
   return {
     basic: [
-      { type: 'channel.follow', version: '2', condition: { broadcaster_user_id: broadcasterId, moderator_user_id: broadcasterId } },
+      {
+        type: 'channel.follow',
+        version: '2',
+        condition: { broadcaster_user_id: broadcasterId, moderator_user_id: broadcasterId },
+      },
       { type: 'stream.online', version: '1', condition: cond },
       { type: 'stream.offline', version: '1', condition: cond },
     ],
@@ -246,14 +320,24 @@ function shouldResubscribe(status, recentAttempts = 0) {
   return RESUBSCRIBE_STATUSES.has(status) && recentAttempts < MAX_RESUBSCRIBE_PER_HOUR;
 }
 
-async function handleRevocation(subscription, { fetchFn = fetch, getToken = getAppAccessToken, now = Date.now(), broadcasterId = channelConfig.broadcaster_id } = {}) {
+async function handleRevocation(
+  subscription,
+  {
+    fetchFn = fetch,
+    getToken = getAppAccessToken,
+    now = Date.now(),
+    broadcasterId = channelConfig.broadcaster_id,
+  } = {},
+) {
   const { type, status, id } = subscription || {};
   if (!type) return false;
   if (!RESUBSCRIBE_STATUSES.has(status)) {
-    logger.error(`⚠️ EventSub ${type} revocado (${status || '?'}): no se reintenta. Si es authorization_revoked, repite /auth/broadcaster.`);
+    logger.error(
+      `⚠️ EventSub ${type} revocado (${status || '?'}): no se reintenta. Si es authorization_revoked, repite /auth/broadcaster.`,
+    );
     return false;
   }
-  const recent = (resubscribeLog.get(type) || []).filter(t => now - t < 60 * 60 * 1000);
+  const recent = (resubscribeLog.get(type) || []).filter((t) => now - t < 60 * 60 * 1000);
   if (!shouldResubscribe(status, recent.length)) {
     logger.error(`⚠️ EventSub ${type}: ya se reintentó ${recent.length} veces en la última hora; no se reintenta más.`);
     return false;
@@ -261,31 +345,52 @@ async function handleRevocation(subscription, { fetchFn = fetch, getToken = getA
   resubscribeLog.set(type, [...recent, now]);
 
   const defs = subscriptionDefs(broadcasterId);
-  const def = [...defs.basic, ...defs.broadcasterAuth].find(d => d.type === type && d.version === subscription.version)
-    || [...defs.basic, ...defs.broadcasterAuth].find(d => d.type === type);
+  const def =
+    [...defs.basic, ...defs.broadcasterAuth].find((d) => d.type === type && d.version === subscription.version) ||
+    [...defs.basic, ...defs.broadcasterAuth].find((d) => d.type === type);
   const publicBase = getPublicBaseUrl();
   if (!def || !publicBase || !EVENTSUB_SECRET) {
     logger.warn(`⚠️ EventSub ${type} revocado y no se puede recrear (tipo desconocido o sin URL pública).`);
     return false;
   }
   const appToken = await getToken();
-  if (!appToken) { logger.warn(`⚠️ EventSub ${type}: sin app token para volver a suscribir.`); return false; }
-  const headers = { 'Client-ID': process.env.CLIENT_ID, 'Authorization': `Bearer ${appToken}`, 'Content-Type': 'application/json' };
+  if (!appToken) {
+    logger.warn(`⚠️ EventSub ${type}: sin app token para volver a suscribir.`);
+    return false;
+  }
+  const headers = {
+    'Client-ID': process.env.CLIENT_ID,
+    Authorization: `Bearer ${appToken}`,
+    'Content-Type': 'application/json',
+  };
 
   // Se borra la suscripción revocada para que no bloquee a la nueva (si ya no existe, da igual)
   if (id) {
-    try { await fetchFn(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers }); } catch { /* ya no existe */ }
+    try {
+      await fetchFn(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers,
+      });
+    } catch {
+      /* ya no existe */
+    }
   }
   const res = await fetchFn('https://api.twitch.tv/helix/eventsub/subscriptions', {
-    method: 'POST', headers,
-    body: JSON.stringify({ ...def, transport: { method: 'webhook', callback: `${publicBase}/eventsub`, secret: EVENTSUB_SECRET } })
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ...def,
+      transport: { method: 'webhook', callback: `${publicBase}/eventsub`, secret: EVENTSUB_SECRET },
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
     logger.info(`✅ EventSub: ${type} vuelto a registrar tras revocación (${status}).`);
     return true;
   }
-  logger.warn(`⚠️ EventSub ${type}: no se pudo volver a suscribir: HTTP ${res.status} ${data.message || data.error || ''}`.trim());
+  logger.warn(
+    `⚠️ EventSub ${type}: no se pudo volver a suscribir: HTTP ${res.status} ${data.message || data.error || ''}`.trim(),
+  );
   return false;
 }
 
@@ -304,26 +409,33 @@ async function registerSubscriptions(broadcasterId) {
   logger.info(`🔗 EventSub callback: ${callbackUrl}`);
 
   const appToken = await getAppAccessToken();
-  if (!appToken) { logger.warn('⚠️ EventSub: no se pudo obtener app token.'); return false; }
+  if (!appToken) {
+    logger.warn('⚠️ EventSub: no se pudo obtener app token.');
+    return false;
+  }
 
   const headers = {
     'Client-ID': process.env.CLIENT_ID,
-    'Authorization': `Bearer ${appToken}`,
-    'Content-Type': 'application/json'
+    Authorization: `Bearer ${appToken}`,
+    'Content-Type': 'application/json',
   };
 
   const defs = subscriptionDefs(broadcasterId);
   const subscriptions = defs.basic;
-  const broadcasterAuthTypes = defs.broadcasterAuth.map(d => d.type);
-  const managedTypes = new Set([...subscriptions.map(s => s.type), ...broadcasterAuthTypes]);
+  const broadcasterAuthTypes = defs.broadcasterAuth.map((d) => d.type);
+  const managedTypes = new Set([...subscriptions.map((s) => s.type), ...broadcasterAuthTypes]);
 
   try {
     await deleteStaleSubscriptions(headers, managedTypes);
 
     for (const sub of subscriptions) {
       const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-        method: 'POST', headers,
-        body: JSON.stringify({ ...sub, transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET } })
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...sub,
+          transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET },
+        }),
       });
       const data = await res.json();
       if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
@@ -344,8 +456,12 @@ async function registerSubscriptions(broadcasterId) {
   try {
     for (const sub of broadcasterAuthSubs) {
       const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-        method: 'POST', headers: headers,
-        body: JSON.stringify({ ...sub, transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET } })
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          ...sub,
+          transport: { method: 'webhook', callback: callbackUrl, secret: EVENTSUB_SECRET },
+        }),
       });
       const data = await res.json();
       if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
@@ -367,11 +483,13 @@ async function getViewersWithAppToken(broadcasterId) {
     const appToken = await getAppAccessToken();
     if (!appToken) return null;
     const res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${broadcasterId}`, {
-      headers: { 'Client-ID': process.env.CLIENT_ID, 'Authorization': `Bearer ${appToken}` }
+      headers: { 'Client-ID': process.env.CLIENT_ID, Authorization: `Bearer ${appToken}` },
     });
     const data = await res.json();
     return data.data?.[0]?.viewer_count ?? null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // --- Handler del webhook ---
@@ -393,41 +511,53 @@ function createEventSubHandler(client, channel, deps) {
     onStreamOnline,
     resetSessionCounters,
     clearUserFactsCache,
-    handleQuestion
+    handleQuestion,
   } = deps;
 
   return async function handleEventSub(req, res, rawBody) {
     const messageType = req.headers[MESSAGE_TYPE];
 
     if (!verifySignature(req, rawBody)) {
-      const missing = [TWITCH_MESSAGE_ID, TWITCH_MESSAGE_TIMESTAMP, TWITCH_MESSAGE_SIGNATURE].filter(h => !req.headers[h]);
+      const missing = [TWITCH_MESSAGE_ID, TWITCH_MESSAGE_TIMESTAMP, TWITCH_MESSAGE_SIGNATURE].filter(
+        (h) => !req.headers[h],
+      );
       const reason = missing.length ? `faltan cabeceras (${missing.length})` : 'HMAC no coincide';
       logger.warn(`⚠️ EventSub: firma inválida → 403 [tipo=${messageType || '?'}, ${reason}]`);
-      res.writeHead(403); res.end(); return;
+      res.writeHead(403);
+      res.end();
+      return;
     }
 
     const sentAt = Date.parse(req.headers[TWITCH_MESSAGE_TIMESTAMP]);
     if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > MESSAGE_MAX_AGE_MS) {
       logger.warn(`⚠️ EventSub: timestamp fuera de ventana (>10 min) → 403 [tipo=${messageType || '?'}]`);
-      res.writeHead(403); res.end(); return;
+      res.writeHead(403);
+      res.end();
+      return;
     }
 
     let body;
-    try { body = JSON.parse(rawBody); } catch {
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
       logger.warn(`⚠️ EventSub: JSON inválido → 400 [tipo=${messageType || '?'}]`);
-      res.writeHead(400); res.end(); return;
+      res.writeHead(400);
+      res.end();
+      return;
     }
 
     if (messageType === MESSAGE_TYPE_VERIFICATION) {
       logger.info(`✅ EventSub: challenge respondido → 200 (${body.subscription?.type})`);
       res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end(body.challenge); return;
+      res.end(body.challenge);
+      return;
     }
 
     if (messageType === MESSAGE_TYPE_NOTIFICATION) {
       // Responder a Twitch antes de procesar: Twitch exige 2xx en <10s o reintenta con backoff.
       // Trade-off: si el setImmediate falla silenciosamente, Twitch no reenviará la notificación.
-      res.writeHead(204); res.end();
+      res.writeHead(204);
+      res.end();
 
       // Deduplicar por message ID — Twitch puede reenviar la misma notificación
       const eventMsgId = req.headers[TWITCH_MESSAGE_ID];
@@ -451,7 +581,10 @@ function createEventSubHandler(client, channel, deps) {
 
       if (type === 'channel.follow' && event?.user_name) {
         logger.info(`👤 Nuevo seguidor: ${event.user_name}`);
-        const msg = followMessages[Math.floor(Math.random() * followMessages.length)].replace('{username}', event.user_name);
+        const msg = followMessages[Math.floor(Math.random() * followMessages.length)].replace(
+          '{username}',
+          event.user_name,
+        );
         if (!isSilenced()) client.say(channel, msg);
       }
 
@@ -461,38 +594,59 @@ function createEventSubHandler(client, channel, deps) {
         setStreamStartedAt(event?.started_at ? new Date(event.started_at).getTime() : Date.now());
         setStreamEndGraceUntil(0);
         logger.info(`🔴 Stream online via EventSub`);
-        try { onStreamOnline(); } catch {}
-        try { resetSessionCounters(); } catch {}
-        try { resetStreamChatBuffer(); } catch {}
-        try { resetStreamNarrative(); } catch {}
-        try { resetBotHistory(); resetPlayer(); resetFreeCohostPause(); } catch {}
-        try { clearUserFactsCache(); } catch {}
+        try {
+          onStreamOnline();
+        } catch {}
+        try {
+          resetSessionCounters();
+        } catch {}
+        try {
+          resetStreamChatBuffer();
+        } catch {}
+        try {
+          resetStreamNarrative();
+        } catch {}
+        try {
+          resetBotHistory();
+          resetPlayer();
+          resetFreeCohostPause();
+        } catch {}
+        try {
+          clearUserFactsCache();
+        } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {
-          setSessionStarting((async () => {
-            try {
-              const gameInfo = await getCurrentGame().catch(() => null);
-              await startStreamSession(gameInfo?.game || null);
-              invalidateMemoryCache();
+          setSessionStarting(
+            (async () => {
+              try {
+                const gameInfo = await getCurrentGame().catch(() => null);
+                await startStreamSession(gameInfo?.game || null);
+                invalidateMemoryCache();
 
-              // Warmup mode: una sola consulta a los 60s — activa si < 5 viewers
-              const warmupGame = gameInfo?.game || null;
-              setTimeout(async () => {
-                try {
-                  if (!isLiveViaEventSub()) return;
-                  const startedAt = getStreamStartedAt();
-                  if (startedAt && Date.now() - startedAt > 10 * 60 * 1000) return;
-                  if (client.readyState() !== 'OPEN') return;
-                  const viewers = await getViewersWithAppToken(channelConfig.broadcaster_id);
-                  if (viewers !== null && viewers < 5) {
-                    await onWarmupMode(client, channel, warmupGame);
+                // Warmup mode: una sola consulta a los 60s — activa si < 5 viewers
+                const warmupGame = gameInfo?.game || null;
+                setTimeout(async () => {
+                  try {
+                    if (!isLiveViaEventSub()) return;
+                    const startedAt = getStreamStartedAt();
+                    if (startedAt && Date.now() - startedAt > 10 * 60 * 1000) return;
+                    if (client.readyState() !== 'OPEN') return;
+                    const viewers = await getViewersWithAppToken(channelConfig.broadcaster_id);
+                    if (viewers !== null && viewers < 5) {
+                      await onWarmupMode(client, channel, warmupGame);
+                    }
+                  } catch (e) {
+                    logger.warn(`Warmup check: ${e.message}`);
                   }
-                } catch (e) { logger.warn(`Warmup check: ${e.message}`); }
-              }, 60 * 1000);
-
-            } catch (e) { logger.warn(`Supabase session start: ${e.message}`); }
-          })());
-          await getSessionStarting().finally(() => { clearSessionStarting(); });
+                }, 60 * 1000);
+              } catch (e) {
+                logger.warn(`Supabase session start: ${e.message}`);
+              }
+            })(),
+          );
+          await getSessionStarting().finally(() => {
+            clearSessionStarting();
+          });
         });
       }
 
@@ -501,12 +655,13 @@ function createEventSubHandler(client, channel, deps) {
         setStreamIsLive(false);
         const endedAt = Date.now();
         const streamStartedAt = getStreamStartedAt();
-        const durationMinutes = streamStartedAt
-          ? Math.floor((endedAt - streamStartedAt) / 60000)
-          : 0;
+        const durationMinutes = streamStartedAt ? Math.floor((endedAt - streamStartedAt) / 60000) : 0;
         setStreamStartedAt(null);
         // El silencio y el BRB no pasan al siguiente directo; el bot aún puede despedirse unos minutos
-        setSilenceMode(false); setMuteUntil(0); setBotMode('normal'); setBrbMode(false, null, null);
+        setSilenceMode(false);
+        setMuteUntil(0);
+        setBotMode('normal');
+        setBrbMode(false, null, null);
         setStreamEndGraceUntil(endedAt + END_OF_STREAM_GRACE_MS);
         persistBotState();
         logger.info(`⚫ Stream offline via EventSub`);
@@ -517,7 +672,9 @@ function createEventSubHandler(client, channel, deps) {
           // Resumen de modelos de reserva solo en el log (no en el chat)
           const fallbackUse = getGroqFallbackUse();
           resetGroqFallbackUse();
-          const fallbackLines = Object.entries(fallbackUse).map(([k, n]) => `${k}: ${n}`).join(', ');
+          const fallbackLines = Object.entries(fallbackUse)
+            .map(([k, n]) => `${k}: ${n}`)
+            .join(', ');
           logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
           const tokenUse = getGroqTokenUse();
           logger.info(`📊 Fin de stream — ${formatTokenUse(tokenUse)}`);
@@ -548,31 +705,37 @@ function createEventSubHandler(client, channel, deps) {
             const activeUserIds = getActiveUserIds();
             resetActiveUsers();
             const reviewSessionId = getCurrentSessionId();
-            const memory = await onStreamEnd({
-              game: gameInfo?.game || null,
-              durationMinutes,
-              deathCount: getDeathCount(),
-              peakViewers: metrics.peakViewers || 0,
-              totalMessages: metrics.totalMessages || 0,
-              topCommands: Object.fromEntries(
-                (metrics.topCommands || '')
-                  .split(' ')
-                  .filter(Boolean)
-                  .map(s => {
-                    const m = s.match(/!(\w+)\((\d+)\)/);
-                    return m ? [m[1], parseInt(m[2])] : null;
-                  })
-                  .filter(Boolean)
-              ),
-              activeUsers: activeUsers,
-              activeUserIds
-            }, chatSample);
+            const memory = await onStreamEnd(
+              {
+                game: gameInfo?.game || null,
+                durationMinutes,
+                deathCount: getDeathCount(),
+                peakViewers: metrics.peakViewers || 0,
+                totalMessages: metrics.totalMessages || 0,
+                topCommands: Object.fromEntries(
+                  (metrics.topCommands || '')
+                    .split(' ')
+                    .filter(Boolean)
+                    .map((s) => {
+                      const m = s.match(/!(\w+)\((\d+)\)/);
+                      return m ? [m[1], parseInt(m[2])] : null;
+                    })
+                    .filter(Boolean),
+                ),
+                activeUsers: activeUsers,
+                activeUserIds,
+              },
+              chatSample,
+            );
             postStreamEnd(client, channel, memory?.summary || null);
             // Autorrevisión: solo log y Supabase, nunca el chat. Espera a que el chat registrado esté volcado.
             setTimeout(() => {
-              chatlog.flush()
-                .then(() => require('./ai/self-review').reviewStream({ sessionId: reviewSessionId, metrics: streamMetrics }))
-                .catch(err => logger.warn(`Autorrevisión: ${err.message}`));
+              chatlog
+                .flush()
+                .then(() =>
+                  require('./ai/self-review').reviewStream({ sessionId: reviewSessionId, metrics: streamMetrics }),
+                )
+                .catch((err) => logger.warn(`Autorrevisión: ${err.message}`));
             }, 15000).unref?.();
           } catch (e) {
             logger.warn(`Supabase session end: ${e.message}`);
@@ -589,7 +752,11 @@ function createEventSubHandler(client, channel, deps) {
         const { level = 1, is_golden_kappa_train = false } = event || {};
         const goldenNote = is_golden_kappa_train ? ' ¡¡Es un GOLDEN KAPPA TRAIN!! 🏆' : '';
         logger.info(`🚂 Hype Train begin: nivel ${level}${is_golden_kappa_train ? ' (golden kappa)' : ''}`);
-        if (!isSilenced()) client.say(channel, `🚂 ¡HYPE TRAIN nivel ${level} ha comenzado!${goldenNote} ¡Contribuye con bits o subs! FUA 🔥`);
+        if (!isSilenced())
+          client.say(
+            channel,
+            `🚂 ¡HYPE TRAIN nivel ${level} ha comenzado!${goldenNote} ¡Contribuye con bits o subs! FUA 🔥`,
+          );
       }
 
       if (type === 'channel.hype_train.progress') {
@@ -602,13 +769,16 @@ function createEventSubHandler(client, channel, deps) {
         const winners = winner_count ? ` ¡${winner_count} ganadores!` : '';
         const golden = is_golden_kappa_train ? ' 🏆 ¡GOLDEN KAPPA!' : '';
         logger.info(`🏁 Hype Train end: nivel ${level}${is_golden_kappa_train ? ' (golden kappa)' : ''}`);
-        if (!isSilenced()) client.say(channel, `🏁 ¡Hype Train terminado en nivel ${level}!${winners} ¡Gracias por el hype!${golden} 💜`);
+        if (!isSilenced())
+          client.say(
+            channel,
+            `🏁 ¡Hype Train terminado en nivel ${level}!${winners} ¡Gracias por el hype!${golden} 💜`,
+          );
       }
-
 
       if (type === 'channel.prediction.begin') {
         const { title, outcomes } = event || {};
-        const opcionesTexto = (outcomes || []).map((o, i) => `${i+1}) ${o.title}`).join(' | ');
+        const opcionesTexto = (outcomes || []).map((o, i) => `${i + 1}) ${o.title}`).join(' | ');
         setActivePrediction({ title, outcomes });
         logger.info(`🔮 Predicción comenzada: "${title}"`);
         throttleSay(client, channel, truncate(template('prediction_begin', { title, options: opcionesTexto })));
@@ -624,17 +794,26 @@ function createEventSubHandler(client, channel, deps) {
       if (type === 'channel.prediction.end') {
         const { winning_outcome_id, outcomes } = event || {};
         clearActivePrediction();
-        const ganadorPred = (outcomes || []).find(o => o.id === winning_outcome_id);
+        const ganadorPred = (outcomes || []).find((o) => o.id === winning_outcome_id);
         if (ganadorPred) {
           const numGanadores = ganadorPred.top_predictors?.length ?? 0;
           logger.info(`🏆 Predicción terminada: ganó "${ganadorPred.title}"`);
-          throttleSay(client, channel, truncate(template('prediction_end', { winner: ganadorPred.title, winners: numGanadores > 0 ? `¡${numGanadores} acertaron!` : '' })));
+          throttleSay(
+            client,
+            channel,
+            truncate(
+              template('prediction_end', {
+                winner: ganadorPred.title,
+                winners: numGanadores > 0 ? `¡${numGanadores} acertaron!` : '',
+              }),
+            ),
+          );
         }
       }
 
       if (type === 'channel.poll.begin') {
         const { title, choices } = event || {};
-        const opcionesTexto = (choices || []).map((c, i) => `${i+1}) ${c.title}`).join(' | ');
+        const opcionesTexto = (choices || []).map((c, i) => `${i + 1}) ${c.title}`).join(' | ');
         logger.info(`📊 Poll comenzado: "${title}"`);
         throttleSay(client, channel, truncate(template('poll_begin', { title, options: opcionesTexto })));
       }
@@ -647,7 +826,17 @@ function createEventSubHandler(client, channel, deps) {
           const pct = totalVotos > 0 ? Math.round((ganadorPoll.votes / totalVotos) * 100) : 0;
           const esAjustado = pct < 40;
           logger.info(`📊 Poll terminado: ganó "${ganadorPoll.title}" con ${pct}%`);
-          throttleSay(client, channel, truncate(template(esAjustado ? 'poll_end_close' : 'poll_end', { winner: ganadorPoll.title, pct, votes: totalVotos })));
+          throttleSay(
+            client,
+            channel,
+            truncate(
+              template(esAjustado ? 'poll_end_close' : 'poll_end', {
+                winner: ganadorPoll.title,
+                pct,
+                votes: totalVotos,
+              }),
+            ),
+          );
         }
       }
 
@@ -670,22 +859,30 @@ function createEventSubHandler(client, channel, deps) {
     }
 
     if (messageType === MESSAGE_TYPE_REVOCATION) {
-      logger.warn(`⚠️ EventSub revocado → 204 (${body.subscription?.type}, motivo=${body.subscription?.status || '?'})`);
+      logger.warn(
+        `⚠️ EventSub revocado → 204 (${body.subscription?.type}, motivo=${body.subscription?.status || '?'})`,
+      );
       const revoked = body.subscription;
-      setImmediate(() => handleRevocation(revoked).catch(err => logger.error(`EventSub revocación: ${err.message}`)));
+      setImmediate(() => handleRevocation(revoked).catch((err) => logger.error(`EventSub revocación: ${err.message}`)));
     } else {
       logger.warn(`⚠️ EventSub: tipo de mensaje desconocido → 204 [tipo=${messageType || '?'}]`);
     }
 
-    res.writeHead(204); res.end();
+    res.writeHead(204);
+    res.end();
   };
 }
 
 module.exports = {
   createEventSubHandler,
-  formatCohostStats, formatFilterStats, formatTokenUse, formatAiUsage,
+  formatCohostStats,
+  formatFilterStats,
+  formatTokenUse,
+  formatAiUsage,
   registerSubscriptions,
-  subscriptionDefs, shouldResubscribe, handleRevocation,
+  subscriptionDefs,
+  shouldResubscribe,
+  handleRevocation,
   initStreamState,
   checkLiveNow,
   isLiveViaEventSub,
@@ -693,5 +890,5 @@ module.exports = {
   getViewersWithAppToken,
   getAppAccessToken,
   getPublicBaseUrl,
-  isRepeatedEvent
+  isRepeatedEvent,
 };

@@ -6,11 +6,34 @@ const BOT = ['dios_fua'];
 
 describe('mención directa: debe disparar', () => {
   const shouldFire = [
-    'dios fua', 'diosfua', 'dios_fua', '@dios_fua', '@Dios_Fua', 'DIOS FUA', 'DiosFua', 'DIOS_FUA',
-    '@dios_fua!!!', 'dios fua???', 'dios fua!!!!!', '¡¡dios fua!!', '@dios_fua hola',
-    'hola dios fua que tal', 'oye @dios_fua, qué opinas', 'gracias dios fua',
-    'dios fuaa', 'dios fuaaaaa', 'diosfuaa', 'dioss fua', 'dios fa', 'dios fu', 'dios ua', 'dios fau',
-    'dios fuá', 'dío fua', '@dios_fuaa', '@dios_fa',
+    'dios fua',
+    'diosfua',
+    'dios_fua',
+    '@dios_fua',
+    '@Dios_Fua',
+    'DIOS FUA',
+    'DiosFua',
+    'DIOS_FUA',
+    '@dios_fua!!!',
+    'dios fua???',
+    'dios fua!!!!!',
+    '¡¡dios fua!!',
+    '@dios_fua hola',
+    'hola dios fua que tal',
+    'oye @dios_fua, qué opinas',
+    'gracias dios fua',
+    'dios fuaa',
+    'dios fuaaaaa',
+    'diosfuaa',
+    'dioss fua',
+    'dios fa',
+    'dios fu',
+    'dios ua',
+    'dios fau',
+    'dios fuá',
+    'dío fua',
+    '@dios_fuaa',
+    '@dios_fa',
   ];
   for (const msg of shouldFire) {
     test(JSON.stringify(msg), () => assert.equal(classifyMessage(msg, {}, { botNames: BOT }), 'direct'));
@@ -19,8 +42,15 @@ describe('mención directa: debe disparar', () => {
 
 describe('mención directa: no debe disparar', () => {
   const shouldNot = [
-    'FUAAAA', 'qué fua tiene este boss', 'dios mío qué boss', 'gracias a dios', 'dios',
-    'el fua es real', 'hola buenas', 'dios mio fua', 'diosito fua fua',
+    'FUAAAA',
+    'qué fua tiene este boss',
+    'dios mío qué boss',
+    'gracias a dios',
+    'dios',
+    'el fua es real',
+    'hola buenas',
+    'dios mio fua',
+    'diosito fua fua',
   ];
   for (const msg of shouldNot) {
     test(JSON.stringify(msg), () => assert.notEqual(classifyMessage(msg, {}, { botNames: BOT }), 'direct'));
@@ -29,11 +59,27 @@ describe('mención directa: no debe disparar', () => {
 
 describe('preguntas naturales: debe disparar', () => {
   const shouldFire = [
-    'qué juego es?', 'que juego es este', 'Qué juego es este?', 'a qué juegas?', 'a qué estáis jugando',
-    'qué están jugando?', 'cómo se llama el juego', 'de qué va el juego?', 'de qué va esto?',
-    'cuánto llevas de stream?', 'cuanto tiempo llevas', 'cuánto lleva el stream?',
-    '¿eres un bot?', 'eres real?', 'eres humano?', 'cómo te llamas?', 'quién eres?',
-    '¿es muy difícil?', 'es difícil el juego?', 'qué tan difícil es?', 'está fácil?',
+    'qué juego es?',
+    'que juego es este',
+    'Qué juego es este?',
+    'a qué juegas?',
+    'a qué estáis jugando',
+    'qué están jugando?',
+    'cómo se llama el juego',
+    'de qué va el juego?',
+    'de qué va esto?',
+    'cuánto llevas de stream?',
+    'cuanto tiempo llevas',
+    'cuánto lleva el stream?',
+    '¿eres un bot?',
+    'eres real?',
+    'eres humano?',
+    'cómo te llamas?',
+    'quién eres?',
+    '¿es muy difícil?',
+    'es difícil el juego?',
+    'qué tan difícil es?',
+    'está fácil?',
   ];
   for (const msg of shouldFire) {
     test(JSON.stringify(msg), () => assert.equal(classifyMessage(msg, {}, { botNames: BOT }), 'natural'));
@@ -42,9 +88,18 @@ describe('preguntas naturales: debe disparar', () => {
 
 describe('preguntas naturales: no debe disparar', () => {
   const shouldNot = [
-    'qué juego más bueno', 'qué juegos tenéis', 'me encanta este juego', 'cuánto lleva ese boss?',
-    'cuánto llevas ahorrado para la ps5', 'eres real tío', 'eres un crack', 'eres un bot jajaja',
-    'eres bot', 'es difícil pero me gusta', 'es difícil', 'es muy fácil jajaja',
+    'qué juego más bueno',
+    'qué juegos tenéis',
+    'me encanta este juego',
+    'cuánto lleva ese boss?',
+    'cuánto llevas ahorrado para la ps5',
+    'eres real tío',
+    'eres un crack',
+    'eres un bot jajaja',
+    'eres bot',
+    'es difícil pero me gusta',
+    'es difícil',
+    'es muy fácil jajaja',
     'hola cómo te llamas? yo soy pepe y vengo de lejos y de mucho más lejos todavía, saludos',
     'quién eres tú para decir eso',
   ];
@@ -59,7 +114,10 @@ describe('preguntas naturales: no debe disparar', () => {
     assert.equal(classifyMessage('@pepe qué juego es?', {}, { botNames: BOT }), null);
   });
   test('respuesta al propio bot sí cuenta', () => {
-    assert.equal(classifyMessage('qué juego es?', { 'reply-parent-user-login': 'dios_fua' }, { botNames: BOT }), 'natural');
+    assert.equal(
+      classifyMessage('qué juego es?', { 'reply-parent-user-login': 'dios_fua' }, { botNames: BOT }),
+      'natural',
+    );
   });
   test('una mención directa gana aunque sea respuesta a otro', () => {
     assert.equal(classifyMessage('dios fua opina', { 'reply-parent-user-login': 'pepe' }, { botNames: BOT }), 'direct');

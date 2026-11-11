@@ -4,7 +4,7 @@ const metrics = {
   commandsUsed: new Map(),
   peakViewers: 0,
   streamMessageCount: 0,
-  sessionStart: Date.now()
+  sessionStart: Date.now(),
 };
 
 function trackMessage() {
@@ -56,7 +56,7 @@ function getSummary() {
     messagesLastHour: getMessagesPerHour(),
     totalMessages: metrics.streamMessageCount,
     peakViewers: metrics.peakViewers,
-    topCommands: getTopCommands()
+    topCommands: getTopCommands(),
   };
 }
 

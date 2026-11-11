@@ -12,7 +12,9 @@ function parseMinutes(arg, { def = DEFAULT_MUTE_MIN, max = MAX_MUTE_MIN } = {}) 
 }
 
 function parseMode(arg) {
-  const a = String(arg || '').trim().toLowerCase();
+  const a = String(arg || '')
+    .trim()
+    .toLowerCase();
   if (['reactivo', 'reactiva', 'r'].includes(a)) return 'reactivo';
   if (['normal', 'n'].includes(a)) return 'normal';
   return null;
@@ -33,7 +35,21 @@ function outboundBlock(origin, { silenced = false, reactive = false } = {}) {
 
 // Hora de vuelta en Madrid (HH:MM)
 function clockMadrid(ts) {
-  return new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ts));
+  return new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(ts));
 }
 
-module.exports = { MAX_MUTE_MIN, DEFAULT_MUTE_MIN, REACTIVE_BLOCKED, SILENCE_ALLOWED, parseMinutes, parseMode, outboundBlock, clockMadrid };
+module.exports = {
+  MAX_MUTE_MIN,
+  DEFAULT_MUTE_MIN,
+  REACTIVE_BLOCKED,
+  SILENCE_ALLOWED,
+  parseMinutes,
+  parseMode,
+  outboundBlock,
+  clockMadrid,
+};

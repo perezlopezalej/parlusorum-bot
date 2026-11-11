@@ -32,7 +32,7 @@ const REDACT_PATTERNS = [
 function redact(message) {
   let out = String(message);
   for (const re of REDACT_PATTERNS) {
-    out = out.replace(re, (m, prefix) => (typeof prefix === 'string' ?`${prefix}[REDACTED]` : '[REDACTED]'));
+    out = out.replace(re, (m, prefix) => (typeof prefix === 'string' ? `${prefix}[REDACTED]` : '[REDACTED]'));
   }
   return out;
 }
@@ -52,5 +52,5 @@ module.exports = {
   error: (msg) => write('ERROR', msg),
   debug: (msg) => {
     if (process.env.NODE_ENV !== 'production') write('DEBUG', msg);
-  }
+  },
 };

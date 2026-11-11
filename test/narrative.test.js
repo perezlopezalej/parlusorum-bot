@@ -1,8 +1,12 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
-  hourlyCapReached, pruneHourly,
+  pruneNarrative,
+  restoreNarrative,
+  buildStoryBlock,
+  condenseChat,
+  hourlyCapReached,
+  pruneHourly,
 } = require('../src/utils/narrative');
 const state = require('../src/utils/state');
 
@@ -16,13 +20,22 @@ describe('poda de la narrativa', () => {
 
   test('descarta primero lo de menor prioridad y, a igualdad, lo más antiguo', () => {
     const events = [ev('rage', 1), ev('sub', 2), ev('rage', 3), ev('raid', 4)];
-    assert.deepEqual(pruneNarrative(events, 3).map(e => e.ts), [2, 3, 4]);
-    assert.deepEqual(pruneNarrative(events, 2).map(e => e.ts), [2, 4]);
+    assert.deepEqual(
+      pruneNarrative(events, 3).map((e) => e.ts),
+      [2, 3, 4],
+    );
+    assert.deepEqual(
+      pruneNarrative(events, 2).map((e) => e.ts),
+      [2, 4],
+    );
   });
 
   test('un tipo desconocido cuenta como prioridad baja', () => {
     const events = [ev('otro', 1), ev('death', 2), ev('death', 3)];
-    assert.deepEqual(pruneNarrative(events, 2).map(e => e.ts), [2, 3]);
+    assert.deepEqual(
+      pruneNarrative(events, 2).map((e) => e.ts),
+      [2, 3],
+    );
   });
 });
 
@@ -34,8 +47,17 @@ describe('restaurar la narrativa guardada', () => {
 
   test('filtra eventos inválidos, ordena por hora y aplica el tope', () => {
     const raw = [ev('death', 30), { type: 'x' }, null, ev('sub', 10), { type: 'sub', description: 'd', ts: 'ayer' }];
-    assert.deepEqual(restoreNarrative(raw).map(e => e.ts), [10, 30]);
-    assert.equal(restoreNarrative(Array.from({ length: 30 }, (_, i) => ev('death', i)), 12).length, 12);
+    assert.deepEqual(
+      restoreNarrative(raw).map((e) => e.ts),
+      [10, 30],
+    );
+    assert.equal(
+      restoreNarrative(
+        Array.from({ length: 30 }, (_, i) => ev('death', i)),
+        12,
+      ).length,
+      12,
+    );
   });
 
   test('recorta tipo y descripción excesivos', () => {
@@ -53,8 +75,14 @@ describe('buildStoryBlock', () => {
 
   test('incluye tiempo relativo, tipo y descripción', () => {
     const now = 10 * 60000;
-    const block = buildStoryBlock([ev('death', 2 * 60000, 'Muerte #3'), ev('sub', now - 10000, 'Ana se suscribió')], now);
-    assert.equal(block, '\n<stream_story>[hace 8min] [death] Muerte #3 | [ahora] [sub] Ana se suscribió</stream_story>');
+    const block = buildStoryBlock(
+      [ev('death', 2 * 60000, 'Muerte #3'), ev('sub', now - 10000, 'Ana se suscribió')],
+      now,
+    );
+    assert.equal(
+      block,
+      '\n<stream_story>[hace 8min] [death] Muerte #3 | [ahora] [sub] Ana se suscribió</stream_story>',
+    );
   });
 });
 
@@ -103,7 +131,7 @@ describe('estado: narrativa, cohost y pausas', () => {
   test('la narrativa conserva hasta 12 eventos y avisa al listener en cada cambio', () => {
     state.resetStreamNarrative();
     const seen = [];
-    state.onNarrativeChange(events => seen.push(events.length));
+    state.onNarrativeChange((events) => seen.push(events.length));
     for (let i = 0; i < 15; i++) state.addNarrativeEvent('death', `Muerte ${i}`);
     assert.equal(state.getStreamNarrative().length, 12);
     assert.equal(seen.length, 15);
@@ -122,7 +150,9 @@ describe('estado: narrativa, cohost y pausas', () => {
   });
 
   test('un fallo del listener no rompe addNarrativeEvent', () => {
-    state.onNarrativeChange(() => { throw new Error('db caída'); });
+    state.onNarrativeChange(() => {
+      throw new Error('db caída');
+    });
     assert.doesNotThrow(() => state.addNarrativeEvent('boss', 'x'));
     state.onNarrativeChange(null);
     state.resetStreamNarrative();

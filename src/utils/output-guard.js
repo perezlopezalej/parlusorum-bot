@@ -24,27 +24,39 @@ const ECHO_SHORT_RUN_WORDS = 4;
 const ECHO_SHORT_RUN_RATIO = 0.8;
 const ECHO_WINDOW_MS = 5 * 60 * 1000;
 
-const TLDS = 'com|net|org|tv|gg|io|es|ly|me|xyz|co|info|app|dev|ru|cn|tk|ml|ga|cf|gl|link|to|be|fm|ws|cc|biz|online|site|shop|club|live';
+const TLDS =
+  'com|net|org|tv|gg|io|es|ly|me|xyz|co|info|app|dev|ru|cn|tk|ml|ga|cf|gl|link|to|be|fm|ws|cc|biz|online|site|shop|club|live';
 // Con esquema, con www., o "dominio.tld" (TLD en minúsculas, para no confundir "genial.Es que" con un dominio)
-const URL_RE = new RegExp(`(?:https?://|www\\.)[^\\s]+|\\b[A-Za-z0-9][A-Za-z0-9-]*(?:\\.[A-Za-z0-9-]+)*\\.(?:${TLDS})\\b(?:/[^\\s]*)?`, 'g');
+const URL_RE = new RegExp(
+  `(?:https?://|www\\.)[^\\s]+|\\b[A-Za-z0-9][A-Za-z0-9-]*(?:\\.[A-Za-z0-9-]+)*\\.(?:${TLDS})\\b(?:/[^\\s]*)?`,
+  'g',
+);
 
 function hostOf(match) {
-  return match.replace(/^[a-z]+:\/\//i, '').replace(/^www\./i, '').split(/[/?#:]/)[0].toLowerCase();
+  return match
+    .replace(/^[a-z]+:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split(/[/?#:]/)[0]
+    .toLowerCase();
 }
 
 // Devuelve la primera URL no permitida del texto, o null
 function findDisallowedUrl(text) {
   for (const m of String(text || '').match(URL_RE) || []) {
     const host = hostOf(m);
-    if (!ALLOWED_HOSTS.some(d => host === d || host.endsWith(`.${d}`))) return m;
+    if (!ALLOWED_HOSTS.some((d) => host === d || host.endsWith(`.${d}`))) return m;
   }
   return null;
 }
 
 // Minúsculas, sin tildes ni signos, espacios colapsados
 function normalizeEcho(text) {
-  return String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9ñ]+/g, ' ').trim();
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9ñ]+/g, ' ')
+    .trim();
 }
 
 // Texto que escribió el usuario sin el comando inicial ("!muertes ...") ni @menciones iniciales
@@ -64,13 +76,17 @@ function maskNames(norm, names) {
 
 // Racha más larga de palabras seguidas que comparten dos textos ya normalizados
 function longestRun(a, b) {
-  const x = a.split(' '), y = b.split(' ');
+  const x = a.split(' '),
+    y = b.split(' ');
   let best = 0;
   let prev = new Array(y.length + 1).fill(0);
   for (let i = 1; i <= x.length; i++) {
     const cur = new Array(y.length + 1).fill(0);
     for (let j = 1; j <= y.length; j++) {
-      if (x[i - 1] === y[j - 1] && x[i - 1] !== '|') { cur[j] = prev[j - 1] + 1; if (cur[j] > best) best = cur[j]; }
+      if (x[i - 1] === y[j - 1] && x[i - 1] !== '|') {
+        cur[j] = prev[j - 1] + 1;
+        if (cur[j] > best) best = cur[j];
+      }
     }
     prev = cur;
   }
@@ -83,7 +99,7 @@ function findEcho(botText, recent, now = Date.now(), names = []) {
   for (const r of recent || []) {
     if (now - r.at > ECHO_WINDOW_MS) continue;
     const u = maskNames(userPayload(r.text), names);
-    const words = u.split(' ').filter(w => w !== '|').length;
+    const words = u.split(' ').filter((w) => w !== '|').length;
     if (words < ECHO_SHORT_RUN_WORDS) continue;
     const run = longestRun(u, bot);
     if (run >= ECHO_RUN_WORDS || (run >= ECHO_SHORT_RUN_WORDS && run >= words * ECHO_SHORT_RUN_RATIO)) return r.text;
@@ -99,7 +115,10 @@ function canSpeak({ origin, live, graceUntil = 0, now = Date.now() }) {
 }
 
 // → { ok: true } | { ok: false, reason: 'offline' | 'ofensivo' | 'url' | 'eco' }
-function checkOutbound(text, { origin = 'otro', live = true, graceUntil = 0, recent = [], names = [], now = Date.now() } = {}) {
+function checkOutbound(
+  text,
+  { origin = 'otro', live = true, graceUntil = 0, recent = [], names = [], now = Date.now() } = {},
+) {
   if (!canSpeak({ origin, live, graceUntil, now })) return { ok: false, reason: 'offline' };
   if (containsOffensive(text)) return { ok: false, reason: 'ofensivo' };
   if (findDisallowedUrl(text)) return { ok: false, reason: 'url' };
@@ -107,4 +126,13 @@ function checkOutbound(text, { origin = 'otro', live = true, graceUntil = 0, rec
   return { ok: true };
 }
 
-module.exports = { checkOutbound, canSpeak, findDisallowedUrl, findEcho, normalizeEcho, userPayload, DIRECT_ORIGINS, ECHO_WINDOW_MS };
+module.exports = {
+  checkOutbound,
+  canSpeak,
+  findDisallowedUrl,
+  findEcho,
+  normalizeEcho,
+  userPayload,
+  DIRECT_ORIGINS,
+  ECHO_WINDOW_MS,
+};

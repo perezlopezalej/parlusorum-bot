@@ -42,8 +42,9 @@ const GENRES_ES = {
 // "Adventure, Action" → "Aventura, Acción". Los géneros que no están en la tabla se omiten (nunca se deja inglés)
 function translateGenres(genres) {
   if (!genres) return '';
-  return String(genres).split(',')
-    .map(g => GENRES_ES[g.trim().toLowerCase()])
+  return String(genres)
+    .split(',')
+    .map((g) => GENRES_ES[g.trim().toLowerCase()])
     .filter(Boolean)
     .join(', ');
 }

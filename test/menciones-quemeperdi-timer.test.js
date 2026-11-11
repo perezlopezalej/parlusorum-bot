@@ -10,9 +10,12 @@ const messages = require('../config/messages.json');
 
 // Mensajes reales del directo del 30-10-2026 (logs/chat-2026-10-30.txt)
 const REAL = {
-  quemeperdi: '¡Vaya maratón! En 225 minutos el streamer ha derribado 11 enemigos y ha caído 11 veces, pero ya ha vencido dos jefes épicos mientras la audiencia vibra sin parar.',
-  timer1: 'Phantom Blade Zero nos trae otra dosis de acción 2026, y el FUA ya está listo para impulsar cada golpe épico. ¡Vamos con todo, que el juego está cargado de vibra de Ragnarok y sekiro!',
-  timer2: '11 muertes anotadas y el FUA ya vibra en cada ataque, ¡listos para que el directo siga a tope! Phantom Blade Zero 2026 trae esa energía de Ragnarok y sekiro que tanto nos gusta.',
+  quemeperdi:
+    '¡Vaya maratón! En 225 minutos el streamer ha derribado 11 enemigos y ha caído 11 veces, pero ya ha vencido dos jefes épicos mientras la audiencia vibra sin parar.',
+  timer1:
+    'Phantom Blade Zero nos trae otra dosis de acción 2026, y el FUA ya está listo para impulsar cada golpe épico. ¡Vamos con todo, que el juego está cargado de vibra de Ragnarok y sekiro!',
+  timer2:
+    '11 muertes anotadas y el FUA ya vibra en cada ataque, ¡listos para que el directo siga a tope! Phantom Blade Zero 2026 trae esa energía de Ragnarok y sekiro que tanto nos gusta.',
 };
 
 describe('0. el signo del zodiaco no es una provocación', () => {
@@ -20,7 +23,7 @@ describe('0. el signo del zodiaco no es una provocación', () => {
     assert.equal(classifyMessage('Dios fua que signo del zodiaco eres?', {}, { botNames: ['dios_fua'] }), 'direct');
   });
   test('la réplica "libreta de agravios" está en el pool de provocaciones, y solo ahí', () => {
-    assert.ok(messages.provocation_replies.some(r => r.includes('libreta de agravios')));
+    assert.ok(messages.provocation_replies.some((r) => r.includes('libreta de agravios')));
   });
 });
 
@@ -61,7 +64,10 @@ describe('2. !quemeperdi', () => {
     assert.equal(q.validateQueMePerdi(ok, { deathCount: 11, bosses: 2 }), null);
   });
   test('rechaza jefes y muertes que no cuadran', () => {
-    assert.match(q.validateQueMePerdi('Ha caído 11 veces y ha derrotado 5 jefes.', { deathCount: 11, bosses: 2 }), /jefes/);
+    assert.match(
+      q.validateQueMePerdi('Ha caído 11 veces y ha derrotado 5 jefes.', { deathCount: 11, bosses: 2 }),
+      /jefes/,
+    );
     assert.match(q.validateQueMePerdi('Ha muerto 7 veces en la tarde.', { deathCount: 11, bosses: 2 }), /muertes/);
   });
 });
@@ -87,7 +93,10 @@ describe('4. timer IA', () => {
     assert.ok(q.mentionsOtherGame('Black Myth: Wukong va a tope', 'Phantom Blade Zero', channel.games_played));
   });
   test('repetir el año de un comentario anterior se rechaza', () => {
-    const r = q.validateTimerIA('El FUA nos acompaña en este directo de 2026, qué ganas de más.', { ...ctx, recent: [REAL.timer1] });
+    const r = q.validateTimerIA('El FUA nos acompaña en este directo de 2026, qué ganas de más.', {
+      ...ctx,
+      recent: [REAL.timer1],
+    });
     assert.equal(r.ok, false);
   });
   test('no nombra a un usuario nombrado hace menos de 15 min', () => {
@@ -95,7 +104,11 @@ describe('4. timer IA', () => {
     const named = new Map([['gangar79', now - 5 * 60000]]);
     const r = q.validateTimerIA('gangar79 hoy trae el FUA muy cargado de energía rara.', { ...ctx, named, now });
     assert.equal(r.ok, false);
-    const later = q.validateTimerIA('gangar79 hoy trae el FUA muy cargado de energía rara.', { ...ctx, named, now: now + 16 * 60000 });
+    const later = q.validateTimerIA('gangar79 hoy trae el FUA muy cargado de energía rara.', {
+      ...ctx,
+      named,
+      now: now + 16 * 60000,
+    });
     assert.equal(later.ok, true);
   });
   test('el timer no etiqueta a nadie (ningún tema es "usuario") y rechaza el @', () => {
@@ -107,5 +120,3 @@ describe('4. timer IA', () => {
     assert.equal(q.validateTimerIA('El FUA lo ve claro, Manu sigue firme en este directo.', ctx).ok, true);
   });
 });
-
-

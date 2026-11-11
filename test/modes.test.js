@@ -17,7 +17,10 @@ describe('decideMode: prioridades', () => {
     assert.equal(decide({ recentChatCount: 2 }).mode, 'chill');
   });
   test('BRB: focus/brb, por encima de todo', () => {
-    assert.deepEqual(decide({ brb: true, raidActive: true, events: [ev('victory', 0)] }), { mode: 'focus', variant: 'brb' });
+    assert.deepEqual(decide({ brb: true, raidActive: true, events: [ev('victory', 0)] }), {
+      mode: 'focus',
+      variant: 'brb',
+    });
   });
   test('victoria reciente: victory', () => {
     assert.equal(decide({ events: [ev('victory', 1)] }).mode, 'victory');
@@ -33,7 +36,10 @@ describe('decideMode: prioridades', () => {
     assert.equal(decide({ raidActive: true, events: [ev('victory', 1)] }).mode, 'victory');
   });
   test('3 muertes en 10 min: focus/deaths', () => {
-    assert.deepEqual(decide({ events: [ev('death', 8), ev('death', 5), ev('death', 1)] }), { mode: 'focus', variant: 'deaths' });
+    assert.deepEqual(decide({ events: [ev('death', 8), ev('death', 5), ev('death', 1)] }), {
+      mode: 'focus',
+      variant: 'deaths',
+    });
   });
   test('2 muertes no bastan', () => {
     assert.equal(decide({ events: [ev('death', 5), ev('death', 1)] }).mode, 'normal');
@@ -97,7 +103,7 @@ describe('resolveModeConfig y config del canal', () => {
     assert.deepEqual(resolveModeConfig(undefined, 'hype'), {});
   });
   test('los modos se distinguen en longitud y frecuencia', () => {
-    const c = m => resolveModeConfig(modes, m);
+    const c = (m) => resolveModeConfig(modes, m);
     assert.ok(c('hype').max_chars < c('normal').max_chars);
     assert.ok(c('chill').max_tokens > c('hype').max_tokens);
     assert.ok(c('victory').cohost_multiplier > c('normal').cohost_multiplier);
@@ -115,7 +121,7 @@ describe('estado del modo', () => {
   test('modeSetAt solo cambia cuando cambia el modo', async () => {
     state.setPersonalityMode('hype', null);
     const t = state.getModeSetAt();
-    await new Promise(r => setTimeout(r, 15));
+    await new Promise((r) => setTimeout(r, 15));
     state.setPersonalityMode('hype', null);
     assert.equal(state.getModeSetAt(), t);
     state.setPersonalityMode('focus', 'brb');

@@ -25,7 +25,7 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 const pendingStates = new Map(); // state → expiresAt
 
 const MAX_PENDING_STATES = 20;
-const RATE_LIMIT_MAX = 10;               // inicios de flujo por IP y ventana
+const RATE_LIMIT_MAX = 10; // inicios de flujo por IP y ventana
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const startHits = new Map(); // ip → timestamps recientes
 
@@ -33,14 +33,14 @@ setInterval(() => {
   const now = Date.now();
   for (const [s, exp] of pendingStates) if (exp < now) pendingStates.delete(s);
   for (const [ip, hits] of startHits) {
-    if (!hits.some(t => now - t < RATE_LIMIT_WINDOW_MS)) startHits.delete(ip);
+    if (!hits.some((t) => now - t < RATE_LIMIT_WINDOW_MS)) startHits.delete(ip);
   }
 }, 60 * 1000).unref();
 
 function isRateLimited(req) {
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
   const now = Date.now();
-  const hits = (startHits.get(ip) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  const hits = (startHits.get(ip) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
   hits.push(now);
   startHits.set(ip, hits);
   return hits.length > RATE_LIMIT_MAX;
@@ -61,7 +61,9 @@ const SECURITY_HEADERS = {
 
 function page(res, status, title, msg) {
   res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:sans-serif;max-width:480px;margin:15vh auto;padding:0 16px;text-align:center"><h1>${title}</h1><p>${msg}</p></body></html>`);
+  res.end(
+    `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:sans-serif;max-width:480px;margin:15vh auto;padding:0 16px;text-align:center"><h1>${title}</h1><p>${msg}</p></body></html>`,
+  );
 }
 
 function handleAuthStart(req, res) {
@@ -111,7 +113,9 @@ async function handleAuthCallback(req, res) {
       return page(res, 502, 'Error', 'Twitch rechazó el código de autorización.');
     }
 
-    const valRes = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { Authorization: `OAuth ${tokens.access_token}` } });
+    const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `OAuth ${tokens.access_token}` },
+    });
     const val = await valRes.json();
     if (!valRes.ok || (val.login || '').toLowerCase() !== process.env.CHANNEL.toLowerCase()) {
       logger.warn(`Auth callback: login ${val.login || '?'} no coincide con el canal configurado — rechazado.`);
@@ -122,7 +126,12 @@ async function handleAuthCallback(req, res) {
     process.env.BROADCASTER_REFRESH_TOKEN = tokens.refresh_token;
     await saveTokens({ broadcaster_token: tokens.access_token, broadcaster_refresh_token: tokens.refresh_token });
     logger.info('🔐 Broadcaster reautorizado vía /auth/broadcaster.');
-    page(res, 200, 'Autorizado correctamente', 'Ya puedes cerrar esta pestaña. Reinicia el servicio para re-registrar las suscripciones de EventSub.');
+    page(
+      res,
+      200,
+      'Autorizado correctamente',
+      'Ya puedes cerrar esta pestaña. Reinicia el servicio para re-registrar las suscripciones de EventSub.',
+    );
   } catch (e) {
     logger.error(`Auth callback error: ${e.message}`);
     page(res, 500, 'Error', 'Fallo inesperado en el servidor.');

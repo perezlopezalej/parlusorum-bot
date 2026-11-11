@@ -35,7 +35,10 @@ describe('buildSubContext', () => {
   });
 
   test('elige un único dato entre varios', () => {
-    const facts = [{ fact_type: 'is_regular', value: 'true' }, { fact_type: 'trivia_wins', value: '5' }];
+    const facts = [
+      { fact_type: 'is_regular', value: 'true' },
+      { fact_type: 'trivia_wins', value: '5' },
+    ];
     const out = buildSubContext('ana', facts, { rng: first });
     assert.match(out, /5 trivias/);
     assert.doesNotMatch(out, /habitual/);
@@ -56,16 +59,16 @@ describe('buildChannelQuestion', () => {
 
   test('récord de muertes y juego del récord', () => {
     const c = channelQuestionCandidates({ sessions });
-    const record = c.find(x => /récord de muertes en un solo stream del canal/.test(x.question));
+    const record = c.find((x) => /récord de muertes en un solo stream del canal/.test(x.question));
     assert.equal(record.answer, '12');
-    const game = c.find(x => /En qué juego/.test(x.question));
+    const game = c.find((x) => /En qué juego/.test(x.question));
     assert.equal(game.answer, 'black myth: wukong');
     assert.deepEqual(game.aliases, ['Black Myth']);
   });
 
   test('empate en el récord no genera la pregunta del juego', () => {
     const tied = [...sessions, { game: 'Otro', death_count: 12 }];
-    assert.ok(!channelQuestionCandidates({ sessions: tied }).some(x => /En qué juego/.test(x.question)));
+    assert.ok(!channelQuestionCandidates({ sessions: tied }).some((x) => /En qué juego/.test(x.question)));
   });
 
   test('campeón solo con 2+ victorias', () => {
@@ -90,6 +93,6 @@ describe('buildChannelQuestion', () => {
     const data = { champion: { username: 'ana', count: 4 } };
     const q = buildChannelQuestion(data);
     assert.ok(q);
-    assert.equal(buildChannelQuestion(data, { isRecent: x => x === q.question }), null);
+    assert.equal(buildChannelQuestion(data, { isRecent: (x) => x === q.question }), null);
   });
 });

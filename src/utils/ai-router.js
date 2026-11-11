@@ -18,13 +18,32 @@ const chatlog = require('./chatlog');
 const { pseudonymize, restoreResult } = require('./ai-pseudonym');
 const groqUtils = require('./groq-utils');
 
-const { GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_LIGHT, GROQ_MODEL_PICK, GROQ_MODEL_COMPOUND, GROQ_MODEL_FALLBACKS, isReasoningModel, REASONING_HEADROOM } = groqUtils;
+const {
+  GROQ_MODEL,
+  GROQ_MODEL_FAST,
+  GROQ_MODEL_LIGHT,
+  GROQ_MODEL_PICK,
+  GROQ_MODEL_COMPOUND,
+  GROQ_MODEL_FALLBACKS,
+  isReasoningModel,
+  REASONING_HEADROOM,
+} = groqUtils;
 
 const GROUP = {
-  diosfua: 'groq', quemeperdi: 'groq', cohost: 'groq',
-  mention: 'mid', provocation: 'mid',
-  timer: 'light', hook: 'light', alert: 'light', endstream: 'light', trivia: 'light', command: 'light', summary: 'light',
-  review: 'review', pick: 'pick',
+  diosfua: 'groq',
+  quemeperdi: 'groq',
+  cohost: 'groq',
+  mention: 'mid',
+  provocation: 'mid',
+  timer: 'light',
+  hook: 'light',
+  alert: 'light',
+  endstream: 'light',
+  trivia: 'light',
+  command: 'light',
+  summary: 'light',
+  review: 'review',
+  pick: 'pick',
 };
 const PROVIDERS = new Set(['groq']);
 // Tipos espontáneos: si el modelo principal no tiene cupo, el bot calla en vez de usar uno peor (y no espera a los 429).
@@ -32,42 +51,69 @@ const PROVIDERS = new Set(['groq']);
 const SILENT_KINDS = new Set(['cohost', 'timer', 'hook', 'quemeperdi']);
 
 class NoQuotaError extends Error {
-  constructor(message) { super(message); this.name = 'NoQuotaError'; this.code = 'NO_QUOTA'; }
+  constructor(message) {
+    super(message);
+    this.name = 'NoQuotaError';
+    this.code = 'NO_QUOTA';
+  }
 }
 
-const num = (name, def) => { const v = parseInt(process.env[name] || '', 10); return v > 0 ? v : def; };
+const num = (name, def) => {
+  const v = parseInt(process.env[name] || '', 10);
+  return v > 0 ? v : def;
+};
 const BLOCK_MAX_MS = 30 * 60 * 1000;
 const BLOCK_MINUTE_MS = 60 * 1000;
 const BLOCK_DAILY_GROQ_MS = 10 * 60 * 1000;
 const EST_CHARS_PER_TOKEN = 3.2;
 
-const unique = list => [...new Set(list)];
+const unique = (list) => [...new Set(list)];
 const link = (provider, model) => ({ provider, model, key: `${provider}:${model}` });
 
 // Familia del modelo: gpt-oss (OpenAI) y qwen no comparten sesgos, por eso el selector no es de la del generador
-const modelFamily = model => /gpt-oss/i.test(model || '') ? 'gpt-oss' : /qwen/i.test(model || '') ? 'qwen' : String(model || '').split(/[/:-]/)[0].toLowerCase();
+const modelFamily = (model) =>
+  /gpt-oss/i.test(model || '')
+    ? 'gpt-oss'
+    : /qwen/i.test(model || '')
+      ? 'qwen'
+      : String(model || '')
+          .split(/[/:-]/)[0]
+          .toLowerCase();
 
 // "groq:openai/gpt-oss-120b,groq:qwen/qwen3.8-27b" → [{ provider, model, key }]
 function parseChain(text) {
   const out = [];
-  for (const part of String(text || '').split(',').map(p => p.trim()).filter(Boolean)) {
+  for (const part of String(text || '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)) {
     const i = part.indexOf(':');
     const provider = i > 0 ? part.slice(0, i).trim().toLowerCase() : '';
     const model = i > 0 ? part.slice(i + 1).trim() : '';
-    if (!PROVIDERS.has(provider) || !model) { logger.warn(`⚠️ AI_CHAIN: eslabón no válido "${part}" (se espera groq:modelo)`); continue; }
+    if (!PROVIDERS.has(provider) || !model) {
+      logger.warn(`⚠️ AI_CHAIN: eslabón no válido "${part}" (se espera groq:modelo)`);
+      continue;
+    }
     out.push(link(provider, model));
   }
   return out;
 }
 
 function defaultChain(kind, { generator } = {}) {
-  const groq = list => unique(list).map(m => link('groq', m));
+  const groq = (list) => unique(list).map((m) => link('groq', m));
   switch (GROUP[kind]) {
-    case 'light': return groq([GROQ_MODEL_LIGHT, GROQ_MODEL_FAST, GROQ_MODEL, ...GROQ_MODEL_FALLBACKS]);
-    case 'mid': return groq([GROQ_MODEL_FAST, GROQ_MODEL, GROQ_MODEL_LIGHT, ...GROQ_MODEL_FALLBACKS]);
-    case 'review': return groq([GROQ_MODEL_FAST, ...GROQ_MODEL_FALLBACKS, GROQ_MODEL]);
-    case 'pick': return groq([GROQ_MODEL_PICK, GROQ_MODEL_FAST, ...GROQ_MODEL_FALLBACKS, GROQ_MODEL]).filter(l => modelFamily(l.model) !== modelFamily(generator || GROQ_MODEL));
-    default: return groq([kind === 'diosfua' ? GROQ_MODEL_COMPOUND : GROQ_MODEL, GROQ_MODEL, ...GROQ_MODEL_FALLBACKS]);
+    case 'light':
+      return groq([GROQ_MODEL_LIGHT, GROQ_MODEL_FAST, GROQ_MODEL, ...GROQ_MODEL_FALLBACKS]);
+    case 'mid':
+      return groq([GROQ_MODEL_FAST, GROQ_MODEL, GROQ_MODEL_LIGHT, ...GROQ_MODEL_FALLBACKS]);
+    case 'review':
+      return groq([GROQ_MODEL_FAST, ...GROQ_MODEL_FALLBACKS, GROQ_MODEL]);
+    case 'pick':
+      return groq([GROQ_MODEL_PICK, GROQ_MODEL_FAST, ...GROQ_MODEL_FALLBACKS, GROQ_MODEL]).filter(
+        (l) => modelFamily(l.model) !== modelFamily(generator || GROQ_MODEL),
+      );
+    default:
+      return groq([kind === 'diosfua' ? GROQ_MODEL_COMPOUND : GROQ_MODEL, GROQ_MODEL, ...GROQ_MODEL_FALLBACKS]);
   }
 }
 
@@ -77,15 +123,16 @@ function getChain(kind, { generator } = {}) {
   const custom = process.env[`AI_CHAIN_${kind.toUpperCase()}`];
   let chain = custom ? parseChain(custom) : [];
   if (!chain.length) chain = defaultChain(kind, { generator });
-  if (kind === 'pick') return chain.filter(l => modelFamily(l.model) !== modelFamily(generator || GROQ_MODEL));
+  if (kind === 'pick') return chain.filter((l) => modelFamily(l.model) !== modelFamily(generator || GROQ_MODEL));
   return chain.length ? chain : defaultChain('mention');
 }
 
 // --- Errores: cuáles justifican pasar al siguiente eslabón y cuánto se bloquea el modelo ---
-const isQuota = err => err?.status === 429;
-const isServerError = err => [500, 502, 503, 504].includes(err?.status);
-const isTimeout = err => err?.code === 'ETIMEDOUT' || /timed? ?out|timeout/i.test(`${err?.name || ''} ${err?.message || ''}`);
-const isDaily = err => groqUtils.isDailyQuota(err);
+const isQuota = (err) => err?.status === 429;
+const isServerError = (err) => [500, 502, 503, 504].includes(err?.status);
+const isTimeout = (err) =>
+  err?.code === 'ETIMEDOUT' || /timed? ?out|timeout/i.test(`${err?.name || ''} ${err?.message || ''}`);
+const isDaily = (err) => groqUtils.isDailyQuota(err);
 
 function blockDuration(_link, err) {
   if (isQuota(err)) {
@@ -95,31 +142,47 @@ function blockDuration(_link, err) {
   if (groqUtils.isModelGone(err)) return BLOCK_MAX_MS;
   return Math.min(num('AI_BLOCK_ERROR_MS', 3 * 60 * 1000), BLOCK_MAX_MS); // 5xx y timeouts
 }
-const shouldFallThrough = err => isQuota(err) || isServerError(err) || isTimeout(err) || groqUtils.isModelGone(err);
+const shouldFallThrough = (err) => isQuota(err) || isServerError(err) || isTimeout(err) || groqUtils.isModelGone(err);
 
-function blockLink(l, err, now = Date.now()) { state.blockAi(l.key, now + blockDuration(l, err)); }
+function blockLink(l, err, now = Date.now()) {
+  state.blockAi(l.key, now + blockDuration(l, err));
+}
 
 // --- Presupuesto: saltar ANTES del 429 cuando el contador propio dice que no cabe ---
 function overBudget(l, estTokens, now = Date.now()) {
   const minute = state.getAiMinuteUsage(l.key, now);
-  if (minute.requests >= Math.floor(num('AI_GROQ_RPM', 30) * 0.9) || minute.tokens + estTokens > num('AI_GROQ_TPM', 8000) * 0.85) return true;
+  if (
+    minute.requests >= Math.floor(num('AI_GROQ_RPM', 30) * 0.9) ||
+    minute.tokens + estTokens > num('AI_GROQ_TPM', 8000) * 0.85
+  )
+    return true;
   // Cupo real que dijo Groq en la última respuesta (x-ratelimit-remaining-*), mientras siga vigente
   const real = state.getGroqLimits(l.key, now);
-  return !!real && ((real.remainingTokens !== undefined && real.remainingTokens < estTokens) || (real.remainingRequests !== undefined && real.remainingRequests < 1));
+  return (
+    !!real &&
+    ((real.remainingTokens !== undefined && real.remainingTokens < estTokens) ||
+      (real.remainingRequests !== undefined && real.remainingRequests < 1))
+  );
 }
 
 // Primero los que tienen hueco; luego los sin presupuesto; los bloqueados, como último recurso
 function orderChain(chain, estTokens = 0, now = Date.now()) {
-  const blocked = chain.filter(l => state.isAiBlocked(l.key, now));
-  const open = chain.filter(l => !blocked.includes(l));
-  return [...open.filter(l => !overBudget(l, estTokens, now)), ...open.filter(l => overBudget(l, estTokens, now)), ...blocked];
+  const blocked = chain.filter((l) => state.isAiBlocked(l.key, now));
+  const open = chain.filter((l) => !blocked.includes(l));
+  return [
+    ...open.filter((l) => !overBudget(l, estTokens, now)),
+    ...open.filter((l) => overBudget(l, estTokens, now)),
+    ...blocked,
+  ];
 }
 
 // --- Transporte (sustituible en tests y en scripts/compare-models.js) ---
 const transports = {
   groq: (p, { timeoutMs }) => groqUtils.groqCreate(p, { timeoutMs }),
 };
-function setTransport(provider, fn) { transports[provider] = fn; }
+function setTransport(provider, fn) {
+  transports[provider] = fn;
+}
 
 function buildRequest(l, params) {
   const { model: _ignored, ...rest } = params;
@@ -134,7 +197,7 @@ function buildRequest(l, params) {
 
 const timeoutFor = (opts) => opts.timeoutMs || num('AI_GROQ_TIMEOUT_MS', 20000);
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Espera ante un 429: la que pide Groq (retry-after) o un retroceso exponencial, siempre con algo de aleatoriedad
 // para que varias peticiones que fallaron a la vez no reintenten juntas. rng inyectable para tests.
@@ -157,7 +220,10 @@ async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, nam
     const handle = state.startAiRequest(l.provider, l.model, est);
     const t0 = Date.now();
     try {
-      const result = await transports[l.provider](p, { timeoutMs: timeoutFor({ timeoutMs }), onHeaders: h => state.noteGroqLimits(l.key, groqUtils.parseRateHeaders(h)) });
+      const result = await transports[l.provider](p, {
+        timeoutMs: timeoutFor({ timeoutMs }),
+        onHeaders: (h) => state.noteGroqLimits(l.key, groqUtils.parseRateHeaders(h)),
+      });
       state.finishAiRequest(handle, result?.usage);
       state.recordGroqTokens(l.model, result?.usage);
       chatlog.noteAiCall(l.model, Date.now() - t0);
@@ -170,7 +236,10 @@ async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, nam
       if (err?.headers) state.noteGroqLimits(l.key, groqUtils.parseRateHeaders(err.headers));
       if (isQuota(err) && !hasNext && !noWait && n < maxRetries && !isDaily(err)) {
         const delay = backoffMs(n, err);
-        if (delay <= maxDelayMs) { await sleep(delay); continue; }
+        if (delay <= maxDelayMs) {
+          await sleep(delay);
+          continue;
+        }
       }
       throw err;
     }
@@ -180,12 +249,14 @@ async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, nam
 // Recorre la cadena: pasa al siguiente ante 429, 5xx, timeout o modelo retirado; otros errores (p. ej. 400) se lanzan
 async function runChain(chain, kind, params, opts = {}) {
   const o = { kind, maxRetries: 2, maxDelayMs: Infinity, ...opts };
-  const est = Math.ceil(JSON.stringify(params.messages || []).length / EST_CHARS_PER_TOKEN) + (params.max_tokens || 100);
+  const est =
+    Math.ceil(JSON.stringify(params.messages || []).length / EST_CHARS_PER_TOKEN) + (params.max_tokens || 100);
   const silent = SILENT_KINDS.has(kind);
   if (silent) {
     // Espontáneo: solo el modelo principal; sin cupo (bloqueado o sin presupuesto) se calla en vez de bajar de modelo
     const first = chain[0];
-    if (state.isAiBlocked(first.key) || overBudget(first, est)) throw new NoQuotaError(`Sin cupo en ${first.key} para ${kind}: se calla`);
+    if (state.isAiBlocked(first.key) || overBudget(first, est))
+      throw new NoQuotaError(`Sin cupo en ${first.key} para ${kind}: se calla`);
     o.noWait = true;
   }
   const ordered = silent ? [chain[0], ...chain.slice(1)] : orderChain(chain, est);
@@ -206,13 +277,37 @@ async function runChain(chain, kind, params, opts = {}) {
         throw err;
       }
       blockLink(l, err);
-      const why = isQuota(err) ? `cupo ${isDaily(err) ? 'diario' : 'por minuto'} agotado` : groqUtils.isModelGone(err) ? 'modelo retirado' : isTimeout(err) ? 'timeout' : `error ${err.status}`;
+      const why = isQuota(err)
+        ? `cupo ${isDaily(err) ? 'diario' : 'por minuto'} agotado`
+        : groqUtils.isModelGone(err)
+          ? 'modelo retirado'
+          : isTimeout(err)
+            ? 'timeout'
+            : `error ${err.status}`;
       logger.warn(`⚠️ IA (${kind}): ${l.key} ${why}, probando ${ordered[i + 1].key}.`);
     }
   }
   throw lastErr;
 }
 
-function aiChat(kind, params, opts) { return runChain(getChain(kind, opts), kind, params, opts); }
+function aiChat(kind, params, opts) {
+  return runChain(getChain(kind, opts), kind, params, opts);
+}
 
-module.exports = { aiChat, runChain, getChain, backoffMs, NoQuotaError, SILENT_KINDS, defaultChain, parseChain, orderChain, overBudget, blockLink, blockDuration, setTransport, modelFamily, GROUP };
+module.exports = {
+  aiChat,
+  runChain,
+  getChain,
+  backoffMs,
+  NoQuotaError,
+  SILENT_KINDS,
+  defaultChain,
+  parseChain,
+  orderChain,
+  overBudget,
+  blockLink,
+  blockDuration,
+  setTransport,
+  modelFamily,
+  GROUP,
+};

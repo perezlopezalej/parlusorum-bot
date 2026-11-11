@@ -1,9 +1,55 @@
 // Cohost: comentarios de eventos en cola y comentarios libres por reloj.
 const channelConfig = require('../../config/channel.json');
 const { getCurrentGame, lookupGameInfo } = require('../twitch/api');
-const { getPlayer, isFreeCohostPaused, isTriviaActive, isSilenced, isReactive, isRaidActive, getRaidUsername, isBrb, getStreamNarrative, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, markNamed, getNamedUsers, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const {
+  getPlayer,
+  isFreeCohostPaused,
+  isTriviaActive,
+  isSilenced,
+  isReactive,
+  isRaidActive,
+  getRaidUsername,
+  isBrb,
+  getStreamNarrative,
+  getBotHistory,
+  addBotMessage,
+  recordCohostAttempt,
+  recordCohostSent,
+  getDeathCount,
+  getBossCount,
+  markStructure,
+  getUsedStructures,
+  getStreamStartedAt,
+  recordCohost,
+  recordCohostDiscard,
+  getLastCohostTime,
+  getCohostTimes,
+  markNamed,
+  getNamedUsers,
+  onNarrativeEvent,
+  addCohostText,
+  getCohostTexts,
+} = require('../utils/state');
 const { mergeBossMoments, bossInBatch, BOSS_SETTLE_MS } = require('../utils/narrative');
-const { buildStoryBlock, condenseChat, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR, streakAllowed, STREAK_COHOST_GAP_MS, hourlyCapReached, pickFreeTopic } = require('../utils/narrative');
+const {
+  buildStoryBlock,
+  condenseChat,
+  classifyCohostMoment,
+  eventCohostAllowed,
+  eventExpired,
+  freeCohostDue,
+  pruneHourly,
+  EVENT_COHOST_MAX_PER_HOUR,
+  EVENT_QUEUE_TTL_MS,
+  FREE_COHOST_INTERVAL_MS,
+  FREE_COHOST_ACTIVITY_WINDOW_MS,
+  FREE_COHOST_MIN_MESSAGES,
+  FREE_COHOST_MAX_PER_HOUR,
+  streakAllowed,
+  STREAK_COHOST_GAP_MS,
+  hourlyCapReached,
+  pickFreeTopic,
+} = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { pickBest } = require('./pick-best');
 const quality = require('./quality');
@@ -40,12 +86,40 @@ let cohostRunning = false;
 
 function detectChatMood(messages) {
   const text = messages.join(' ').toLowerCase();
-  const hype = ['jaja','lol','gg','pog','hype','vamo','goat','omg','wow','ez',
-                'pepehype','pogchamp','pepega','luego','siuu'];
-  const frustracion = ['oof','no','mal','wtf','otra vez','siempre','muerto',
-                       'nooo','noooo','rip','gg ez','mentira','dios mio'];
-  const hypeCount = hype.filter(w => text.includes(w)).length;
-  const frustCount = frustracion.filter(w => text.includes(w)).length;
+  const hype = [
+    'jaja',
+    'lol',
+    'gg',
+    'pog',
+    'hype',
+    'vamo',
+    'goat',
+    'omg',
+    'wow',
+    'ez',
+    'pepehype',
+    'pogchamp',
+    'pepega',
+    'luego',
+    'siuu',
+  ];
+  const frustracion = [
+    'oof',
+    'no',
+    'mal',
+    'wtf',
+    'otra vez',
+    'siempre',
+    'muerto',
+    'nooo',
+    'noooo',
+    'rip',
+    'gg ez',
+    'mentira',
+    'dios mio',
+  ];
+  const hypeCount = hype.filter((w) => text.includes(w)).length;
+  const frustCount = frustracion.filter((w) => text.includes(w)).length;
   if (hypeCount >= 2) return 'HYPE';
   if (frustCount >= 2) return 'FRUSTRACIÓN';
   return 'NEUTRO';
@@ -66,7 +140,7 @@ let lastCohostForm = ''; // id de la última forma del cohost (rota, no se repit
 
 let lastFreeTopic = ''; // id del último tema del cohost libre enviado (rota, no se repite seguido)
 
-let lastSharedAt = 0;    // último comentario enviado del cupo compartido (libre o racha)
+let lastSharedAt = 0; // último comentario enviado del cupo compartido (libre o racha)
 
 let deathRecordCache = { at: 0, max: 0 };
 
@@ -75,7 +149,10 @@ async function getDeathRecord() {
   const now = Date.now();
   if (now - deathRecordCache.at < 30 * 60 * 1000) return deathRecordCache.max;
   const rows = await getRecentSessionDeaths(30).catch(() => []);
-  deathRecordCache = { at: now, max: rows.reduce((m, r) => Math.max(m, Number.isFinite(r.death_count) ? r.death_count : 0), 0) };
+  deathRecordCache = {
+    at: now,
+    max: rows.reduce((m, r) => Math.max(m, Number.isFinite(r.death_count) ? r.death_count : 0), 0),
+  };
   return deathRecordCache.max;
 }
 
@@ -83,54 +160,87 @@ async function getDeathRecord() {
 function publicChatContext(n = 5) {
   const cutoff = Date.now() - 10 * 60 * 1000;
   return chatHistory
-    .filter(m => m.ts > cutoff && !isDirectedElsewhere(m.message))
+    .filter((m) => m.ts > cutoff && !isDirectedElsewhere(m.message))
     .slice(-n)
-    .map(m => `${m.username}: ${quality.cleanChatNoise(m.message)}`)
+    .map((m) => `${m.username}: ${quality.cleanChatNoise(m.message)}`)
     .join('\n');
 }
 
 // Si la mayoría de los últimos mensajes son charla entre dos usuarios, el cohost libre no entra
 function isPrivateExchange(now = Date.now(), window = 6, min = 3) {
-  const last = chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).slice(-window);
-  return last.filter(m => isDirectedElsewhere(m.message)).length >= min;
+  const last = chatHistory.filter((m) => m.ts > now - 5 * 60 * 1000).slice(-window);
+  return last.filter((m) => isDirectedElsewhere(m.message)).length >= min;
 }
 
 async function runCohost(client, channel, moment = null) {
   const kind = moment ? 'event' : 'free';
   const kindKey = moment ? moment.kind : 'free';
   if (!getEventSubLiveStatus()) return 'dropped';
-  const blocked = isSilenced() ? 'silencio' : isReactive() ? 'reactivo' : isBrb() ? 'brb' : isTriviaActive() ? 'trivia' : null;
+  const blocked = isSilenced()
+    ? 'silencio'
+    : isReactive()
+      ? 'reactivo'
+      : isBrb()
+        ? 'brb'
+        : isTriviaActive()
+          ? 'trivia'
+          : null;
   if (blocked) {
-    if (moment) { recordCohostAttempt(kind); recordCohostDiscard(blocked); }
+    if (moment) {
+      recordCohostAttempt(kind);
+      recordCohostDiscard(blocked);
+    }
     return 'dropped';
   }
   if (cohostRunning) return moment ? 'retry' : 'dropped';
   const now = Date.now();
   if (!moment && isFreeCohostPaused(now)) return 'dropped';
-  if (moment && !eventCohostAllowed({ now, lastAt: getLastCohostTime(), stamps: getCohostTimes(), max: COHOST_MAX_PER_HOUR })) return 'retry';
+  if (
+    moment &&
+    !eventCohostAllowed({ now, lastAt: getLastCohostTime(), stamps: getCohostTimes(), max: COHOST_MAX_PER_HOUR })
+  )
+    return 'retry';
   // Las rachas de muertes comparten cupo con los comentarios libres (~4/h como máximo): fuera de cupo se descartan, no esperan en cola
   const isStreak = moment?.kind === 'streak';
-  if (isStreak && !streakAllowed({ now, lastSharedAt, sharedStamps: freeCohostTimes, gapMs: COHOST_STREAK_GAP, max: COHOST_FREE_MAX_PER_HOUR })) {
-    recordCohostAttempt(kind); recordCohostDiscard('racha_cupo');
+  if (
+    isStreak &&
+    !streakAllowed({
+      now,
+      lastSharedAt,
+      sharedStamps: freeCohostTimes,
+      gapMs: COHOST_STREAK_GAP,
+      max: COHOST_FREE_MAX_PER_HOUR,
+    })
+  ) {
+    recordCohostAttempt(kind);
+    recordCohostDiscard('racha_cupo');
     logger.info('Co-host: racha de muertes sin comentar (cupo compartido con los libres)');
     return 'dropped';
   }
   if (!canMakeRequest()) {
     if (moment) return 'retry';
-    recordCohostAttempt(kind); recordCohostDiscard('ratelimit');
+    recordCohostAttempt(kind);
+    recordCohostDiscard('ratelimit');
     return 'dropped';
   }
   const recentContext = moment ? getRecentHistory(5) : publicChatContext(5);
   if (!moment && !recentContext) return 'dropped';
   // Alguien dice que está mal o de bajón: el cohost libre no bromea con eso (calla)
-  if (!moment && quality.hasPersonalDistress(recentContext)) { logger.info('Co-host libre: calla (alguien comenta que está mal)'); return 'dropped'; }
-  if (!moment && isPrivateExchange(now)) { recordCohostAttempt(kind); recordCohostDiscard('privado'); return 'dropped'; }
+  if (!moment && quality.hasPersonalDistress(recentContext)) {
+    logger.info('Co-host libre: calla (alguien comenta que está mal)');
+    return 'dropped';
+  }
+  if (!moment && isPrivateExchange(now)) {
+    recordCohostAttempt(kind);
+    recordCohostDiscard('privado');
+    return 'dropped';
+  }
 
   recordCohostAttempt(kind);
   if (!moment) freeAttemptTimes = pruneHourly([...freeAttemptTimes, now]);
   refreshMode();
   const modeConfig = getModeConfig();
-  const recentBot = getBotHistory().map(e => e.msg);
+  const recentBot = getBotHistory().map((e) => e.msg);
   const emotes = channelConfig.channel_emotes || [];
   const allowEmote = quality.emoteAllowed(recentBot, emotes);
   const deathCount = getDeathCount();
@@ -142,26 +252,47 @@ async function runCohost(client, channel, moment = null) {
 
   try {
     const gameInfo = await getCurrentGame();
-    const mood = detectChatMood(chatHistory.slice(-10).map(m => m.message || ''));
+    const mood = detectChatMood(chatHistory.slice(-10).map((m) => m.message || ''));
     const startedAt = getStreamStartedAt();
     const minutes = startedAt ? Math.floor((now - startedAt) / 60000) : null;
-    const baseDeathLine = deathCount === 0 ? 'Aún sin caídas anotadas: el tema es la partida, el chat o el FUA.' : `${deathCount} ${deathCount === 1 ? 'caída anotada' : 'caídas anotadas'}.`;
-    const raidLine = isRaidActive() ? ` Acaba de llegar una raid de @${getRaidUsername()}: los raiders son visitantes de otro canal, no los espectadores del directo.` : '';
-    const nameLine = namesAllowed ? 'Puedes nombrar a quien aparece en el suceso.' : 'Dirígete a Manu o al chat en general.';
+    const baseDeathLine =
+      deathCount === 0
+        ? 'Aún sin caídas anotadas: el tema es la partida, el chat o el FUA.'
+        : `${deathCount} ${deathCount === 1 ? 'caída anotada' : 'caídas anotadas'}.`;
+    const raidLine = isRaidActive()
+      ? ` Acaba de llegar una raid de @${getRaidUsername()}: los raiders son visitantes de otro canal, no los espectadores del directo.`
+      : '';
+    const nameLine = namesAllowed
+      ? 'Puedes nombrar a quien aparece en el suceso.'
+      : 'Dirígete a Manu o al chat en general.';
     const emoteLine = emoteLineFor(allowEmote, emotes);
     const loreBlock = await getLoreBlock();
-    const windowLines = chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).slice(-25);
+    const windowLines = chatHistory.filter((m) => m.ts > now - 5 * 60 * 1000).slice(-25);
     const chatSummary = condenseChat(windowLines);
     const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
     // Ficha del juego actual (caché de IGDB) para que el revisor reconozca como respaldados el año, el estudio o el género
-    const gameFacts = gameInfo?.game ? factcheck.gameFactsText((await lookupGameInfo(gameInfo.game, { detail: true }).catch(() => ({}))).info) : '';
+    const gameFacts = gameInfo?.game
+      ? factcheck.gameFactsText((await lookupGameInfo(gameInfo.game, { detail: true }).catch(() => ({}))).info)
+      : '';
     const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${gameFacts} ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
 
     // El número de muertes no se cita en dos mensajes seguidos del bot (salvo en la primera muerte y el récord, que son el dato)
     const countIsTheNews = moment && ['first_death', 'record'].includes(moment.kind);
-    const lastCitedDeaths = !countIsTheNews && quality.citesDeathCount(recentBot[recentBot.length - 1] || '', deathCount);
+    const lastCitedDeaths =
+      !countIsTheNews && quality.citesDeathCount(recentBot[recentBot.length - 1] || '', deathCount);
     const deathLine = `${baseDeathLine}${lastCitedDeaths ? ' Esta vez deja fuera la cifra de caídas.' : ''}${raidLine}`;
-    const validateCtx = { player: getPlayer(), deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures(), lastCitedDeaths, game: gameInfo?.game || '' };
+    const validateCtx = {
+      player: getPlayer(),
+      deathCount,
+      recent: recentBot,
+      sameKind: getCohostTexts(kindKey),
+      named: namesAllowed ? new Map() : named,
+      now,
+      nameWindowMs: COHOST_NAME_WINDOW,
+      usedStructures: getUsedStructures(),
+      lastCitedDeaths,
+      game: gameInfo?.game || '',
+    };
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
     let generatorModel; // modelo que escribió los candidatos: el selector es de otra familia
     const reviewText = async (text, { sense = true } = {}) => {
@@ -177,7 +308,7 @@ async function runCohost(client, channel, moment = null) {
       return { ok: true };
     };
     // Un candidato listo para validar: recorte, política de emotes y, si abre con un nombre ya citado, sin él
-    const prepare = candidate => {
+    const prepare = (candidate) => {
       let text = quality.applyEmotePolicy(truncate(candidate, maxChars), allowEmote, emotes);
       if (!namesAllowed) {
         const repeated = quality.recentlyNamedIn(text, named, now, COHOST_NAME_WINDOW);
@@ -192,55 +323,107 @@ async function runCohost(client, channel, moment = null) {
     const form = pickCohostForm(lastCohostForm); // la forma cambia en cada comentario, sin repetir la anterior
     lastCohostForm = form.id;
     // Cohost libre: el código elige el tema (rotando) y el modelo solo devuelve la lista vacía si de verdad no puede hablar de él
-    const topicCtx = { minutes: minutes || 0, bosses: getBossCount(), game: gameInfo?.game || '', deathCount, canCiteDeaths: !lastCitedDeaths };
+    const topicCtx = {
+      minutes: minutes || 0,
+      bosses: getBossCount(),
+      game: gameInfo?.game || '',
+      deathCount,
+      canCiteDeaths: !lastCitedDeaths,
+    };
     let freeTopic = moment ? null : pickFreeTopic({ ...topicCtx, last: lastFreeTopic });
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
-      if (attempt > 0 && !canMakeRequest()) { reason = 'ratelimit'; break; }
-      const system = buildCohostSystem({ game: gameInfo?.game || '', minutes, deathLine, player: getPlayer(), mood, form, emoteLine, nameLine, loreBlock, candidates: COHOST_CANDIDATES, modeLine: modeConfig.prompt_extension, event: !!moment, weekday: !getUsedStructures().has('dia-semana') }) + retryNote(fixKey);
+      if (attempt > 0 && !canMakeRequest()) {
+        reason = 'ratelimit';
+        break;
+      }
+      const system =
+        buildCohostSystem({
+          game: gameInfo?.game || '',
+          minutes,
+          deathLine,
+          player: getPlayer(),
+          mood,
+          form,
+          emoteLine,
+          nameLine,
+          loreBlock,
+          candidates: COHOST_CANDIDATES,
+          modeLine: modeConfig.prompt_extension,
+          event: !!moment,
+          weekday: !getUsedStructures().has('dia-semana'),
+        }) + retryNote(fixKey);
       const chatBlock = recentContext ? `<chat>\n${recentContext}\n</chat>` : '';
       const user = moment
         ? `<suceso>${moment.description}</suceso>\n${chatBlock}\nComenta el suceso.`
         : `${chatBlock}${chatSummary ? `\n<resumen_chat>${chatSummary}</resumen_chat>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\n<tema>${freeTopic.note}</tema>\nComenta el tema.`;
-      const response = await aiChat('cohost', { max_tokens: 220, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
+      const response = await aiChat('cohost', {
+        max_tokens: 220,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+      });
       generatorModel = response._ai?.model;
       const raw = (response.choices[0].message.content || '').trim();
       const candidates = /^SKIP\b/i.test(raw) ? [] : parseCandidates(raw, COHOST_CANDIDATES);
       if (!candidates.length) {
-        if (moment) { fixKey = 'vacio'; reason = 'quality:vacio'; continue; }
+        if (moment) {
+          fixKey = 'vacio';
+          reason = 'quality:vacio';
+          continue;
+        }
         recordCohostDiscard('skip'); // cuenta cada lista vacía del modelo (sale en el resumen de fin de stream)
-        if (attempt === 0) { // segundo intento con otro tema
+        if (attempt === 0) {
+          // segundo intento con otro tema
           freeTopic = pickFreeTopic({ ...topicCtx, last: freeTopic.id });
           logger.info(`Co-host: sin candidatos, reintento con otro tema (${freeTopic.id})`);
           continue;
         }
-        reason = 'sin_tema'; logger.info('Co-host: sin tema tras el reintento'); break;
+        reason = 'sin_tema';
+        logger.info('Co-host: sin tema tras el reintento');
+        break;
       }
       // El código elige: pasa todos los filtros y es el que menos se parece a los últimos mensajes del bot
-      const { ranked, failures } = rankCandidates(candidates.map(prepare), { validate: t => quality.validateCohost(t, validateCtx), recent: recentBot });
+      const { ranked, failures } = rankCandidates(candidates.map(prepare), {
+        validate: (t) => quality.validateCohost(t, validateCtx),
+        recent: recentBot,
+      });
       for (const f of failures) logger.info(`Co-host descartado (${f.reason}): ${f.text.slice(0, 80)}`);
       if (ranked.length) {
         // Un modelo pequeño elige el mejor comparándolos con el chat y el juego, o dice que ninguno vale (entonces se calla)
-        const pick = await pickBest(ranked.map(r => r.text), {
-          dayLine: dayLine(new Date(now)),
-          game: gameInfo?.game || '',
-          facts: `Caídas anotadas: ${deathCount}. Juega ${getPlayer() === 'pao' ? 'Pao' : 'Manu'}.${minutes != null ? ` Llevan ${quality.approxDuration(minutes)} de directo.` : ''}${moment ? ` Suceso: ${moment.description}.` : ''}`,
-          chat: getRecentHistory(8),
-          activity: chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).length,
-          generator: generatorModel,
-        });
+        const pick = await pickBest(
+          ranked.map((r) => r.text),
+          {
+            dayLine: dayLine(new Date(now)),
+            game: gameInfo?.game || '',
+            facts: `Caídas anotadas: ${deathCount}. Juega ${getPlayer() === 'pao' ? 'Pao' : 'Manu'}.${minutes != null ? ` Llevan ${quality.approxDuration(minutes)} de directo.` : ''}${moment ? ` Suceso: ${moment.description}.` : ''}`,
+            chat: getRecentHistory(8),
+            activity: chatHistory.filter((m) => m.ts > now - 5 * 60 * 1000).length,
+            generator: generatorModel,
+          },
+        );
         if (pick.status === 'ok') {
           const chosen = ranked[pick.index].text;
           const review = await reviewText(chosen, { sense: false }); // el sentido ya lo ha mirado el selector: aquí solo los datos del juego
           if (review.ok) reply = chosen;
-          else { fixKey = review.reason; reason = review.reason; }
+          else {
+            fixKey = review.reason;
+            reason = review.reason;
+          }
         } else if (pick.status === 'none') {
           logger.info('Co-host: el selector no ve bueno ningún candidato');
-          fixKey = 'selector'; reason = 'selector';
-        } else { // el selector no pudo (cupo o fallo): orden del código y la revisión de siempre
+          fixKey = 'selector';
+          reason = 'selector';
+        } else {
+          // el selector no pudo (cupo o fallo): orden del código y la revisión de siempre
           for (const candidate of ranked.slice(0, 2)) {
             const review = await reviewText(candidate.text);
-            if (review.ok) { reply = candidate.text; break; }
-            fixKey = review.reason; reason = review.reason;
+            if (review.ok) {
+              reply = candidate.text;
+              break;
+            }
+            fixKey = review.reason;
+            reason = review.reason;
           }
         }
       }
@@ -252,17 +435,22 @@ async function runCohost(client, channel, moment = null) {
       }
     }
 
-    if (!reply) { recordCohostDiscard(reason); return 'dropped'; } // los candidatos fallaron: se calla
+    if (!reply) {
+      recordCohostDiscard(reason);
+      return 'dropped';
+    } // los candidatos fallaron: se calla
     if (freeTopic) lastFreeTopic = freeTopic.id;
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     addCohostText(kindKey, reply);
     for (const key of quality.streamMarks(reply, gameInfo?.game || '')) markStructure(key);
-    markNamed(quality.namesIn(reply, [...chatHistory.slice(-60).map(m => m.username), 'pao']));
+    markNamed(quality.namesIn(reply, [...chatHistory.slice(-60).map((m) => m.username), 'pao']));
     recordCohost();
     recordCohostSent(kind);
-    if (isStreak || !moment) { // cupo compartido: solo cuentan los enviados (un SKIP o un descarte no gasta cupo)
-      lastSharedAt = Date.now(); lastFreeAt = lastSharedAt; // el reloj de los libres vuelve a empezar
+    if (isStreak || !moment) {
+      // cupo compartido: solo cuentan los enviados (un SKIP o un descarte no gasta cupo)
+      lastSharedAt = Date.now();
+      lastFreeAt = lastSharedAt; // el reloj de los libres vuelve a empezar
       freeCohostTimes = pruneHourly([...freeCohostTimes, lastSharedAt]);
     }
     return 'sent';
@@ -270,7 +458,9 @@ async function runCohost(client, channel, moment = null) {
     logger.error(`Co-host: ${err.message}`);
     recordCohostDiscard(err.code === 'NO_QUOTA' ? 'sin_cupo' : err.status === 429 ? 'groq429' : 'error');
     return 'dropped';
-  } finally { cohostRunning = false; }
+  } finally {
+    cohostRunning = false;
+  }
 }
 
 // Cola de eventos: se comentan todos, de uno en uno; los que esperan más de COHOST_EVENT_TTL caducan
@@ -286,7 +476,10 @@ let draining = false;
 
 function scheduleDrain(ms) {
   if (drainTimer) return;
-  drainTimer = setTimeout(() => { drainTimer = null; drainEventQueue().catch(err => logger.warn(`Cola de cohost: ${err.message}`)); }, ms);
+  drainTimer = setTimeout(() => {
+    drainTimer = null;
+    drainEventQueue().catch((err) => logger.warn(`Cola de cohost: ${err.message}`));
+  }, ms);
   drainTimer.unref?.();
 }
 
@@ -300,12 +493,15 @@ function enqueueCohostMoment(client, channel, moment, now = Date.now()) {
     const inBatch = bossInBatch(lastBossAt, now);
     lastBossAt = now;
     if (inBatch) {
-      const pending = eventQueue.find(i => i.moment.kind === 'boss' && !i.started);
+      const pending = eventQueue.find((i) => i.moment.kind === 'boss' && !i.started);
       if (pending) {
         pending.moment = mergeBossMoments(pending.moment, moment, getBossCount());
         pending.notBefore = now + BOSS_SETTLE;
         scheduleDrain(BOSS_SETTLE);
-      } else { recordCohostAttempt('event'); recordCohostDiscard('jefe_seguido'); } // la tanda ya se comentó
+      } else {
+        recordCohostAttempt('event');
+        recordCohostDiscard('jefe_seguido');
+      } // la tanda ya se comentó
       return;
     }
     eventQueue.push({ client, channel, moment, queuedAt: now, notBefore: now + BOSS_SETTLE });
@@ -315,7 +511,8 @@ function enqueueCohostMoment(client, channel, moment, now = Date.now()) {
   eventQueue.push({ client, channel, moment, queuedAt: now, notBefore: now + EVENT_SETTLE_MS });
   if (eventQueue.length > EVENT_QUEUE_MAX) {
     eventQueue.shift();
-    recordCohostAttempt('event'); recordCohostDiscard('cola_llena');
+    recordCohostAttempt('event');
+    recordCohostDiscard('cola_llena');
   }
   scheduleDrain(EVENT_SETTLE_MS);
 }
@@ -329,18 +526,32 @@ async function drainEventQueue() {
       const now = Date.now();
       if (eventExpired(item.queuedAt, now, COHOST_EVENT_TTL)) {
         eventQueue.shift();
-        recordCohostAttempt('event'); recordCohostDiscard('caducado');
+        recordCohostAttempt('event');
+        recordCohostDiscard('caducado');
         logger.info(`Co-host: evento caducado en cola (${item.moment.kind})`);
         continue;
       }
-      if (now < item.notBefore) { scheduleDrain(item.notBefore - now); return; }
+      if (now < item.notBefore) {
+        scheduleDrain(item.notBefore - now);
+        return;
+      }
       item.started = true; // un jefe nuevo ya no se suma a este comentario
-      const outcome = await chatlog.runWithOrigin('cohost', () => runCohost(item.client, item.channel, item.moment))
-        .catch(err => { logger.warn(`Cohost por evento: ${err.message}`); return 'dropped'; });
-      if (outcome === 'retry') { item.started = false; scheduleDrain(5000); return; }
+      const outcome = await chatlog
+        .runWithOrigin('cohost', () => runCohost(item.client, item.channel, item.moment))
+        .catch((err) => {
+          logger.warn(`Cohost por evento: ${err.message}`);
+          return 'dropped';
+        });
+      if (outcome === 'retry') {
+        item.started = false;
+        scheduleDrain(5000);
+        return;
+      }
       eventQueue.shift();
     }
-  } finally { draining = false; }
+  } finally {
+    draining = false;
+  }
 }
 
 // Comentario libre por reloj: cada COHOST_FREE_INTERVAL, si el chat tiene actividad reciente. Tras un fallo reintenta en 3 min.
@@ -349,14 +560,32 @@ const FREE_RETRY_MS = 3 * 60 * 1000;
 let lastFreeAt = 0;
 
 async function freeCohostTick(client, channel) {
-  if (!getEventSubLiveStatus()) { lastFreeAt = 0; return; }
+  if (!getEventSubLiveStatus()) {
+    lastFreeAt = 0;
+    return;
+  }
   const now = Date.now();
-  if (!lastFreeAt) { lastFreeAt = now; return; }
+  if (!lastFreeAt) {
+    lastFreeAt = now;
+    return;
+  }
   if (cohostRunning || eventQueue.length) return;
   if (isFreeCohostPaused(now)) return; // alguien pidió silencio: los libres esperan
-  const recentMessages = chatHistory.filter(m => m.ts > now - FREE_COHOST_ACTIVITY_WINDOW_MS).length;
+  const recentMessages = chatHistory.filter((m) => m.ts > now - FREE_COHOST_ACTIVITY_WINDOW_MS).length;
   if (hourlyCapReached(freeCohostTimes, COHOST_FREE_MAX_PER_HOUR, now)) return;
-  if (!freeCohostDue({ now, lastFreeAt, intervalMs: COHOST_FREE_INTERVAL, recentMessages, minMessages: FREE_COHOST_MIN_MESSAGES, lastAnyAt: getLastCohostTime(), freeStamps: freeAttemptTimes, maxFree: FREE_ATTEMPTS_MAX_PER_HOUR })) return;
+  if (
+    !freeCohostDue({
+      now,
+      lastFreeAt,
+      intervalMs: COHOST_FREE_INTERVAL,
+      recentMessages,
+      minMessages: FREE_COHOST_MIN_MESSAGES,
+      lastAnyAt: getLastCohostTime(),
+      freeStamps: freeAttemptTimes,
+      maxFree: FREE_ATTEMPTS_MAX_PER_HOUR,
+    })
+  )
+    return;
   const outcome = await chatlog.runWithOrigin('cohost', () => runCohost(client, channel, null));
   lastFreeAt = outcome === 'sent' ? Date.now() : Date.now() - COHOST_FREE_INTERVAL + FREE_RETRY_MS;
 }
@@ -371,7 +600,7 @@ function startEventCohost(client, channel) {
     if (moment) enqueueCohostMoment(client, channel, moment);
   });
   const clock = setInterval(() => {
-    freeCohostTick(client, channel).catch(err => logger.warn(`Cohost libre: ${err.message}`));
+    freeCohostTick(client, channel).catch((err) => logger.warn(`Cohost libre: ${err.message}`));
   }, 30 * 1000);
   clock.unref?.();
 }

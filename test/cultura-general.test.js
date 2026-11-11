@@ -8,7 +8,8 @@ const messages = require('../config/messages.json');
 
 // Caso real: "!dios_fua es cierto que las abejas en verano viven menos que en invierno?" respondía "no tengo datos fiables de eso en IGDB"
 const BEES_Q = 'es cierto que las abejas en verano viven menos que en invierno?';
-const BEES_A = 'Sí, las obreras de verano viven unas 6 semanas y las de invierno hasta meses: más resistencia al frío y menos curro. FUA.';
+const BEES_A =
+  'Sí, las obreras de verano viven unas 6 semanas y las de invierno hasta meses: más resistencia al frío y menos curro. FUA.';
 
 describe('cultura general no pasa por el control de videojuegos', () => {
   test('la pregunta de las abejas no es de juegos', () => {
@@ -36,8 +37,9 @@ describe('nada técnico en el chat', () => {
       'no tengo datos de eso',
       'eso no está en mis datos',
       'uso la API para eso',
-      'llamé a buscar_juego'
-    ]) assert.equal(q.leaksTech(t), true, t);
+      'llamé a buscar_juego',
+    ])
+      assert.equal(q.leaksTech(t), true, t);
   });
   test('la palabra "datos" suelta en una respuesta normal pasa', () => {
     const ok = 'Según los datos que se conocen, las abejas de invierno viven meses. FUA.';

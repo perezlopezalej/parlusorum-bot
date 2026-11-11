@@ -10,7 +10,7 @@ const MIN_WINS = 2;
 
 // facts: [{ fact_type, value }]; nickname: apodo del lore manual o null; isAvoided: (texto) => bool
 function buildSubContext(username, facts, { nickname = null, isAvoided = () => false, rng = Math.random } = {}) {
-  const byType = new Map((facts || []).map(f => [f.fact_type, f.value]));
+  const byType = new Map((facts || []).map((f) => [f.fact_type, f.value]));
   const options = [];
 
   if (nickname) options.push(`en el canal le llaman "${nickname}" (apodo oficial)`);

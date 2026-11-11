@@ -15,11 +15,7 @@
       "Tantas preguntas que hasta el FUA necesita pausa ⏳",
       "El servidor del FUA respira — vuelve en un momento 💨"
     ],
-    "cohost": [
-      "parlus1Esteeselrollo",
-      "💪 FUA",
-      "parlus1PORELPODERDELFUAAAAA"
-    ]
+    "cohost": ["parlus1Esteeselrollo", "💪 FUA", "parlus1PORELPODERDELFUAAAAA"]
   },
   "anonymous_gifter": "un alma generosa anónima",
   "sub_overflow": "¡Y gracias también a {names} por sus subs! 💜",
@@ -154,11 +150,7 @@
     "none": "El contador está a 0 muertes, o nadie las ha apuntado todavía 💀"
   },
   "mention_current_game": {
-    "some": [
-      "Estamos con {game} 🎮",
-      "Hoy toca {game}, ¡a darle FUA!",
-      "El juego de hoy es {game} 🎮"
-    ],
+    "some": ["Estamos con {game} 🎮", "Hoy toca {game}, ¡a darle FUA!", "El juego de hoy es {game} 🎮"],
     "none": "Ahora mismo no sé qué juego es, ni el FUA lo ve claro 🤔"
   },
   "dios_fua_no_data": [

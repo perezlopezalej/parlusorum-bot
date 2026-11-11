@@ -11,26 +11,43 @@ const { formatAiUsage } = require('../src/eventsub');
 const gone = () => Object.assign(new Error('404 model_not_found'), { status: 404 });
 const quota = (msg = 'Rate limit reached: tokens per minute (TPM)', retryAfter) =>
   Object.assign(new Error(msg), { status: 429, headers: retryAfter ? { 'retry-after': String(retryAfter) } : {} });
-const server = status => Object.assign(new Error(`HTTP ${status}`), { status });
-const chainOf = text => router.parseChain(text);
+const server = (status) => Object.assign(new Error(`HTTP ${status}`), { status });
+const chainOf = (text) => router.parseChain(text);
 const ok = () => ({ choices: [{ message: { content: 'hola' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
 
 let calls;
 function fake(provider, handler) {
-  router.setTransport(provider, async p => { calls.push(`${provider}:${p.model}`); return handler(p); });
+  router.setTransport(provider, async (p) => {
+    calls.push(`${provider}:${p.model}`);
+    return handler(p);
+  });
 }
-beforeEach(() => { calls = []; state.resetAiBlocks(); state.resetAiUsage(); state.resetChatters(); state.resetGroqFallbackUse(); });
-afterEach(() => { for (const k of Object.keys(process.env)) if (k.startsWith('AI_CHAIN_')) delete process.env[k]; });
+beforeEach(() => {
+  calls = [];
+  state.resetAiBlocks();
+  state.resetAiUsage();
+  state.resetChatters();
+  state.resetGroqFallbackUse();
+});
+afterEach(() => {
+  for (const k of Object.keys(process.env)) if (k.startsWith('AI_CHAIN_')) delete process.env[k];
+});
 
 describe('cadenas por tipo de llamada', () => {
   test('parseChain lee groq:modelo y descarta eslabones no válidos (también los de Gemini)', () => {
-    assert.deepEqual(chainOf('groq:openai/gpt-oss-120b, gemini:gemini-3.5-flash-lite, x:foo, groq:').map(l => l.key), ['groq:openai/gpt-oss-120b']);
+    assert.deepEqual(
+      chainOf('groq:openai/gpt-oss-120b, gemini:gemini-3.5-flash-lite, x:foo, groq:').map((l) => l.key),
+      ['groq:openai/gpt-oss-120b'],
+    );
   });
 
   test('los tipos que necesitan más gracia (cohost, reaction, !dios_fua, !quemeperdi) empiezan por el 120b', () => {
     for (const k of ['cohost', 'diosfua', 'quemeperdi']) {
       const c = router.getChain(k);
-      assert.ok(c.every(l => l.provider === 'groq'), k);
+      assert.ok(
+        c.every((l) => l.provider === 'groq'),
+        k,
+      );
       assert.match(c[0].model, /gpt-oss-120b/, k);
     }
   });
@@ -42,38 +59,50 @@ describe('cadenas por tipo de llamada', () => {
   test('alertas, timer IA, hooks, fin de stream, trivia y comandos empiezan por qwen (cupo propio) y el 120b queda de reserva', () => {
     for (const k of ['alert', 'timer', 'hook', 'endstream', 'trivia', 'command']) {
       const c = router.getChain(k);
-      assert.ok(c.every(l => l.provider === 'groq'), k);
+      assert.ok(
+        c.every((l) => l.provider === 'groq'),
+        k,
+      );
       assert.match(c[0].model, /qwen/, k);
-      assert.ok(c.some(l => /gpt-oss-120b/.test(l.model)), k);
+      assert.ok(
+        c.some((l) => /gpt-oss-120b/.test(l.model)),
+        k,
+      );
     }
   });
 
   test('si el generador es qwen, el selector es un gpt-oss', () => {
-    assert.ok(router.getChain('pick', { generator: 'qwen/qwen3.8-27b' }).every(l => /gpt-oss/.test(l.model)));
+    assert.ok(router.getChain('pick', { generator: 'qwen/qwen3.8-27b' }).every((l) => /gpt-oss/.test(l.model)));
   });
 
   test('las revisiones empiezan por el modelo rápido de Groq', () => {
     const c = router.getChain('review');
     assert.match(c[0].model, /gpt-oss-20b/);
-    assert.ok(c.every(l => l.provider === 'groq'));
+    assert.ok(c.every((l) => l.provider === 'groq'));
   });
 
   test('el selector es de otra familia que el generador (gpt-oss → qwen y al revés)', () => {
     const fam = router.modelFamily;
     const vsGptOss = router.getChain('pick', { generator: 'openai/gpt-oss-120b' });
-    assert.ok(vsGptOss.length && vsGptOss.every(l => fam(l.model) !== 'gpt-oss'), vsGptOss.map(l => l.key).join());
+    assert.ok(vsGptOss.length && vsGptOss.every((l) => fam(l.model) !== 'gpt-oss'), vsGptOss.map((l) => l.key).join());
     const vsQwen = router.getChain('pick', { generator: 'qwen/qwen3.8-27b' });
-    assert.ok(vsQwen.length && vsQwen.every(l => fam(l.model) !== 'qwen'), vsQwen.map(l => l.key).join());
+    assert.ok(vsQwen.length && vsQwen.every((l) => fam(l.model) !== 'qwen'), vsQwen.map((l) => l.key).join());
   });
 
   test('AI_CHAIN_PICK no puede meter la familia del generador', () => {
     process.env.AI_CHAIN_PICK = 'groq:openai/gpt-oss-20b,groq:qwen/qwen3.8-27b';
-    assert.deepEqual(router.getChain('pick', { generator: 'openai/gpt-oss-120b' }).map(l => l.model), ['qwen/qwen3.8-27b']);
+    assert.deepEqual(
+      router.getChain('pick', { generator: 'openai/gpt-oss-120b' }).map((l) => l.model),
+      ['qwen/qwen3.8-27b'],
+    );
   });
 
   test('AI_CHAIN_<TIPO> manda sobre el defecto; un tipo desconocido lanza', () => {
     process.env.AI_CHAIN_HOOK = 'groq:solo-este';
-    assert.deepEqual(router.getChain('hook').map(l => l.model), ['solo-este']);
+    assert.deepEqual(
+      router.getChain('hook').map((l) => l.model),
+      ['solo-este'],
+    );
     assert.throws(() => router.getChain('nada'), /desconocido/);
   });
 });
@@ -82,7 +111,10 @@ describe('salto de eslabón y bloqueos', () => {
   const chain = chainOf('groq:a,groq:b,groq:c');
 
   test('un 429 salta al siguiente sin esperar y bloquea el agotado', async () => {
-    fake('groq', p => { if (p.model === 'a') throw quota(); return ok(); });
+    fake('groq', (p) => {
+      if (p.model === 'a') throw quota();
+      return ok();
+    });
     const t0 = Date.now();
     const res = await router.runChain(chain, 'mention', { messages: [] });
     assert.deepEqual(calls, ['groq:a', 'groq:b']);
@@ -95,7 +127,10 @@ describe('salto de eslabón y bloqueos', () => {
 
   for (const status of [500, 503]) {
     test(`un ${status} salta de modelo y lo bloquea unos minutos`, async () => {
-      fake('groq', p => { if (p.model === 'a') throw server(status); return ok(); });
+      fake('groq', (p) => {
+        if (p.model === 'a') throw server(status);
+        return ok();
+      });
       await router.runChain(chain, 'mention', { messages: [] });
       assert.deepEqual(calls, ['groq:a', 'groq:b']);
       const left = state.aiBlockedUntil('groq:a') - Date.now();
@@ -104,27 +139,37 @@ describe('salto de eslabón y bloqueos', () => {
   }
 
   test('un timeout salta de modelo y bloquea', async () => {
-    fake('groq', p => { if (p.model === 'a') throw Object.assign(new Error('Request timed out.'), { code: 'ETIMEDOUT' }); return ok(); });
+    fake('groq', (p) => {
+      if (p.model === 'a') throw Object.assign(new Error('Request timed out.'), { code: 'ETIMEDOUT' });
+      return ok();
+    });
     await router.runChain(chain, 'mention', { messages: [] });
     assert.deepEqual(calls, ['groq:a', 'groq:b']);
     assert.ok(state.isAiBlocked('groq:a'));
   });
 
   test('modelo retirado (404) salta al siguiente', async () => {
-    fake('groq', p => { if (p.model === 'a') throw gone(); return ok(); });
+    fake('groq', (p) => {
+      if (p.model === 'a') throw gone();
+      return ok();
+    });
     await router.runChain(chain, 'mention', { messages: [] });
     assert.deepEqual(calls, ['groq:a', 'groq:b']);
     assert.ok(isModelGone(gone()));
   });
 
   test('un 400 no salta de modelo', async () => {
-    fake('groq', () => { throw Object.assign(new Error('bad request'), { status: 400 }); });
+    fake('groq', () => {
+      throw Object.assign(new Error('bad request'), { status: 400 });
+    });
     await assert.rejects(router.runChain(chain, 'mention', { messages: [] }), /bad request/);
     assert.deepEqual(calls, ['groq:a']);
   });
 
   test('si todos fallan lanza el último error', async () => {
-    fake('groq', p => { throw p.model === 'c' ? server(503) : quota('sin cupo'); });
+    fake('groq', (p) => {
+      throw p.model === 'c' ? server(503) : quota('sin cupo');
+    });
     await assert.rejects(router.runChain(chain, 'mention', { messages: [] }), /503/);
     assert.deepEqual(calls, ['groq:a', 'groq:b', 'groq:c']);
   });
@@ -137,15 +182,23 @@ describe('salto de eslabón y bloqueos', () => {
   });
 
   test('el último eslabón no espera un 429 si el retry-after supera maxDelayMs', async () => {
-    fake('groq', () => { throw quota('x', 20); });
+    fake('groq', () => {
+      throw quota('x', 20);
+    });
     const t0 = Date.now();
-    await assert.rejects(router.runChain(chainOf('groq:a'), 'mention', { messages: [] }, { maxRetries: 2, maxDelayMs: 3000 }), /x/);
+    await assert.rejects(
+      router.runChain(chainOf('groq:a'), 'mention', { messages: [] }, { maxRetries: 2, maxDelayMs: 3000 }),
+      /x/,
+    );
     assert.equal(calls.length, 1);
     assert.ok(Date.now() - t0 < 1000);
   });
 
   test('el uso de un eslabón de reserva se cuenta; el del primero no', async () => {
-    fake('groq', p => { if (p.model === 'a') throw quota(); return ok(); });
+    fake('groq', (p) => {
+      if (p.model === 'a') throw quota();
+      return ok();
+    });
     await router.runChain(chain, 'mention', { messages: [] });
     assert.deepEqual(state.getGroqFallbackUse(), { 'groq:a→groq:b': 1 });
   });
@@ -158,7 +211,10 @@ describe('salto de eslabón y bloqueos', () => {
 
   test('gpt-oss recibe reasoning_effort y margen; el resto no', async () => {
     const seen = {};
-    fake('groq', p => { seen[p.model] = p; return ok(); });
+    fake('groq', (p) => {
+      seen[p.model] = p;
+      return ok();
+    });
     await router.runChain(chainOf('groq:openai/gpt-oss-120b'), 'mention', { messages: [], max_tokens: 100 });
     await router.runChain(chainOf('groq:plain'), 'mention', { messages: [], max_tokens: 100, reasoning_effort: 'low' });
     assert.equal(seen['openai/gpt-oss-120b'].reasoning_effort, 'low');
@@ -173,7 +229,7 @@ describe('contadores y presupuesto', () => {
     const l = chainOf('groq:a')[0];
     const now = Date.now();
     state.startAiRequest('groq', 'a', 6500, now);
-    assert.equal(router.overBudget(l, 500, now), true);   // 6500 + 500 > 85 % de 8000
+    assert.equal(router.overBudget(l, 500, now), true); // 6500 + 500 > 85 % de 8000
     assert.equal(router.overBudget(l, 100, now), false);
     assert.equal(router.overBudget(l, 500, now + 61000), false); // la ventana caduca
   });
@@ -182,11 +238,17 @@ describe('contadores y presupuesto', () => {
     const chain = chainOf('groq:a,groq:b,groq:c');
     state.startAiRequest('groq', 'a', 7000);
     state.blockAi('groq:b', Date.now() + 60000);
-    assert.deepEqual(router.orderChain(chain, 300).map(l => l.model), ['c', 'a', 'b']);
+    assert.deepEqual(
+      router.orderChain(chain, 300).map((l) => l.model),
+      ['c', 'a', 'b'],
+    );
   });
 
   test('el día de uso cambia a las 00:00 UTC', () => {
-    assert.notEqual(state.aiDayKey('groq', Date.UTC(2026, 10, 3, 23, 59)), state.aiDayKey('groq', Date.UTC(2026, 10, 4, 0, 1)));
+    assert.notEqual(
+      state.aiDayKey('groq', Date.UTC(2026, 10, 3, 23, 59)),
+      state.aiDayKey('groq', Date.UTC(2026, 10, 4, 0, 1)),
+    );
     assert.equal(state.aiDayKey('groq', Date.UTC(2026, 10, 3, 0, 1)), '2026-11-03');
   });
 
@@ -210,8 +272,13 @@ describe('seudonimización hacia Groq', () => {
   test('los nicks salen seudonimizados y vuelven restaurados', async () => {
     state.noteChatter('Mujica90_');
     let sent;
-    router.setTransport('groq', async p => { sent = JSON.stringify(p.messages); return { choices: [{ message: { content: 'Qué tal user1, bien jugado' } }] }; });
-    const r = await router.runChain(chainOf('groq:a'), 'cohost', { messages: [{ role: 'user', content: 'Mujica90_: hola' }] });
+    router.setTransport('groq', async (p) => {
+      sent = JSON.stringify(p.messages);
+      return { choices: [{ message: { content: 'Qué tal user1, bien jugado' } }] };
+    });
+    const r = await router.runChain(chainOf('groq:a'), 'cohost', {
+      messages: [{ role: 'user', content: 'Mujica90_: hola' }],
+    });
     assert.doesNotMatch(sent, /Mujica90_/);
     assert.match(sent, /user1/);
     assert.equal(r.choices[0].message.content, 'Qué tal Mujica90_, bien jugado');
@@ -219,14 +286,25 @@ describe('seudonimización hacia Groq', () => {
 
   test('los nicks pasados en opts.names también se seudonimizan', async () => {
     let sent;
-    router.setTransport('groq', async p => { sent = JSON.stringify(p.messages); return ok(); });
-    await router.runChain(chainOf('groq:a'), 'mention', { messages: [{ role: 'user', content: 'Hola Zorrito77' }] }, { names: ['Zorrito77'] });
+    router.setTransport('groq', async (p) => {
+      sent = JSON.stringify(p.messages);
+      return ok();
+    });
+    await router.runChain(
+      chainOf('groq:a'),
+      'mention',
+      { messages: [{ role: 'user', content: 'Hola Zorrito77' }] },
+      { names: ['Zorrito77'] },
+    );
     assert.doesNotMatch(sent, /Zorrito77/);
   });
 });
 
 describe('seudonimización', () => {
-  const msgs = [{ role: 'system', content: 'Habla con @Ana_99 y ana_99, no con Pedro.' }, { role: 'user', content: 'Pedro: hola @ana_99!' }];
+  const msgs = [
+    { role: 'system', content: 'Habla con @Ana_99 y ana_99, no con Pedro.' },
+    { role: 'user', content: 'Pedro: hola @ana_99!' },
+  ];
   const none = { exclude: new Set() };
 
   test('mismo nick = mismo alias (sin importar mayúsculas) y se respeta la @', () => {
@@ -242,7 +320,10 @@ describe('seudonimización', () => {
   });
 
   test('streamers, bot, creador y nicks cortos no se seudonimizan', () => {
-    const { map } = pseudonymize([{ role: 'user', content: 'ParLusorum vlxj97 al xo' }], ['ParLusorum', 'vlxj97', 'al', 'xo']);
+    const { map } = pseudonymize(
+      [{ role: 'user', content: 'ParLusorum vlxj97 al xo' }],
+      ['ParLusorum', 'vlxj97', 'al', 'xo'],
+    );
     assert.equal(map, null);
   });
 
@@ -258,7 +339,11 @@ describe('seudonimización', () => {
   });
 
   test('el feedback de rechazo con el nick también va seudonimizado', () => {
-    const { messages } = pseudonymize([{ role: 'system', content: 'NO nombres a Pedro (ya nombrado)' }], ['Pedro'], none);
+    const { messages } = pseudonymize(
+      [{ role: 'system', content: 'NO nombres a Pedro (ya nombrado)' }],
+      ['Pedro'],
+      none,
+    );
     assert.doesNotMatch(messages[0].content, /Pedro/);
   });
 });

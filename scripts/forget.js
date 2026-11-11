@@ -39,4 +39,7 @@ async function main() {
   console.log(dryRun ? 'OK' : 'Datos borrados.');
 }
 
-main().catch(err => { console.error(err.message); process.exit(1); });
+main().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});

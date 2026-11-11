@@ -37,7 +37,10 @@ async function fetchAll(db, table) {
       if (orderCol) q = q.order(orderCol);
       const { data, error } = await q.range(from, from + PAGE - 1);
       if (error) {
-        if (orderCol) { failed = true; break; }
+        if (orderCol) {
+          failed = true;
+          break;
+        }
         throw error;
       }
       rows.push(...data);
@@ -73,4 +76,7 @@ async function main() {
   if (failures) process.exit(1);
 }
 
-main().catch(err => { console.error(err.message); process.exit(1); });
+main().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});

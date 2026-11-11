@@ -6,7 +6,18 @@ const { isNoiseTerm, isPersonTerm, matchesGameName, buildPeopleWords } = require
 
 describe('isNoiseTerm', () => {
   test('risas y onomatopeyas', () => {
-    for (const t of ['Jajajaja', 'jajaja jajaja', 'jsjsjs', 'XD', 'LUL', 'yiyiyiyiyi', 'Wauuuuu', 'Vamooooo', 'jeje', 'ajaj']) {
+    for (const t of [
+      'Jajajaja',
+      'jajaja jajaja',
+      'jsjsjs',
+      'XD',
+      'LUL',
+      'yiyiyiyiyi',
+      'Wauuuuu',
+      'Vamooooo',
+      'jeje',
+      'ajaj',
+    ]) {
       assert.equal(isNoiseTerm(t), true, t);
     }
   });
