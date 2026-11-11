@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRow, formatLine, formatChat, dayRange, retentionCutoff, runWithOrigin, noteAiCall, noteTool, currentMeta } = require('../src/utils/chatlog');
+const { buildRow, formatLine, formatChat, dayRange, retentionCutoff, isWithinFullChatWindow, runWithOrigin, noteAiCall, noteTool, currentMeta } = require('../src/utils/chatlog');
 const { pushChatLog, takeChatLog, requeueChatLog, getChatLogSize } = require('../src/utils/state');
 
 const at = new Date(2026, 9, 28, 21, 5, 9); // hora local
@@ -60,10 +60,24 @@ describe('fechas', () => {
     for (const bad of ['', null, '28-10-2026', '2026-02-30', '2026-13-01', 'hoy']) assert.equal(dayRange(bad), null, String(bad));
   });
 
-  test('retentionCutoff: 60 días por defecto', () => {
-    const now = Date.UTC(2026, 9, 28);
-    assert.equal(retentionCutoff(now), '2026-08-29T00:00:00.000Z');
-    assert.equal(retentionCutoff(now, 1), '2026-10-27T00:00:00.000Z');
+  test('retentionCutoff: 24 horas por defecto', () => {
+    const now = Date.UTC(2026, 9, 28, 12);
+    assert.equal(retentionCutoff(now), '2026-10-27T12:00:00.000Z');
+    assert.equal(retentionCutoff(now, 3600_000), '2026-10-28T11:00:00.000Z');
+  });
+
+  test('buildRow guarda user_id solo en mensajes de usuario', () => {
+    assert.equal(buildRow({ userId: 42, username: 'ana', message: 'hola', at }).user_id, '42');
+    assert.equal(buildRow({ userId: 42, username: 'bot', message: 'x', isBot: true, at }).user_id, null);
+    assert.equal(buildRow({ username: 'ana', message: 'hola', at }).user_id, null);
+  });
+
+  test('isWithinFullChatWindow: hoy sí, hace tres días no', () => {
+    const now = new Date(2026, 9, 28, 15).getTime();
+    assert.equal(isWithinFullChatWindow('2026-10-28', now), true);
+    assert.equal(isWithinFullChatWindow('2026-10-27', now), true);   // acaba a medianoche, hace 15 h
+    assert.equal(isWithinFullChatWindow('2026-10-26', now), false);
+    assert.equal(isWithinFullChatWindow('mal', now), false);
   });
 });
 

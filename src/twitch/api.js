@@ -368,6 +368,20 @@ async function getFollowerCount(broadcasterId) {
   }
 }
 
+// user_id de Twitch a partir del login (null si no existe o falla la consulta)
+async function getUserIdByLogin(login) {
+  const clean = String(login || '').replace(/^@/, '').trim().toLowerCase();
+  if (!/^\w{1,25}$/.test(clean)) return null;
+  try {
+    const res = await helixFetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(clean)}`);
+    const data = await res.json();
+    return data.data?.[0]?.id || null;
+  } catch (e) {
+    logger.warn(`getUserIdByLogin: ${e.message}`);
+    return null;
+  }
+}
+
 // --- Info del canal de un raider ---
 async function getChannelInfo(username) {
   try {
@@ -420,7 +434,7 @@ async function createStreamMarker(description = 'Momento epico') {
 
 module.exports = {
   getStreamInfo, isStreamLive, getCurrentGame, getRecentGames,
-  createClip, createStreamMarker, getGameInfo, lookupGameInfo, getFollowerCount, getChannelInfo,
+  createClip, createStreamMarker, getGameInfo, lookupGameInfo, getFollowerCount, getChannelInfo, getUserIdByLogin,
   refreshBroadcasterToken, loadBroadcasterTokens,
   validateBotToken, refreshBotToken, ensureBotToken, refreshBotTokenIfNeeded,
 };

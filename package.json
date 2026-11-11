@@ -11,6 +11,7 @@
     "check:eventsub": "node scripts/check-eventsub.js",
     "backup": "node scripts/backup.js",
     "chatlog": "node scripts/chatlog.js",
+    "forget": "node scripts/forget.js",
     "bot-token": "node scripts/get-bot-token.js"
   },
   "keywords": [],

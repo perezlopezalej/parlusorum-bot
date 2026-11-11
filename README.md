@@ -15,6 +15,7 @@ Chatbot de Twitch con IA para el canal "parlusorum": responde preguntas, recuerd
 - **Trivia**: preguntas generadas por IA según el juego actual, con pistas, coincidencia difusa de respuestas, dificultad adaptativa y ranking. Si Groq falla, usa un banco estático.
 - **Alertas en tiempo real vía EventSub**: subs, bits, raids, follows, hype train, predicciones, encuestas y canjes, con mensajes generados por IA.
 - **Comandos de stream**: `!muertes`, `!boss` (ver / `+N` / `-N` / `reset` / `<juego>`), `!score`, `!clip`, `!marker`, `!so`, `!brb`, `!silencio`, `!quemeperdi`, `!juego`, `!uptime`, etc. (lista completa en [docs/FUNCIONALIDADES.md](docs/FUNCIONALIDADES.md)).
+- **Privacidad**: el chat completo se guarda 24 h; después solo queda un registro de calidad de 30 días con los nombres anónimos (`usuario1`…). Los datos por usuario van por ID de Twitch y caducan (90 días los hechos, 1 año la ficha y los contadores). Cualquiera puede borrar lo suyo con `!fua_olvidame` (los mods, con `!fua_olvidar @usuario`) y `!privacidad` lo resume en el chat. Detalle y base legal en [`docs/aviso-privacidad.md`](docs/aviso-privacidad.md).
 
 ## Tecnologías utilizadas
 
@@ -55,7 +56,7 @@ Requisitos: Node.js 22 o superior, una cuenta de Twitch para el bot, una aplicac
    ```
    Obligatorias: `BOT_USERNAME`, `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `CHANNEL`, `GROQ_API_KEY`, `BROADCASTER_TOKEN`, `EVENTSUB_SECRET` (mínimo 10 caracteres). El resto está documentado en `.env.example`.
 3. (Opcional) Genera el token del bot con `npm run bot-token`. El token del streamer se puede obtener visitando `/auth/broadcaster` con el bot en marcha.
-4. (Opcional, recomendado) Crea un proyecto en Supabase, define `SUPABASE_URL` y `SUPABASE_KEY` (clave de servicio) y ejecuta en el SQL Editor los ficheros de `supabase/migrations/` en orden (`000` a `004`; `000` crea el esquema base y debe ir primero). Sin Supabase, el bot usa `NPOINT_BIN_ID` como alternativa.
+4. (Opcional, recomendado) Crea un proyecto en Supabase, define `SUPABASE_URL` y `SUPABASE_KEY` (clave de servicio) y ejecuta en el SQL Editor los ficheros de `supabase/migrations/` en orden (`000` a `010`; la `011` es destructiva y se ejecuta después de comprobar la `010`; `000` crea el esquema base y debe ir primero). Sin Supabase, el bot usa `NPOINT_BIN_ID` como alternativa.
 5. Para recibir alertas de EventSub en local, expón el puerto con un túnel (por ejemplo ngrok) y define `PUBLIC_URL` con su URL HTTPS.
 6. Arranca el bot:
    ```bash

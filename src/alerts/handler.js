@@ -3,7 +3,7 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const logger = require('../utils/logger');
 const { loadUsers, saveUser } = require('../utils/storage');
-const { setRaidActive, markGiftBatch, isGiftBatch, isSilenced, addNarrativeEvent } = require('../utils/state');
+const { setRaidActive, markGiftBatch, isGiftBatch, isSilenced, addNarrativeEvent, wasRecentlyForgotten } = require('../utils/state');
 const { canMakeRequest } = require('../utils/ratelimit');
 const { sanitizeForAI } = require('../utils/filter');
 const quality = require('../ai/quality');
@@ -108,6 +108,9 @@ async function checkFirstMessage(client, channel, tags) {
       achievements: []
     };
     saveUser(userId, users[userId]);
+
+    // Acaba de pedir !fua_olvidame: se le recrea la ficha mínima pero sin bienvenida de «primer mensaje»
+    if (wasRecentlyForgotten(userId)) return;
 
     if (canMakeRequest()) {
       try {
@@ -242,6 +245,13 @@ function fillTemplate(tpl, vars) {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : ''));
 }
 
+// user_id de un nick ya visto en el chat (los hechos se guardan por id); null si no se conoce
+function findUserId(users, name) {
+  const target = String(name || '').replace(/^@/, '').trim().toLowerCase();
+  const hit = Object.entries(users || {}).find(([, u]) => String(u.username || '').toLowerCase() === target);
+  return hit ? hit[0] : null;
+}
+
 // Agradecimiento por IA (≤250 car.) con respaldo fijo si falla o no hay cupo.
 async function announceSub(client, channel, kind, vars, userMessage) {
   const fixed = truncate(fillTemplate(pick(subMessages[kind]), vars.gifter ? { ...vars, gifter: mention(vars.gifter) } : vars));
@@ -255,7 +265,7 @@ async function announceSub(client, channel, kind, vars, userMessage) {
     let known = '';
     if (who && who !== ANON_GIFTER) {
       try {
-        known = buildSubContext(sanitizeForAI(who) || who, await getCachedUserFacts(who.toLowerCase()), { nickname: getNickname(who), isAvoided: touchesAvoidedTopic });
+        known = buildSubContext(sanitizeForAI(who) || who, await getCachedUserFacts(findUserId(await loadUsers(), who)), { nickname: getNickname(who), isAvoided: touchesAvoidedTopic });
       } catch (err) { logger.warn(`Contexto de sub: ${err.message}`); }
     }
     const clean = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, sanitizeForAI(String(v)) || 'alguien']));

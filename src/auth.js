@@ -8,10 +8,11 @@ const { saveTokens } = require('./utils/supabase');
 //  moderator:manage:banned_users → auto-ban de bots (helix/moderation/bans)
 //  moderator:read:followers      → helix/channels/followers y EventSub channel.follow v2
 //  channel:read:hype_train / predictions / polls / redemptions → EventSub por webhook
+// (channel:manage:broadcast se retiró: solo hay GET a helix/channels. El token ya emitido lo conserva
+//  hasta que el broadcaster repita /auth/broadcaster.)
 const BROADCASTER_SCOPES = [
   'clips:edit',
   'user:edit:broadcast',
-  'channel:manage:broadcast',
   'moderator:manage:banned_users',
   'moderator:read:followers',
   'channel:read:hype_train',

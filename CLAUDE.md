@@ -25,7 +25,7 @@ npm start | npm run dev      # producción | --watch
 npm test                     # node --test sobre test/**/*.test.js
 npm run check:eventsub       # lista suscripciones EventSub y marca callbacks obsoletos
 npm run eval                 # batería con la IA REAL (gasta Groq/IGDB; no va en npm test ni en la CI)
-npm run backup | chatlog | bot-token
+npm run backup | chatlog | forget -- <login> [--dry-run] | bot-token
 ```
 
 ## Arquitectura
@@ -45,9 +45,10 @@ npm run backup | chatlog | bot-token
 | Datos de juegos | `src/twitch/igdb.js`, `app-token.js` | IGDB única fuente (app token de Twitch compartido con EventSub, límite 4 req/s, `summary` nunca `storyline`, país de la desarrolladora si consta); `lookupGameInfo` devuelve `error` solo si IGDB no contestó (5xx, timeout). `!juego` cita «Datos: IGDB.com» (texto sin confirmar en los términos de IGDB) |
 | Memory / Lore | `src/memory/`, `src/lore/` | Resúmenes entre streams; lore manual (`config/lore.json`) + aprendido, `!lore` (mods) |
 | Moderación | `src/moderation/bot-detector.js` | Bots vía twitchbots.info |
+| Privacidad | `src/privacy/` | `retention.js` (caducidad cada hora), `quality-log.js` (registro de calidad de 30 días), `forget.js` + `commands.js` (`!fua_olvidame`, `!fua_olvidar @x`, `!privacidad`), `names.js` (quitar nicks) |
 | Utils | `src/utils/` | `state`, `storage`, `supabase`, `chatlog`, `ratelimit`, `irc-ratelimit`, `filter`, `groq-utils`, `ai-router`, `ai-pseudonym`, `narrative`, `game-match`, `metrics`, `logger` |
 
-Config en `config/`: `commands.json` (solo timers), `channel.json`, `messages.json`, `help.json`, `lore.json`. Esquema Supabase en `supabase/migrations/` (000–004).
+Config en `config/`: `commands.json` (solo timers), `channel.json`, `messages.json`, `help.json`, `lore.json`. Esquema Supabase en `supabase/migrations/` (000–011; 010 aditiva, 011 destructiva y posterior al despliegue).
 
 - `bot_whitelist` (channel.json): nunca se auto-banean.
 - `bot_autoban_dry_run` es `true` **a propósito**: solo registra. No cambiarlo sin que se pida.
@@ -82,7 +83,7 @@ Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOK
 - **Cooldowns**: Maps `${command}-${userId}` (usuario) o `${command}` (global).
 - **Permisos de mod**: `tags.mod || tags['user-type'] === 'mod' || tags.badges?.broadcaster === '1'`.
 - **IRC**: `irc-ratelimit.js` envuelve `client.say()` una vez (cola FIFO con tope y separación mínima); descarta si el cliente está desconectado; en SIGTERM/SIGINT vacía la cola (máx. 5 s). Watchdog: si `chatStatus.connected` es false llama a `connectChat()`, que no abre otro socket si ya está OPEN/CONNECTING.
-- **Origen de mensajes**: `runWithOrigin(origin, fn)` (`chatlog.js`, AsyncLocalStorage) etiqueta cada `say()` del bot; el chat se vuelca por lotes a la tabla `chat_log` (retención 60 días).
+- **Origen de mensajes**: `runWithOrigin(origin, fn)` (`chatlog.js`, AsyncLocalStorage) etiqueta cada `say()` del bot; el chat se vuelca por lotes a la tabla `chat_log` (retención **24 h**; al acabar el stream, `privacy/quality-log.js` guarda en `quality_log` los mensajes del bot con 3 líneas de contexto y nicks seudonimizados, 30 días).
 - **Dos tokens**: el App Access Token (caché 23 h) solo para crear/listar/borrar suscripciones EventSub y consultas públicas de `streams`; todo lo que actúa en nombre del canal (clips, markers, bans, followers, `BROADCASTER_SCOPES`) usa el token del broadcaster, cargado de Supabase al arrancar (pisa .env si es más reciente) y refrescado en 401.
 - **Storage**: Supabase primero; sin sus variables usa npoint.io y migra cuando se configure.
 - **Memoria**: en `stream.offline` Groq resume el stream a Supabase; los últimos 5 resúmenes entran en el prompt (caché 10 min). Memoria conversacional por usuario: 5 turnos, TTL 1 h, máx. 200 usuarios.
@@ -92,6 +93,16 @@ Opcionales (defaults en el código y en `render.yaml`): `BROADCASTER_REFRESH_TOK
 ## Prompts por tipo (cupo de Groq)
 
 `src/ai/style.js` monta los prompts de provocaciones, cohost, menciones, `!dios_fua`, alertas (sub, raid, bienvenida, predicciones y encuestas) y resumen de fin de stream con una sola plantilla: identidad corta (~60 tokens) + `<forma>` fija en 1-2 líneas + 3-5 `<example>` + lo variable del momento entre etiquetas (`<stream>`, `<contexto>`, `<ajustes>`…) + `<tarea>` al final (lo fijo va primero por si Groq cachea el prefijo; la documentación dice que los tokens cacheados no cuentan para TPM y no aclara el TPD). Los ejemplos están en `config/style-examples.json` (por tipo, editables) y rotan al azar en cada llamada. Reglas del prompt: todo en positivo y ninguna palabra o frase prohibida citada; las prohibiciones viven en `quality.js`. Un reintento solo añade `<correccion>` con la corrección en positivo (`positiveFix`/`retryNote`), sin citar la frase rechazada. El cohost no recibe los últimos mensajes del bot (el parecido lo comprueba el código), cambia de forma en cada comentario (`COHOST_FORMS`, sin repetir la anterior) y pide 2 candidatos (`COHOST_CANDIDATES`) en un JSON: `rankCandidates` descarta los que no pasan `validateCohost` y elige el que menos se parece a lo reciente; entre los que quedan, `pick-best.js` (modelo de otra familia que el generador, con el chat, la hora y el contador) elige el mejor o dice que ninguno vale (se calla tras un reintento); si el selector no puede contestar, vale el orden del código. El timer IA pasa su texto por el mismo selector y recalcula el contador en cada intento. Si los tres fallan, un reintento y, si vuelve a fallar, se calla. Los minutos de directo se dan aproximados (`approxDuration`), y el día de la semana, «Entre X y Y…» y las palabras largas llamativas solo salen una vez por stream (`streamMarks` en `usedStructures`). Los de hook, timer IA, `!so` y `!quemeperdi` usan la misma plantilla (`buildHookSystem`, `buildTimerSystem`, `buildShoutoutSystem`, `buildQueMePerdiSystem`); `dayLine()` pasa el día de la semana y la parte del día reales (Madrid) a los prompts que hablan del momento, y `quality.wrongWeekday` rechaza un día que no es hoy. Timer IA (cada `AI_TIMER_INTERVAL_MS`, 30 min): resumen de la última media hora con `windowFacts` (caídas, jefes, racha) y `topChatWords`; sin sucesos relevantes no se envía, y el parecido con lo que ya dijo el cohost lo comprueba el código. Hook IA: pregunta al chat sobre lo ocurrido (`requireQuestion`); sin sucesos, hooks fijos, y los fijos del juego («¿Qué os parece X?») solo si `countSessionsOfGame` ≤ 2. Varios `!boss` en ~2 min se agrupan en un solo comentario del cohost (`mergeBossMoments`). `!dios_fua` con un juego en la pregunta: `quality.extractGameMention` saca el nombre, el código busca la ficha en IGDB antes de llamar al modelo y se la pasa en `<ficha_igdb>` sin ofrecer la herramienta (la ficha la monta `src/ai/game-sheet.js` en español: fecha «octubre de 2026», géneros traducidos y un resumen en español generado una vez por juego con qwen y cacheado, nunca la descripción inglesa; `leaksSheetRaw` descarta respuestas con inglés, fechas ISO o campos de la ficha copiados) (sin coincidencia segura sigue el flujo con `buscar_juego`). Una mención que pide un juego («cuéntame de qué va X», `quality.extractGameQuery`) se responde con los datos de IGDB (`buildGameTemplate`), sin IA; si IGDB no lo conoce, `mention_not_understood`.
+
+## Privacidad (datos personales)
+
+- **Por `user_id`, no por nick**: `user_facts`, `channel_lore.users` y el registro de calidad se identifican por el ID de Twitch (`tags['user-id']`); el nick vive solo en `users.username`. Cualquier dato nuevo por usuario debe seguir esa regla y añadirse a `privacy/forget.js` (con su test en `test/forget.test.js`) y a `privacy/retention.js`.
+- **Caducidad** (`retention.js`, cada hora): chat 24 h; `quality_log` 30 d; `user_facts` que no son contadores, 90 d; `users` y contadores (`trivia_wins`), 1 año sin actividad (`last_seen`).
+- **Nada personal entre streams**: los resúmenes se guardan sin nicks (`names.scrubNicks`), y `active_users`, `trigger_messages` y `recurring_joke` ya no se escriben.
+- **Registro de calidad**: sin nicks ni `user_id`; `user_keys` = HMAC (con `EVENTSUB_SECRET`) de los participantes. Olvidar a alguien borra la entrada completa.
+- **Lore aprendido**: nada entra en los prompts sin `!lore aprobar` (solo `status = 'active'`, que solo activa un mod).
+- **`!fua_olvidame`** limpia también la RAM (cachés, conversaciones, cola de `chat_log`, guardados diferidos) y evita la bienvenida de «primer mensaje» durante 10 min.
+- El texto del aviso y del panel está en `docs/aviso-privacidad.md`; si cambian plazos o proveedores, actualizarlo junto con `!privacidad` (`config/messages.json`).
 
 ## Convenciones
 

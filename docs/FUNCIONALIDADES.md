@@ -129,6 +129,10 @@ _Auditoría de solo lectura (2026-10-27) repetida sobre el código actual (HEAD 
 | Script de copia de seguridad (npm run backup) | 7 | 7 | 2 | 5.5 | **5.5** | I | Sin cambios. manual, sin programación ni restauración. _Importancia: Listado como Importante._ |
 | Tests (node:test, 219) | 9 | 7 | 1 | 5.3 | **6.0** ▲ | I | ▲ 219 tests pasan (antes 56), 37 suites, 0 fallos. Ahora cubren memoria entre streams, lore, narrativa/modos, patrones y contexto de subs. Siguen sin cubrir EventSub, el despacho de comandos ni los flujos con E/S (handleCohost, checkPatternMatch). |
 
+## Privacidad (fase B2, sin puntuar)
+
+Funciones añadidas el 11-11: caducidad automática de datos (chat 24 h, registro de calidad 30 d, hechos 90 d, fichas y contadores 1 año), datos por ID de Twitch, `!fua_olvidame` / `!fua_olvidar @usuario` / `npm run forget`, `!privacidad` y aviso en `docs/aviso-privacidad.md`. Lore aprendido solo con aprobación de un mod. Cubierto por tests (`forget`, `retention`, `quality-log`, `privacy-commands`); sin probar en directo.
+
 ## Lore
 
 | Funcionalidad | S | V | D | v3 | v4 | Imp. | Notas |

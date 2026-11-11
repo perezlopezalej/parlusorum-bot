@@ -16,6 +16,7 @@ const { buildSummaryPrompt, retryNote } = require('../ai/style');
 const { containsBlockedContent } = require('../utils/filter');
 const { aiChat } = require('../utils/ai-router');
 const { onStreamEndLore } = require('../lore/handler');
+const { scrubNicks, nicksFromChatSample } = require('../privacy/names');
 
 
 // Motivo de rechazo del resumen (null si vale): vacío, negativo, muertes como logro, género a ParLusorum, vida personal o texto basura
@@ -64,12 +65,16 @@ async function generateStreamMemory(streamStats, chatSample) {
     // Los momentos y frases también entran luego en los prompts: sin vida personal ni charla ajena al stream
     const keep = list => (Array.isArray(list) ? list : []).filter(item => typeof item === 'string' && !quality.summaryPersonalLife(item));
 
+    // Lo que perdura entre streams no lleva nicks: se sustituyen por «un espectador»
+    const nicks = [...(streamStats.activeUsers || []), ...nicksFromChatSample(chatSample)];
+    const clean = text => scrubNicks(text, nicks);
+
     return {
       game,
-      summary,
-      highlights: keep(parsed.highlights),
-      recurringPhrases: keep(parsed.recurringPhrases),
-      activeUsers: streamStats.activeUsers || []
+      summary: clean(summary),
+      highlights: keep(parsed.highlights).map(clean),
+      recurringPhrases: keep(parsed.recurringPhrases).map(clean),
+      activeUsers: []
     };
   } catch (e) {
     logger.error(`Error generando memoria del stream: ${e.message}`);
@@ -79,7 +84,7 @@ async function generateStreamMemory(streamStats, chatSample) {
       summary: quality.positiveSummaryFallback(streamStats),
       highlights: [],
       recurringPhrases: [],
-      activeUsers: streamStats.activeUsers || []
+      activeUsers: []
     };
   }
 }
@@ -102,30 +107,15 @@ async function onStreamEnd(streamStats, chatSample) {
     // 3b. Aprender lore del canal (no bloquea el resto si falla)
     await onStreamEndLore(memory);
 
-    // 4. Persistir hechos de usuarios activos (fire-and-forget)
+    // 4. Persistir hechos de usuarios activos, por user_id (fire-and-forget). Ya no se guardan frases literales.
     try {
       const { saveUserFact } = require('../utils/supabase');
-      const activeUsers = streamStats.activeUsers || [];
-      for (const username of activeUsers.slice(0, 20)) {
-        saveUserFact(username, 'is_regular', 'true');
-        if (streamStats.game) saveUserFact(username, 'last_game_mentioned', streamStats.game);
-      }
-      // Solo a quien dijo de verdad la frase en la muestra de chat (formato "usuario: mensaje")
-      const phrases = (memory.recurringPhrases || []).map(p => sanitizeMemoryField(p, 100)).filter(p => p.length >= 4);
-      if (phrases.length > 0 && chatSample) {
-        const assigned = new Set();
-        for (const line of chatSample.split('\n')) {
-          const sep = line.indexOf(': ');
-          if (sep < 1) continue;
-          const user = line.slice(0, sep).toLowerCase();
-          const text = line.slice(sep + 2).toLowerCase();
-          if (assigned.has(user) || !activeUsers.includes(user)) continue;
-          const phrase = phrases.find(p => text.includes(p.toLowerCase()));
-          if (phrase) {
-            assigned.add(user);
-            saveUserFact(user, 'recurring_joke', phrase);
-          }
-        }
+      const ids = streamStats.activeUserIds || {};
+      for (const nick of (streamStats.activeUsers || []).slice(0, 20)) {
+        const id = ids[nick];
+        if (!id) continue;
+        saveUserFact(id, 'is_regular', 'true');
+        if (streamStats.game) saveUserFact(id, 'last_game_mentioned', streamStats.game);
       }
     } catch (e) {
       logger.warn(`User facts post-stream: ${e.message}`);

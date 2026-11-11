@@ -98,12 +98,22 @@
     "top_title": "🏆 Top trivia: ",
     "top_empty": "🏆 Aún no hay ranking de trivia. ¡Prueba con !trivia!"
   },
+  "privacidad": {
+    "summary": "🔒 Privacidad: guardo el chat 24 h y un registro de calidad con nombres anónimos 30 días. Los datos útiles (contadores, rachas) van por tu ID de Twitch y caducan tras 90 días sin actividad (los contadores, 1 año). La IA usa Groq (EE. UU., sin retención de datos). Borra todo lo tuyo con !fua_olvidame.",
+    "forgot_me": "@{username} listo: he borrado todos tus datos (chat, registro de calidad, estadísticas, memoria y lore que te mencione). Si sigues escribiendo, empiezo de cero. 💜",
+    "forgot_user": "@{username} hecho: he borrado todos los datos de @{target}.",
+    "forgot_error": "@{username} no he podido borrar todo ahora mismo. Inténtalo de nuevo en un rato o avisa a un mod.",
+    "mods_only": "@{username} solo mods. Para borrar tus propios datos usa !fua_olvidame.",
+    "usage_olvidar": "@{username} uso: !fua_olvidar @usuario",
+    "not_allowed": "@{username} no puedo borrar los datos de esa cuenta.",
+    "cooldown": "@{username} espera un momento antes de repetirlo ⏳"
+  },
   "lore": {
     "mods_only": "@{username} solo mods.",
     "usage": "@{username} uso: !lore | !lore aprobar <id> | !lore borrar <id>",
     "empty": "📖 Aún no hay lore aprendido. El lore manual está en config/lore.json.",
     "active_prefix": "📖 Activo: ",
-    "pending_prefix": "⏳ Pendiente: ",
+    "pending_prefix": "⏳ Pendiente de aprobar (* = listo): ",
     "approved": "✅ Lore #{id} aprobado: \"{term}\".",
     "deleted": "🗑️ Lore #{id} borrado: \"{term}\".",
     "not_found": "@{username} no encuentro el lore #{id}.",

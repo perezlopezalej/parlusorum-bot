@@ -5,6 +5,8 @@
  *   npm run backup
  *
  * backups/ contiene datos de usuarios y tokens: está en .gitignore, no subir.
+ * No incluye chat_log (retención de 24 h) ni quality_log. Las copias de users/user_facts NO siguen
+ * los borrados (!fua_olvidame, caducidad): bórralas o no las conserves más de lo necesario.
  */
 require('dotenv').config();
 
@@ -22,8 +24,6 @@ const TABLES = [
   'cooldowns',
   'user_facts',
   'channel_lore',
-  'chat_log',
-  'bot_self_reviews',
 ];
 const PAGE = 1000;
 

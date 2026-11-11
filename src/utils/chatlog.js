@@ -15,8 +15,7 @@ const { pushChatLog, takeChatLog, requeueChatLog, getChatLogSize } = require('./
 
 const FLUSH_INTERVAL_MS = 10_000;
 const FLUSH_BATCH = 50;
-const RETENTION_DAYS = 60;
-const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const RETENTION_MS = 24 * 60 * 60 * 1000; // el chat completo solo se conserva 24 h (ver docs/aviso-privacidad.md)
 const MAX_MESSAGE_LEN = 500;
 
 const als = new AsyncLocalStorage();
@@ -60,11 +59,12 @@ function currentMeta(explicit = {}) {
 
 // ─── Funciones puras ─────────────────────────────────────────────────────────
 
-function buildRow({ username, message, isBot = false, origin = null, model = null, usedTool = false, latencyMs = null, sessionId = null, replyTo = null, at = new Date() }) {
+function buildRow({ userId = null, username, message, isBot = false, origin = null, model = null, usedTool = false, latencyMs = null, sessionId = null, replyTo = null, at = new Date() }) {
   return {
     reply_parent_login: !isBot && replyTo ? String(replyTo).toLowerCase().slice(0, 50) : null,
     created_at: at.toISOString(),
     session_id: sessionId ?? null,
+    user_id: !isBot && userId ? String(userId).slice(0, 30) : null,
     username: String(username || '?').slice(0, 50),
     message: String(message ?? '').slice(0, MAX_MESSAGE_LEN),
     is_bot: !!isBot,
@@ -105,8 +105,22 @@ function dayRange(dateStr) {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-function retentionCutoff(now = Date.now(), days = RETENTION_DAYS) {
-  return new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+function retentionCutoff(now = Date.now(), ms = RETENTION_MS) {
+  return new Date(now - ms).toISOString();
+}
+
+// ¿Cae el día (AAAA-MM-DD, hora local) dentro de las últimas 24 h? Si sí, el chat completo aún existe.
+function isWithinFullChatWindow(dateStr, now = Date.now()) {
+  const range = dayRange(dateStr);
+  return !!range && new Date(range.to).getTime() > now - RETENTION_MS;
+}
+
+// ¿Qué exportar? 'chat' (completo, solo existe 24 h) o 'quality' (registro de 30 días).
+// Con fecha: según caiga en las últimas 24 h. Sin fecha (última sesión): según cuándo empezó.
+function chooseExport({ dateStr = null, startedAt = null, now = Date.now() } = {}) {
+  if (dateStr) return isWithinFullChatWindow(dateStr, now) ? 'chat' : 'quality';
+  const t = new Date(startedAt).getTime();
+  return Number.isFinite(t) && t > now - RETENTION_MS ? 'chat' : 'quality';
 }
 
 // ─── Escritura por lotes ─────────────────────────────────────────────────────
@@ -133,8 +147,8 @@ function enqueue(row) {
 }
 
 // Nunca lanzan: el registro no puede afectar al flujo del chat
-function logUserMessage(username, message, replyTo = null) {
-  try { enqueue(buildRow({ username, message, replyTo, sessionId: currentSessionId() })); } catch { /* ignorado */ }
+function logUserMessage(username, message, replyTo = null, userId = null) {
+  try { enqueue(buildRow({ username, message, replyTo, userId, sessionId: currentSessionId() })); } catch { /* ignorado */ }
 }
 
 function logBotMessage(username, message, explicit) {
@@ -166,28 +180,16 @@ async function flush() {
   }
 }
 
-async function purgeOld() {
-  if (!isEnabled()) return;
-  try {
-    const n = await require('./supabase').deleteChatLogBefore(retentionCutoff());
-    if (n > 0) logger.info(`chatlog: ${n} filas de más de ${RETENTION_DAYS} días borradas`);
-  } catch (e) {
-    logger.warn(`chatlog: no se pudo purgar: ${e.message}`);
-  }
-}
-
 function start() {
   if (timer || !isEnabled()) return;
   timer = setInterval(() => flush().catch(() => {}), FLUSH_INTERVAL_MS);
   timer.unref?.();
-  purgeOld();
-  setInterval(purgeOld, PURGE_INTERVAL_MS).unref?.();
-  logger.info(`📝 Registro de chat activo (lotes cada ${FLUSH_INTERVAL_MS / 1000}s o ${FLUSH_BATCH} msgs, retención ${RETENTION_DAYS} días)`);
+  logger.info(`📝 Registro de chat activo (lotes cada ${FLUSH_INTERVAL_MS / 1000}s o ${FLUSH_BATCH} msgs, retención 24 h, la purga va en privacy/retention)`);
 }
 
 module.exports = {
   runWithOrigin, withOrigin, noteAiCall, noteTool, currentMeta,
-  logUserMessage, logBotMessage, flush, purgeOld, start,
-  buildRow, formatLine, formatChat, dayRange, retentionCutoff, localDateStr,
-  FLUSH_BATCH, RETENTION_DAYS,
+  logUserMessage, logBotMessage, flush, start,
+  buildRow, formatLine, formatChat, dayRange, retentionCutoff, localDateStr, isWithinFullChatWindow, chooseExport,
+  FLUSH_BATCH, RETENTION_MS,
 };

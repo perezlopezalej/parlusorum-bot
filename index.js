@@ -177,6 +177,7 @@ eventSubHandler = createEventSubHandler(client, CHANNEL, {
   getStreamChatBuffer: ai.getStreamChatBuffer,
   resetStreamChatBuffer: ai.resetStreamChatBuffer,
   getActiveUsers: ai.getActiveUsersWithMinMessages,
+  getActiveUserIds: ai.getActiveUserIds,
   resetActiveUsers: ai.resetActiveUsers,
   onStreamOnline: alerts.onStreamOnline,
   clearUserFactsCache: ai.clearUserFactsCache,
@@ -216,6 +217,7 @@ client.on('connected', async (addr, port) => {
   if (!timersStarted) {
     timers.start(client, config);
     chatlog.start();
+    require('./src/privacy/retention').start({ beforeChatPurge: require('./src/privacy/quality-log').catchUp }); // caducidad de datos personales (cada hora)
     timersStarted = true;
 
     await loadBroadcasterTokens();
@@ -308,10 +310,10 @@ client.on('message', async (channel, tags, message, self) => {
   const msg = message.trim();
   const username = tags['display-name'];
   botState.pushUserText(msg);
-  chatlog.logUserMessage(username, msg, tags['reply-parent-user-login']);
+  chatlog.logUserMessage(username, msg, tags['reply-parent-user-login'], tags['user-id']);
 
   try {
-    ai.addToHistory(username, msg);
+    ai.addToHistory(username, msg, tags['user-id']);
     ai.updateLastChatTime();
     runWithOrigin('alerta', () => alerts.handleMessage(client, channel, tags)).catch(err =>
       logger.warn(`alerts.handleMessage error: ${err.message}`)

@@ -81,6 +81,9 @@ async function handle(client, channel, tags, command, args, config) {
     case 'lore':
       if (!isMod) { client.say(channel, truncate(loreMsgs.mods_only.replace('{username}', username))); return; }
       return await handleLore(client, channel, username, args);
+    case 'fua_olvidame': return await require('../privacy/commands').handleForgetMe(client, channel, tags);
+    case 'fua_olvidar': return await require('../privacy/commands').handleForgetUser(client, channel, tags, args, isMod);
+    case 'privacidad': return require('../privacy/commands').handlePrivacy(client, channel, tags);
     case 'comandos': return handleComandos(client, channel, username, userId, isMod);
     case 'ayuda': return handleAyuda(client, channel, args, isMod);
     case 'moneda':
@@ -379,7 +382,7 @@ async function handleLore(client, channel, username, args) {
     if (sub !== 'aprobar' && sub !== 'borrar') return say(loreMsgs.usage.replace('{username}', username));
     const id = parseInt(args[2], 10);
     if (!Number.isInteger(id) || id < 1) return say(loreMsgs.usage.replace('{username}', username));
-    const row = sub === 'aprobar' ? await approveLore(id) : await deleteLore(id);
+    const row = sub === 'aprobar' ? await approveLore(id, username) : await deleteLore(id);
     if (!row) return say(loreMsgs.not_found.replace('{username}', username).replace('{id}', id));
     const tpl = sub === 'aprobar' ? loreMsgs.approved : loreMsgs.deleted;
     return say(tpl.replace('{id}', id).replace('{term}', sanitizeForAI(row.term) || '?'));

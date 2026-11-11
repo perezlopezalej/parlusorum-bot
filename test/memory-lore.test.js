@@ -20,9 +20,10 @@ stub('src/utils/supabase.js', {
   saveUserFact: () => {},
   getLoreRows: async statuses => db.lore.filter(r => !statuses || statuses.includes(r.status)),
   upsertLoreRows: async rows => { db.upserts.push(rows); return true; },
-  updateLoreStatus: async (id, status, from) => {
+  updateLoreStatus: async (id, status, from, approver) => {
     const r = db.lore.find(x => x.id === id && from.includes(x.status));
     if (!r) return null;
+    db.lastApprover = approver;
     r.status = status;
     return r;
   },
@@ -36,7 +37,11 @@ stub('src/utils/ai-router.js', {
   }
 });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {}, debug() {} });
-stub('src/utils/state.js', { getLoreSample: () => db.sample });
+stub('src/utils/state.js', {
+  getLoreSample: () => db.sample,
+  // nick → user_id de lo escrito en la muestra (en el test, "id-" + nick)
+  getLoreSampleIds: () => new Map(db.sample.split('\n').map(l => l.split(': ')[0].toLowerCase()).filter(Boolean).map(n => [n, 'id-' + n]))
+});
 
 const memory = require('../src/memory/handler');
 const lore = require('../src/lore/handler');
@@ -137,13 +142,33 @@ describe('lore aprendido', () => {
   const chat = ['b: fua total!', 'c: FUA total jaja', 'd: otra cosa'].join('\n');
   const saved = () => db.upserts.flat();
 
-  test('promoción: pending pasa a active con >=2 streams y >=3 usuarios', async () => {
+  test('con >=2 streams y >=3 usuarios queda pendiente de aprobar: nunca pasa a active solo', async () => {
     db.lore = [base()]; db.sample = chat; groq.reply = '[]';
     await lore.onStreamEndLore({});
     const r = saved().find(x => x.term_key === 'fua total');
-    assert.equal(r.status, 'active');
+    assert.equal(r.status, 'pending');
+    assert.equal(r.needs_approval, true);
     assert.equal(r.streams_count, 2);
     assert.equal(r.users_count, 3);
+  });
+
+  test('channel_lore.users guarda user_id, no nicks', async () => {
+    db.lore = [base({ users: [] , users_count: 0 })]; db.sample = chat; groq.reply = '[]';
+    await lore.onStreamEndLore({});
+    const r = saved().find(x => x.term_key === 'fua total');
+    assert.deepEqual(r.users.sort(), ['id-b', 'id-c']);
+  });
+
+  test('un activo sin aprobador (anterior a B2) vuelve a pendiente', async () => {
+    db.lore = [base({ status: 'active' })]; db.sample = chat; groq.reply = '[]';
+    await lore.onStreamEndLore({});
+    assert.equal(saved()[0].status, 'pending');
+  });
+
+  test('un activo aprobado por un mod sigue activo', async () => {
+    db.lore = [base({ status: 'active', approved_by: 'Pao' })]; db.sample = chat; groq.reply = '[]';
+    await lore.onStreamEndLore({});
+    assert.equal(saved()[0].status, 'active');
   });
 
   test('no promociona con pocos usuarios', async () => {
@@ -165,7 +190,7 @@ describe('lore aprendido', () => {
   });
 
   test('decaimiento: suma missed_streams cuando no aparece', async () => {
-    db.lore = [base({ status: 'active', missed_streams: 2 })]; db.sample = 'b: hola'; groq.reply = '[]';
+    db.lore = [base({ status: 'active', approved_by: 'mod', missed_streams: 2 })]; db.sample = 'b: hola'; groq.reply = '[]';
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].missed_streams, 3);
     assert.equal(saved()[0].status, 'active');
@@ -178,7 +203,7 @@ describe('lore aprendido', () => {
   });
 
   test('sin chat no suma ni penaliza', async () => {
-    db.lore = [base({ status: 'active' })];
+    db.lore = [base({ status: 'active', approved_by: 'mod' })];
     await lore.onStreamEndLore({});
     assert.equal(db.upserts.length, 0);
     assert.equal(groq.calls, 0);
@@ -200,7 +225,7 @@ describe('lore aprendido', () => {
   });
 
   test('si falla la IA aún actualiza el lore existente (degradación sin IA)', async () => {
-    db.lore = [base({ status: 'active' })]; db.sample = 'b: hola'; groq.error = new Error('down');
+    db.lore = [base({ status: 'active', approved_by: 'mod' })]; db.sample = 'b: hola'; groq.error = new Error('down');
     await lore.onStreamEndLore({});
     assert.equal(saved()[0].missed_streams, 1);
   });
@@ -228,11 +253,21 @@ describe('lore aprendido', () => {
     assert.ok(ctx.indexOf('nuevo') < ctx.indexOf('viejo'));
   });
 
-  test('getLoreOverview marca con * los pendientes que requieren aprobación', async () => {
-    db.lore = [base({ id: 5, term: 'x pollo', needs_approval: true }), base({ id: 6, term: 'y', status: 'active' })];
+  test('getLoreOverview marca con * los pendientes listos (≥2 streams y ≥3 usuarios) y los pone primero', async () => {
+    db.lore = [
+      base({ id: 4, term: 'a medias', needs_approval: true }),
+      base({ id: 5, term: 'x pollo', needs_approval: true, streams_count: 2, users_count: 3 }),
+      base({ id: 6, term: 'y', status: 'active' }),
+    ];
     const o = await lore.getLoreOverview();
-    assert.deepEqual(o.pending, ['#5 x pollo*']);
+    assert.deepEqual(o.pending, ['#5 x pollo*', '#4 a medias']);
     assert.deepEqual(o.active, ['#6 y']);
+  });
+
+  test('approveLore guarda quién aprueba y deleteLore no', async () => {
+    db.lore = [base({ id: 9, status: 'pending' })];
+    await lore.approveLore(9, 'Pao');
+    assert.equal(db.lastApprover, 'Pao');
   });
 
   test('approveLore / deleteLore cambian el estado', async () => {

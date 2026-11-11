@@ -165,3 +165,82 @@ describe('EventSub — challenge y otros tipos', () => {
     assert.equal(res.status, 400);
   });
 });
+
+describe('revocaciones de EventSub', () => {
+  const { shouldResubscribe, handleRevocation, subscriptionDefs } = require('../src/eventsub');
+  const { BROADCASTER_SCOPES } = require('../src/auth');
+
+  test('shouldResubscribe: solo motivos recuperables y con tope por hora', () => {
+    assert.equal(shouldResubscribe('notification_failures_exceeded', 0), true);
+    assert.equal(shouldResubscribe('version_removed', 2), true);
+    assert.equal(shouldResubscribe('notification_failures_exceeded', 3), false);
+    assert.equal(shouldResubscribe('authorization_revoked', 0), false);
+    assert.equal(shouldResubscribe('user_removed', 0), false);
+    assert.equal(shouldResubscribe(undefined, 0), false);
+  });
+
+  test('subscriptionDefs cubre todos los tipos y usa el id del canal', () => {
+    const d = subscriptionDefs('123');
+    const types = [...d.basic, ...d.broadcasterAuth].map(x => x.type);
+    assert.equal(new Set(types).size, types.length);
+    for (const t of ['channel.follow', 'stream.online', 'stream.offline', 'channel.hype_train.begin', 'channel.poll.end']) assert.ok(types.includes(t), t);
+    assert.ok([...d.basic, ...d.broadcasterAuth].every(x => x.condition.broadcaster_user_id === '123'));
+  });
+
+  function fakeFetch(responses = {}) {
+    const calls = [];
+    const fn = async (url, opts = {}) => {
+      calls.push({ url, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+      const post = opts.method === 'POST';
+      return { status: post ? 202 : 204, json: async () => (post ? (responses.post || { data: [{ status: 'webhook_callback_verification_pending' }] }) : {}) };
+    };
+    return { fn, calls };
+  }
+
+  test('notification_failures_exceeded: borra la suscripción revocada y crea otra del mismo tipo', async () => {
+    process.env.PUBLIC_URL = 'https://bot.example.com';
+    const { fn, calls } = fakeFetch();
+    const ok = await handleRevocation({ id: 'sub-1', type: 'stream.offline', version: '1', status: 'notification_failures_exceeded' },
+      { fetchFn: fn, getToken: async () => 'app-token', broadcasterId: '99', now: 1_000 });
+    assert.equal(ok, true);
+    assert.deepEqual(calls.map(c => c.method), ['DELETE', 'POST']);
+    assert.match(calls[0].url, /id=sub-1/);
+    assert.equal(calls[1].body.type, 'stream.offline');
+    assert.equal(calls[1].body.condition.broadcaster_user_id, '99');
+    assert.equal(calls[1].body.transport.callback, 'https://bot.example.com/eventsub');
+  });
+
+  test('authorization_revoked no se reintenta (no hace ninguna petición)', async () => {
+    const { fn, calls } = fakeFetch();
+    const ok = await handleRevocation({ id: 's', type: 'channel.poll.begin', version: '1', status: 'authorization_revoked' },
+      { fetchFn: fn, getToken: async () => 'app-token', now: 1_000 });
+    assert.equal(ok, false);
+    assert.equal(calls.length, 0);
+  });
+
+  test('tope de 3 reintentos por tipo y hora', async () => {
+    process.env.PUBLIC_URL = 'https://bot.example.com';
+    const { fn, calls } = fakeFetch();
+    const sub = { id: 's', type: 'channel.prediction.end', version: '1', status: 'notification_failures_exceeded' };
+    const opts = { fetchFn: fn, getToken: async () => 't', broadcasterId: '1' };
+    const results = [];
+    for (let i = 0; i < 4; i++) results.push(await handleRevocation(sub, { ...opts, now: 10_000 + i }));
+    assert.deepEqual(results, [true, true, true, false]);
+    assert.equal(calls.filter(c => c.method === 'POST').length, 3);
+    assert.equal(await handleRevocation(sub, { ...opts, now: 10_000 + 61 * 60 * 1000 }), true, 'pasada la hora vuelve a intentarlo');
+  });
+
+  test('si Twitch rechaza la nueva suscripción, devuelve false sin lanzar', async () => {
+    process.env.PUBLIC_URL = 'https://bot.example.com';
+    const { fn } = fakeFetch({ post: { message: 'conflict' } });
+    const ok = await handleRevocation({ id: 's', type: 'channel.follow', version: '2', status: 'version_removed' },
+      { fetchFn: fn, getToken: async () => 't', broadcasterId: '1', now: 50_000_000 });
+    assert.equal(ok, false);
+  });
+
+  test('BROADCASTER_SCOPES ya no pide channel:manage:broadcast', () => {
+    assert.equal(BROADCASTER_SCOPES.includes('channel:manage:broadcast'), false);
+    assert.ok(BROADCASTER_SCOPES.includes('user:edit:broadcast'));
+    assert.ok(BROADCASTER_SCOPES.includes('moderator:manage:banned_users'));
+  });
+});

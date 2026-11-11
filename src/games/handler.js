@@ -346,13 +346,14 @@ function checkTriviaAnswer(client, channel, tags, message) {
 
   if (isAnswerMatch(message, activeTriviaQuestion.answer, activeTriviaQuestion.aliases || [])) {
     const username = tags['display-name'];
+    const userId = tags['user-id'] || null;
     clearTimeout(triviaTimeout);
     const curiosidadWin = activeTriviaQuestion.curiosidad ? ` 💡 ${activeTriviaQuestion.curiosidad}` : '';
     activeTriviaQuestion = null;
     triviaHintStage = 0;
     registrarAcierto();
     setTriviaActive(false);
-    announceWin(client, channel, username, curiosidadWin)
+    announceWin(client, channel, username, curiosidadWin, userId)
       .catch(err => logger.error(`Trivia ranking: ${err.message}`));
   }
 }
@@ -366,15 +367,15 @@ async function getTop(limit = 5) {
   return top.slice(0, limit);
 }
 
-async function announceWin(client, channel, username, curiosidad) {
+async function announceWin(client, channel, username, curiosidad, userId = null) {
   const fill = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k]);
-  const wins = await incrementUserCounter(username, WINS_FACT);
+  const wins = await incrementUserCounter(userId, WINS_FACT);
   const streak = bumpTriviaStreak(username);
   let text = fill(msgs.win, { username });
   if (wins) {
     invalidateTriviaTopCache();
     const top = await getTop(5);
-    const position = top.findIndex(r => r.username === username.toLowerCase()) + 1;
+    const position = top.findIndex(r => r.userId === userId) + 1;
     const vars = { username, wins: winsText(wins), streak, position };
     if (position === 1 && wins > 1) text = fill(msgs.win_champion, vars);
     else if (streak >= 2) text = fill(msgs.win_streak, vars);

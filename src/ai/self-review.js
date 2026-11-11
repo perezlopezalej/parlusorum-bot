@@ -1,7 +1,7 @@
 /**
  * self-review.js — Autorrevisión del bot al acabar el stream (solo para revisión humana).
  * El código mide reacciones y marca sospechosos (repeticiones, datos del juego, ignorados, negativos);
- * la IA solo redacta un informe breve sobre esos mensajes. Va a Supabase (bot_self_reviews) y al log, nunca al chat ni al prompt.
+ * la IA solo redacta un informe breve sobre esos mensajes. Va al registro de calidad (quality_log, 30 días) y al log, nunca al chat ni al prompt.
  */
 
 const quality = require('./quality');
@@ -20,7 +20,7 @@ function flagMessages(scored) {
     const reasons = [];
     if (previous.length && quality.tooSimilar(text, previous.slice(-8))) reasons.push('repetición');
     if (quality.mentionsMechanics(text) || quality.claimsEnemyKills(text)) reasons.push('posible dato inventado del juego');
-    if (s.negative) reasons.push(`reacción negativa (${s.negUsers.join(', ')})`);
+    if (s.negative) reasons.push(`reacción negativa (${s.negUsers.length} usuario/s)`); // sin nicks: el informe se guarda 30 días
     else if (s.ignored) reasons.push('ignorado');
     previous.push(text);
     if (reasons.length) flagged.push({ origin: s.row.origin, message: text.slice(0, 200), reasons });
@@ -45,9 +45,10 @@ Redacta en español un informe de como máximo 6 líneas: qué se repite, qué p
 }
 
 // Nunca lanza: una autorrevisión fallida no puede afectar al bot
-async function reviewStream({ sessionId, botName = process.env.BOT_USERNAME || 'dios_fua' } = {}) {
+async function reviewStream({ sessionId, metrics = null, botName = process.env.BOT_USERNAME || 'dios_fua' } = {}) {
   try {
-    const { getSessionChatLog, saveSelfReview } = require('../utils/supabase');
+    const { getSessionChatLog } = require('../utils/supabase');
+    const { persistStream } = require('../privacy/quality-log');
     if (!sessionId) return null;
     const rows = await getSessionChatLog(sessionId);
     if (!rows.length) { logger.info('📊 Autorrevisión: sin chat registrado en la sesión'); return null; }
@@ -65,7 +66,8 @@ async function reviewStream({ sessionId, botName = process.env.BOT_USERNAME || '
       report = `(sin informe IA) ${flagged.length} mensajes marcados: ${flagged.map(f => `"${f.message.slice(0, 50)}" ${f.reasons.join('/')}`).join(' | ')}`.slice(0, MAX_REPORT_CHARS);
     }
     logger.info(`📝 Autorrevisión del bot: ${report.replace(/\s*\n\s*/g, ' / ')}`);
-    await saveSelfReview({ sessionId, stats: { ...summary, flagged: flagged.length }, report });
+    // Registro de calidad de 30 días (nicks seudonimizados) con las métricas del stream; el chat completo caduca a las 24 h
+    await persistStream({ sessionId, rows, metrics: { ...(metrics || {}), flagged: flagged.length }, report, botName });
     return { summary, flagged, report };
   } catch (e) {
     logger.warn(`Autorrevisión: ${e.message}`);

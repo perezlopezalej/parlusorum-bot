@@ -203,6 +203,83 @@ async function deleteStaleSubscriptions(headers, managedTypes) {
   logger.info(`🧹 EventSub: ${deleted} suscripciones antiguas/fallidas borradas`);
 }
 
+// Suscripciones que gestiona el bot. `broadcasterAuth` necesitan que el broadcaster haya autorizado la app (BROADCASTER_SCOPES)
+function subscriptionDefs(broadcasterId) {
+  const cond = { broadcaster_user_id: broadcasterId };
+  return {
+    basic: [
+      { type: 'channel.follow', version: '2', condition: { broadcaster_user_id: broadcasterId, moderator_user_id: broadcasterId } },
+      { type: 'stream.online', version: '1', condition: cond },
+      { type: 'stream.offline', version: '1', condition: cond },
+    ],
+    broadcasterAuth: [
+      { type: 'channel.hype_train.begin', version: '2', condition: cond },
+      { type: 'channel.hype_train.progress', version: '2', condition: cond },
+      { type: 'channel.hype_train.end', version: '2', condition: cond },
+      { type: 'channel.prediction.begin', version: '1', condition: cond },
+      { type: 'channel.prediction.lock', version: '1', condition: cond },
+      { type: 'channel.prediction.end', version: '1', condition: cond },
+      { type: 'channel.poll.begin', version: '1', condition: cond },
+      { type: 'channel.poll.end', version: '1', condition: cond },
+      { type: 'channel.channel_points_custom_reward_redemption.add', version: '1', condition: cond },
+    ],
+  };
+}
+
+// --- Revocaciones: volver a suscribir lo que Twitch revoca por motivos recuperables ---
+// notification_failures_exceeded (el webhook falló demasiadas veces, p. ej. Render dormido) y version_removed.
+// authorization_revoked / user_removed NO se reintentan: daría 403 hasta que el broadcaster repita /auth/broadcaster.
+const RESUBSCRIBE_STATUSES = new Set(['notification_failures_exceeded', 'version_removed']);
+const MAX_RESUBSCRIBE_PER_HOUR = 3;
+const resubscribeLog = new Map(); // tipo → marcas de tiempo de los reintentos de la última hora
+
+function shouldResubscribe(status, recentAttempts = 0) {
+  return RESUBSCRIBE_STATUSES.has(status) && recentAttempts < MAX_RESUBSCRIBE_PER_HOUR;
+}
+
+async function handleRevocation(subscription, { fetchFn = fetch, getToken = getAppAccessToken, now = Date.now(), broadcasterId = channelConfig.broadcaster_id } = {}) {
+  const { type, status, id } = subscription || {};
+  if (!type) return false;
+  if (!RESUBSCRIBE_STATUSES.has(status)) {
+    logger.error(`⚠️ EventSub ${type} revocado (${status || '?'}): no se reintenta. Si es authorization_revoked, repite /auth/broadcaster.`);
+    return false;
+  }
+  const recent = (resubscribeLog.get(type) || []).filter(t => now - t < 60 * 60 * 1000);
+  if (!shouldResubscribe(status, recent.length)) {
+    logger.error(`⚠️ EventSub ${type}: ya se reintentó ${recent.length} veces en la última hora; no se reintenta más.`);
+    return false;
+  }
+  resubscribeLog.set(type, [...recent, now]);
+
+  const defs = subscriptionDefs(broadcasterId);
+  const def = [...defs.basic, ...defs.broadcasterAuth].find(d => d.type === type && d.version === subscription.version)
+    || [...defs.basic, ...defs.broadcasterAuth].find(d => d.type === type);
+  const publicBase = getPublicBaseUrl();
+  if (!def || !publicBase || !EVENTSUB_SECRET) {
+    logger.warn(`⚠️ EventSub ${type} revocado y no se puede recrear (tipo desconocido o sin URL pública).`);
+    return false;
+  }
+  const appToken = await getToken();
+  if (!appToken) { logger.warn(`⚠️ EventSub ${type}: sin app token para volver a suscribir.`); return false; }
+  const headers = { 'Client-ID': process.env.CLIENT_ID, 'Authorization': `Bearer ${appToken}`, 'Content-Type': 'application/json' };
+
+  // Se borra la suscripción revocada para que no bloquee a la nueva (si ya no existe, da igual)
+  if (id) {
+    try { await fetchFn(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers }); } catch { /* ya no existe */ }
+  }
+  const res = await fetchFn('https://api.twitch.tv/helix/eventsub/subscriptions', {
+    method: 'POST', headers,
+    body: JSON.stringify({ ...def, transport: { method: 'webhook', callback: `${publicBase}/eventsub`, secret: EVENTSUB_SECRET } })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.data?.[0]?.status === 'webhook_callback_verification_pending') {
+    logger.info(`✅ EventSub: ${type} vuelto a registrar tras revocación (${status}).`);
+    return true;
+  }
+  logger.warn(`⚠️ EventSub ${type}: no se pudo volver a suscribir: HTTP ${res.status} ${data.message || data.error || ''}`.trim());
+  return false;
+}
+
 // --- Registrar suscripciones EventSub ---
 async function registerSubscriptions(broadcasterId) {
   if (!EVENTSUB_SECRET) {
@@ -226,18 +303,9 @@ async function registerSubscriptions(broadcasterId) {
     'Content-Type': 'application/json'
   };
 
-  const subscriptions = [
-    { type: 'channel.follow', version: '2', condition: { broadcaster_user_id: broadcasterId, moderator_user_id: broadcasterId } },
-    { type: 'stream.online', version: '1', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'stream.offline', version: '1', condition: { broadcaster_user_id: broadcasterId } }
-  ];
-
-  const broadcasterAuthTypes = [
-    'channel.hype_train.begin', 'channel.hype_train.progress', 'channel.hype_train.end',
-    'channel.prediction.begin', 'channel.prediction.lock', 'channel.prediction.end',
-    'channel.poll.begin', 'channel.poll.end',
-    'channel.channel_points_custom_reward_redemption.add',
-  ];
+  const defs = subscriptionDefs(broadcasterId);
+  const subscriptions = defs.basic;
+  const broadcasterAuthTypes = defs.broadcasterAuth.map(d => d.type);
   const managedTypes = new Set([...subscriptions.map(s => s.type), ...broadcasterAuthTypes]);
 
   try {
@@ -262,17 +330,7 @@ async function registerSubscriptions(broadcasterId) {
 
   // Subs por webhook que requieren que el broadcaster haya autorizado la app (BROADCASTER_SCOPES), pero se crean con el app access token:
   // channel:read:hype_train, channel:read:predictions, channel:read:polls, channel:read:redemptions
-  const broadcasterAuthSubs = [
-    { type: 'channel.hype_train.begin',    version: '2', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.hype_train.progress', version: '2', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.hype_train.end',      version: '2', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.prediction.begin',    version: '1', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.prediction.lock',     version: '1', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.prediction.end',      version: '1', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.poll.begin',          version: '1', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.poll.end',            version: '1', condition: { broadcaster_user_id: broadcasterId } },
-    { type: 'channel.channel_points_custom_reward_redemption.add', version: '1', condition: { broadcaster_user_id: broadcasterId } },
-  ];
+  const broadcasterAuthSubs = defs.broadcasterAuth;
 
   try {
     for (const sub of broadcasterAuthSubs) {
@@ -321,6 +379,7 @@ function createEventSubHandler(client, channel, deps) {
     getStreamChatBuffer,
     resetStreamChatBuffer,
     getActiveUsers,
+    getActiveUserIds,
     resetActiveUsers,
     onStreamOnline,
     resetSessionCounters,
@@ -452,18 +511,29 @@ function createEventSubHandler(client, channel, deps) {
           resetGroqFallbackUse();
           const fallbackLines = Object.entries(fallbackUse).map(([k, n]) => `${k}: ${n}`).join(', ');
           logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
-          logger.info(`📊 Fin de stream — ${formatTokenUse(getGroqTokenUse())}`);
+          const tokenUse = getGroqTokenUse();
+          logger.info(`📊 Fin de stream — ${formatTokenUse(tokenUse)}`);
           resetGroqTokenUse();
-          logger.info(`📊 Fin de stream — ${formatAiUsage(getAiUsage())}`);
+          const aiUsage = getAiUsage();
+          logger.info(`📊 Fin de stream — ${formatAiUsage(aiUsage)}`);
           resetAiStreamUsage();
           const cohost = getCohostStats();
           resetCohostStats();
+          // Métricas del stream para el registro de calidad (se capturan aquí porque se resetean arriba)
+          const streamMetrics = {
+            durationMinutes,
+            fallbackUse,
+            tokens: tokenUse.stream,
+            requests: Object.fromEntries(Object.entries(aiUsage).map(([k, u]) => [k, u.stream.requests])),
+            cohost,
+          };
           logger.info(`📊 Fin de stream — ${formatCohostStats(cohost)}`);
           try {
             const gameInfo = await getCurrentGame().catch(() => null);
             const metrics = getSummary();
             const chatSample = typeof getStreamChatBuffer === 'function' ? getStreamChatBuffer() : '';
             const activeUsers = getActiveUsers();
+            const activeUserIds = getActiveUserIds();
             resetActiveUsers();
             const reviewSessionId = getCurrentSessionId();
             const memory = await onStreamEnd({
@@ -482,13 +552,14 @@ function createEventSubHandler(client, channel, deps) {
                   })
                   .filter(Boolean)
               ),
-              activeUsers: activeUsers
+              activeUsers: activeUsers,
+              activeUserIds
             }, chatSample);
             postStreamEnd(client, channel, memory?.summary || null);
             // Autorrevisión: solo log y Supabase, nunca el chat. Espera a que el chat registrado esté volcado.
             setTimeout(() => {
               chatlog.flush()
-                .then(() => require('./ai/self-review').reviewStream({ sessionId: reviewSessionId }))
+                .then(() => require('./ai/self-review').reviewStream({ sessionId: reviewSessionId, metrics: streamMetrics }))
                 .catch(err => logger.warn(`Autorrevisión: ${err.message}`));
             }, 15000).unref?.();
           } catch (e) {
@@ -615,12 +686,12 @@ function createEventSubHandler(client, channel, deps) {
 
       if (type === 'channel.channel_points_custom_reward_redemption.add') {
         try {
-          const { user_name, reward, user_input } = event || {};
+          const { user_name, user_id, reward, user_input } = event || {};
           const rewardTitle = reward?.title?.toLowerCase() || '';
           logger.info(`🎁 Canje: ${user_name} → "${reward?.title}"`);
           // Solo se atienden los canjes de pregunta (se contestan como !dios_fua); el resto no se narra
           if (rewardTitle.includes('pregunta') && user_input?.trim() && handleQuestion) {
-            const fakeTags = { 'display-name': user_name, 'user-id': user_name, username: user_name };
+            const fakeTags = { 'display-name': user_name, 'user-id': user_id || user_name, username: user_name };
             await handleQuestion(client, channel, fakeTags, ['!dios_fua', ...user_input.trim().split(' ')]);
           }
         } catch (err) {
@@ -633,6 +704,8 @@ function createEventSubHandler(client, channel, deps) {
 
     if (messageType === MESSAGE_TYPE_REVOCATION) {
       logger.warn(`⚠️ EventSub revocado → 204 (${body.subscription?.type}, motivo=${body.subscription?.status || '?'})`);
+      const revoked = body.subscription;
+      setImmediate(() => handleRevocation(revoked).catch(err => logger.error(`EventSub revocación: ${err.message}`)));
     } else {
       logger.warn(`⚠️ EventSub: tipo de mensaje desconocido → 204 [tipo=${messageType || '?'}]`);
     }
@@ -645,6 +718,7 @@ module.exports = {
   createEventSubHandler,
   formatCohostStats, formatTokenUse, formatAiUsage,
   registerSubscriptions,
+  subscriptionDefs, shouldResubscribe, handleRevocation,
   initStreamState,
   checkLiveNow,
   isLiveViaEventSub,

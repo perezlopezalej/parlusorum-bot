@@ -2,12 +2,12 @@
  * lore/handler.js — Lore del canal: manual (config/lore.json) + aprendido entre streams.
  * Al acabar cada stream la IA propone candidatos; los conteos (apariciones, usuarios)
  * se calculan contra el chat real, no con lo que diga la IA. Un candidato pasa a activo
- * con >= 2 streams y >= 3 usuarios distintos; apodos/personas siempre requieren !lore aprobar.
+ * con >= 2 streams y >= 3 usuarios distintos queda «listo para aprobar»; SOLO un mod lo activa con !lore aprobar.
  */
 
 const loreConfig = require('../../config/lore.json');
 const { getLoreRows, upsertLoreRows, updateLoreStatus, getCurrentSessionId } = require('../utils/supabase');
-const { getLoreSample } = require('../utils/state');
+const { getLoreSample, getLoreSampleIds } = require('../utils/state');
 const { sanitizeForAI } = require('../utils/filter');
 const { aiChat } = require('../utils/ai-router');
 const { classifyGameMatch, tokenize } = require('../utils/game-match');
@@ -253,6 +253,9 @@ async function onStreamEndLore(memory) {
     const byKey = new Map(rows.map(r => [r.term_key, r]));
     const toSave = [];
 
+    const nickToId = getLoreSampleIds();
+    // channel_lore.users guarda user_id, no nicks (privacidad); quien no tiene id no se cuenta
+    const idsOf = nicks => [...nicks].map(n => nickToId.get(n)).filter(Boolean);
     const chatters = new Set(lines.map(l => l.user));
     const playedGames = await loadPlayedGames();
 
@@ -271,7 +274,7 @@ async function onStreamEndLore(memory) {
       const next = { ...row };
       delete next.id; delete next.created_at; delete next.channel;
       if (count > 0) {
-        const merged = [...new Set([...(row.users || []), ...users])].slice(0, MAX_USERS_STORED);
+        const merged = [...new Set([...(row.users || []), ...idsOf(users)])].slice(0, MAX_USERS_STORED);
         next.streams_count = (row.streams_count || 0) + (row.last_stream_id === streamId ? 0 : 1);
         next.total_count = (row.total_count || 0) + count;
         next.users = merged;
@@ -279,20 +282,18 @@ async function onStreamEndLore(memory) {
         next.missed_streams = 0;
         next.last_seen = now;
         next.last_stream_id = streamId;
-        // Una persona nunca queda activa sin !lore aprobar
-        if (!next.needs_approval && isPersonTerm(row.term_key, chatters)) {
-          next.needs_approval = true;
-          if (next.status === 'active') next.status = 'pending';
-        }
-        if (next.status === 'pending' && !next.needs_approval
+        // Nada entra en los prompts sin !lore aprobar: lo aprendido siempre espera a un mod
+        next.needs_approval = true;
+        if (next.status === 'pending' && (row.streams_count < MIN_STREAMS || row.users_count < MIN_USERS)
             && next.streams_count >= MIN_STREAMS && next.users_count >= MIN_USERS) {
-          next.status = 'active';
-          logger.info(`📖 Lore activado: "${next.term}"`);
+          logger.info(`📖 Lore listo para aprobar: "${next.term}" (!lore aprobar ${row.id})`);
         }
       } else {
         next.missed_streams = (row.missed_streams || 0) + 1;
         if (next.missed_streams >= ARCHIVE_AT) next.status = 'archived';
       }
+      // Un término activo sin aprobador (aprendido antes de B2) vuelve a la cola de aprobación
+      if (next.status === 'active' && !next.approved_by) { next.status = 'pending'; next.needs_approval = true; }
       toSave.push(next);
     }
 
@@ -326,11 +327,11 @@ async function onStreamEndLore(memory) {
       const kind = KINDS.includes(c.kind) ? c.kind : 'meme';
       const aboutPerson = c.about_person === true || c.category === 'persona' || PERSON_KINDS.has(kind)
         || term.includes('@') || isPersonTerm(key, chatters);
-      const userList = [...users].slice(0, MAX_USERS_STORED);
+      const userList = idsOf(users).slice(0, MAX_USERS_STORED);
       toSave.push({
         term, term_key: key, kind,
         status: 'pending',
-        needs_approval: aboutPerson,
+        needs_approval: true, // siempre requiere !lore aprobar
         streams_count: 1,
         total_count: count,
         users: userList,
@@ -355,17 +356,19 @@ async function onStreamEndLore(memory) {
 
 async function getLoreOverview() {
   const rows = await getLoreRows(['active', 'pending']);
-  const fmt = r => `#${r.id} ${sanitizeForAI(r.term) || '?'}${r.status === 'pending' && r.needs_approval ? '*' : ''}`;
+  // * = ya cumple los umbrales (≥2 streams y ≥3 usuarios): listo para aprobar
+  const ready = r => (r.streams_count || 0) >= MIN_STREAMS && (r.users_count || 0) >= MIN_USERS;
+  const fmt = r => `#${r.id} ${sanitizeForAI(r.term) || '?'}${r.status === 'pending' && ready(r) ? '*' : ''}`;
   const take = status => rows
     .filter(r => r.status === status)
-    .sort((a, b) => weightOf(b) - weightOf(a))
+    .sort((a, b) => (status === 'pending' ? Number(ready(b)) - Number(ready(a)) : 0) || weightOf(b) - weightOf(a))
     .slice(0, 6)
     .map(fmt);
   return { active: take('active'), pending: take('pending'), total: rows.length };
 }
 
-async function approveLore(id) {
-  const row = await updateLoreStatus(id, 'active', ['pending', 'archived']);
+async function approveLore(id, approver = null) {
+  const row = await updateLoreStatus(id, 'active', ['pending', 'archived'], approver);
   if (row) invalidateLoreCache();
   return row;
 }

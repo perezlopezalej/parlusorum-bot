@@ -71,14 +71,17 @@ setInterval(() => {
   for (const [k, v] of userFactsCache) if (now - v.ts > USER_FACTS_TTL) userFactsCache.delete(k);
 }, USER_FACTS_TTL);
 
-async function getCachedUserFacts(username) {
-  const cached = userFactsCache.get(username);
+// Por user_id de Twitch (los hechos no se guardan por nick). Sin id no hay datos.
+async function getCachedUserFacts(userId) {
+  if (!userId) return [];
+  const key = String(userId);
+  const cached = userFactsCache.get(key);
   if (cached && Date.now() - cached.ts < USER_FACTS_TTL) return cached.data;
   const { getUserFacts, getUserCounter } = require('../utils/supabase');
-  const [facts, wins] = await Promise.all([getUserFacts(username), getUserCounter(username, 'trivia_wins')]);
+  const [facts, wins] = await Promise.all([getUserFacts(key), getUserCounter(key, 'trivia_wins')]);
   // trivia_wins es un contador sin caducidad: se lee aparte del filtro de 30 días
   const data = [...facts.filter(f => f.fact_type !== 'trivia_wins'), ...(wins > 0 ? [{ fact_type: 'trivia_wins', value: String(wins) }] : [])];
-  userFactsCache.set(username, { data, ts: Date.now() });
+  userFactsCache.set(key, { data, ts: Date.now() });
   return data;
 }
 
@@ -86,10 +89,19 @@ function clearUserFactsCache() { userFactsCache.clear(); }
 
 // --- Usuarios activos en el stream actual ---
 const activeUsersThisStream = new Set();
+const activeUserIds = new Map(); // nick en minúsculas → user_id de Twitch
 const streamMessageCounts = new Map();
 
-function trackActiveUser(username) {
-  if (username) activeUsersThisStream.add(username.toLowerCase());
+function trackActiveUser(username, userId = null) {
+  if (!username) return;
+  const lc = username.toLowerCase();
+  activeUsersThisStream.add(lc);
+  if (userId) activeUserIds.set(lc, String(userId));
+}
+
+// { nick: user_id } de los usuarios activos que tienen id (para guardar sus hechos por id)
+function getActiveUserIds() {
+  return Object.fromEntries(activeUserIds);
 }
 
 function getActiveUsers() {
@@ -103,6 +115,7 @@ function getActiveUsersWithMinMessages(minCount = MIN_REGULAR_MESSAGES) {
 
 function resetActiveUsers() {
   activeUsersThisStream.clear();
+  activeUserIds.clear();
   streamMessageCounts.clear();
   userConversations.clear();
   setLastCohostContextHash('');
@@ -114,7 +127,7 @@ const MAX_STREAM_BUFFER = 50;
 let lastChatMessageTime = Date.now();
 const MAX_CONVERSATION_USERS = 200;
 
-function addToHistory(username, message) {
+function addToHistory(username, message, userId = null) {
   if (message.startsWith('!')) return;
   // No guardar mensajes del propio bot en el historial
   if ((username || '').toLowerCase() === (process.env.BOT_USERNAME || '').toLowerCase()) return;
@@ -125,9 +138,9 @@ function addToHistory(username, message) {
   if (chatHistory.length > MAX_HISTORY) chatHistory.shift();
   streamChatBuffer.push({ username, message: safe });
   if (streamChatBuffer.length > MAX_STREAM_BUFFER) streamChatBuffer.shift();
-  addLoreSample(username, safe);
+  addLoreSample(username, safe, userId);
   lastChatMessageTime = Date.now();
-  trackActiveUser(username);
+  trackActiveUser(username, userId);
   const lc = (username || '').toLowerCase();
   streamMessageCounts.set(lc, (streamMessageCounts.get(lc) || 0) + 1);
 }
@@ -174,6 +187,29 @@ function addToUserConversation(userId, role, content) {
   conv.push({ role, content, ts: Date.now() });
   while (conv.length > MAX_CONV_TURNS * 2) conv.shift();
   userConversations.set(userId, conv);
+}
+
+// Privacidad (!fua_olvidame): borra de la RAM todo lo de un usuario. Devuelve cuántas cosas quitó.
+function forgetUserInMemory({ userId, login }) {
+  const nick = String(login || '').toLowerCase();
+  let removed = 0;
+  const mine = m => !!nick && String(m.username || '').toLowerCase() === nick;
+  for (const arr of [chatHistory, streamChatBuffer]) {
+    for (let i = arr.length - 1; i >= 0; i--) if (mine(arr[i])) { arr.splice(i, 1); removed++; }
+  }
+  if (userId) {
+    const id = String(userId);
+    if (userConversations.delete(id)) removed++;
+    if (userFactsCache.delete(id)) removed++;
+    if (questionCooldowns.delete(id)) removed++;
+  }
+  if (nick) {
+    if (userConversations.delete(nick)) removed++;
+    if (activeUsersThisStream.delete(nick)) removed++;
+    activeUserIds.delete(nick);
+    streamMessageCounts.delete(nick);
+  }
+  return removed;
 }
 
 const recentMessages = [];
@@ -258,12 +294,12 @@ async function buildContextText() {
 }
 
 // Quién escribe: su rol (creador, streamer, sub), la cuenta compartida ParLusorum y lo que el bot sabe de esa persona
-async function buildRoleText(userType, username) {
+async function buildRoleText(userType, username, userId = null) {
   const parts = [roleLine(userType, { creator: CREATOR_USERNAME, streamer: STREAMER_USERNAME })];
   if (String(username || '').toLowerCase() === 'parlusorum') parts.push('Escribe la cuenta ParLusorum, casi seguro Pao (o Manu).');
   if (username) {
     try {
-      const facts = (await getCachedUserFacts(username))
+      const facts = (await getCachedUserFacts(userId))
         .map(f => `${f.fact_type}: ${sanitizeForAI(String(f.value))}`)
         .filter(line => line.split(': ')[1]);
       if (facts.length) parts.push(`Datos del usuario: ${facts.join(', ')}.`);
@@ -1040,7 +1076,7 @@ async function handleQuestion(client, channel, tags, args) {
     const questionMode = getModeConfig();
     const systemContent = buildQuestionSystem({
       context: await buildContextText(),
-      role: await buildRoleText(userType, username),
+      role: await buildRoleText(userType, username, tags['user-id']),
       tone: buildToneText(question),
       modeLine: questionMode.prompt_extension,
     });
@@ -1546,7 +1582,7 @@ async function checkPatternMatch(client, channel, tags, message) {
       const userConv = getUserConversation(userId);
       const system = buildMentionSystem({
         context: await buildContextText(),
-        role: await buildRoleText(userType, username),
+        role: await buildRoleText(userType, username, tags['user-id']),
         tone: buildToneText(question),
         emoteLine: emoteLineFor(allowEmote, emotes),
         modeLine: modeConfig.prompt_extension,
@@ -1691,6 +1727,8 @@ module.exports = {
   checkEmoteSpam, checkCapsRage, checkPatternMatch,
   getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
   getStreamChatBuffer, resetStreamChatBuffer, getRecentChatters,
-  restoreCooldowns, clearUserFactsCache, getCachedUserFacts,
+  restoreCooldowns, clearUserFactsCache, getCachedUserFacts, getActiveUserIds, forgetUserInMemory,
+  // solo tests
+  addToUserConversation, getUserConversation,
   getChatWindow, NARRATOR_BASE,
 };

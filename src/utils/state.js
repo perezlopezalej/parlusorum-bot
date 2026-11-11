@@ -308,9 +308,9 @@ const LORE_SAMPLE_SIZE = 400;
 let loreSample = [];
 let loreSampleSeen = 0;
 
-function addLoreSample(username, message) {
+function addLoreSample(username, message, userId = null) {
   const idx = loreSampleSeen++;
-  const entry = { idx, username, message };
+  const entry = { idx, username, message, userId: userId ? String(userId) : null };
   if (loreSample.length < LORE_SAMPLE_SIZE) { loreSample.push(entry); return; }
   const j = Math.floor(Math.random() * (idx + 1));
   if (j < LORE_SAMPLE_SIZE) loreSample[j] = entry;
@@ -318,7 +318,25 @@ function addLoreSample(username, message) {
 function getLoreSample() {
   return [...loreSample].sort((a, b) => a.idx - b.idx).map(m => `${m.username}: ${m.message}`).join('\n');
 }
+// nick (minúsculas) → user_id de lo escrito en la muestra
+function getLoreSampleIds() {
+  const ids = new Map();
+  for (const m of loreSample) if (m.userId) ids.set(String(m.username).toLowerCase(), m.userId);
+  return ids;
+}
 function resetLoreSample() { loreSample = []; loreSampleSeen = 0; }
+
+// Coincide por user_id o, en entradas sin id, por nick (minúsculas)
+function isSubject(entryUserId, entryName, userId, login) {
+  if (userId && entryUserId && String(entryUserId) === String(userId)) return true;
+  return !!login && String(entryName || '').toLowerCase() === String(login).toLowerCase();
+}
+// Privacidad: quita de la muestra de lore lo escrito por un usuario. Devuelve cuántas entradas quitó.
+function removeLoreSampleByUser(userId, login) {
+  const before = loreSample.length;
+  loreSample = loreSample.filter(m => !isSubject(m.userId, m.username, userId, login));
+  return before - loreSample.length;
+}
 
 // --- Uso de modelos de reserva de Groq en el stream ("pedido→usado" → nº de peticiones) ---
 const groqFallbackUse = new Map();
@@ -480,6 +498,16 @@ function resetCohostStats() {
   cohostDiscards.clear();
 }
 
+// --- Usuarios que acaban de pedir ser olvidados: sin bienvenida de «primer mensaje» durante 10 min ---
+const FORGOTTEN_TTL_MS = 10 * 60 * 1000;
+const forgottenUsers = new Map(); // user_id → caduca
+function markForgotten(userId, now = Date.now()) { if (userId) forgottenUsers.set(String(userId), now + FORGOTTEN_TTL_MS); }
+function wasRecentlyForgotten(userId, now = Date.now()) {
+  const exp = forgottenUsers.get(String(userId));
+  return !!exp && exp > now;
+}
+setInterval(() => { const now = Date.now(); for (const [k, v] of forgottenUsers) if (v < now) forgottenUsers.delete(k); }, 5 * 60 * 1000).unref();
+
 // --- Cola del registro de chat (se vuelca a Supabase por lotes; ver utils/chatlog.js) ---
 const CHATLOG_MAX_BUFFER = 1000;
 let chatLogBuffer = [];
@@ -495,9 +523,15 @@ function requeueChatLog(rows) {
   chatLogBuffer = [...rows, ...chatLogBuffer].slice(-CHATLOG_MAX_BUFFER);
 }
 function getChatLogSize() { return chatLogBuffer.length; }
+// Privacidad: quita de la cola pendiente los mensajes de un usuario. Devuelve cuántos quitó.
+function removeChatLogByUser(userId, login) {
+  const before = chatLogBuffer.length;
+  chatLogBuffer = chatLogBuffer.filter(r => !isSubject(r.user_id, r.username, userId, login));
+  return before - chatLogBuffer.length;
+}
 
 module.exports = {
-  pushChatLog, takeChatLog, requeueChatLog, getChatLogSize,
+  pushChatLog, takeChatLog, requeueChatLog, getChatLogSize, removeChatLogByUser, removeLoreSampleByUser, markForgotten, wasRecentlyForgotten,
   recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
   recordGroqTokens, getGroqTokenUse, resetGroqTokenUse,
   blockAi, aiBlockedUntil, isAiBlocked, resetAiBlocks, aiDayKey,
@@ -506,7 +540,7 @@ module.exports = {
   recordCohostDiscard, getCohostDiscards, resetCohostDiscards,
   getPlayer, setPlayer, resetPlayer, pauseFreeCohost, isFreeCohostPaused, resetFreeCohostPause,
   recordCohostAttempt, recordCohostSent, recordGroq429, getCohostStats, resetCohostStats,
-  addLoreSample, getLoreSample, resetLoreSample,
+  addLoreSample, getLoreSample, getLoreSampleIds, resetLoreSample,
   setTriviaActive, isTriviaActive,
   setSilenceMode, isSilenced,
   setBrbMode, isBrb, getBrbDuration, getBrbStart,

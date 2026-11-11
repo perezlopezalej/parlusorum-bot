@@ -27,6 +27,24 @@ function getClient() {
   return supabase;
 }
 
+// Privacidad: quita de la caché y cancela los guardados diferidos de estos usuarios (si no, reaparecerían en la tabla)
+function forgetUserInCache(userIds) {
+  for (const id of userIds || []) {
+    const key = String(id);
+    if (pendingSaves.has(key)) { clearTimeout(pendingSaves.get(key)); pendingSaves.delete(key); }
+    if (usersCache) delete usersCache[key];
+  }
+}
+
+// Solo para tests: inyecta un cliente falso y vacía las cachés
+function setClientForTests(fake) {
+  supabase = fake;
+  usersCache = null;
+  cacheLastLoaded = 0;
+  for (const t of pendingSaves.values()) clearTimeout(t);
+  pendingSaves.clear();
+}
+
 // ─── USUARIOS ────────────────────────────────────────────────────────────────
 
 // Cache local para no hacer queries en cada mensaje
@@ -366,7 +384,7 @@ async function saveStreamMemory(memoryData) {
       summary: memoryData.summary || null,
       highlights: memoryData.highlights || [],
       recurring_phrases: memoryData.recurringPhrases || [],
-      active_users: memoryData.activeUsers || []
+      active_users: [] // privacidad: ya no se guardan nicks (nunca se leían)
     });
 
     if (error) throw error;
@@ -405,7 +423,7 @@ async function saveHighlight(triggerMessages, markerId, description) {
   try {
     const { error } = await db.from('stream_highlights').insert({
       session_id: currentSessionId,
-      trigger_messages: triggerMessages || [],
+      trigger_messages: [], // privacidad: ya no se guardan mensajes literales del chat
       marker_id: markerId || null,
       description: description || null
     });
@@ -592,98 +610,155 @@ function deleteCooldown(key) {
 }
 
 // ─── MEMORIA FACTUAL DE USUARIOS ─────────────────────────────────────────────
+// Identificada por user_id de Twitch (nunca por nick). El nick vive solo en users.username.
 
-function saveUserFact(username, factType, value) {
+const FACT_CONFLICT = 'user_id,channel,fact_type';
+
+function saveUserFact(userId, factType, value) {
   const db = getClient();
-  if (!db) return;
+  if (!db || !userId) return;
   db.from('user_facts').upsert({
-    username: username.toLowerCase(),
+    user_id: String(userId),
     channel: CHANNEL_NAME,
     fact_type: factType,
     value: String(value),
     updated_at: new Date().toISOString()
-  }, { onConflict: 'username,channel,fact_type' })
-    .then(({ error }) => { if (error) logger.warn(`saveUserFact ${username}/${factType}: ${error.message}`); })
+  }, { onConflict: FACT_CONFLICT })
+    .then(({ error }) => { if (error) logger.warn(`saveUserFact ${factType}: ${error.message}`); })
     .catch(() => {});
 }
 
-async function getUserFacts(username) {
+async function getUserFacts(userId) {
   const db = getClient();
-  if (!db) return [];
+  if (!db || !userId) return [];
   try {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await db
       .from('user_facts')
       .select('fact_type, value')
-      .eq('username', username.toLowerCase())
+      .eq('user_id', String(userId))
       .eq('channel', CHANNEL_NAME)
       .gte('updated_at', cutoff);
     if (error) throw error;
     return data || [];
   } catch (e) {
-    logger.error(`getUserFacts ${username}: ${e.message}`);
+    logger.error(`getUserFacts: ${e.message}`);
     return [];
   }
 }
 
-// Contador acumulado (sin caducidad) en user_facts. Devuelve el nuevo total o null sin Supabase/error.
+// Contador acumulado (sin la caducidad de 30 días de getUserFacts). Devuelve el nuevo total o null sin Supabase/error.
 // Lectura+escritura sin atomicidad: seguro porque solo hay una trivia activa a la vez.
-async function incrementUserCounter(username, factType) {
+async function incrementUserCounter(userId, factType) {
   const db = getClient();
-  if (!db) return null;
+  if (!db || !userId) return null;
   try {
-    const user = username.toLowerCase();
+    const id = String(userId);
     const { data, error } = await db.from('user_facts').select('value')
-      .eq('username', user).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
+      .eq('user_id', id).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
     if (error) throw error;
     const next = (parseInt(data?.value, 10) || 0) + 1;
     const { error: upErr } = await db.from('user_facts').upsert({
-      username: user,
+      user_id: id,
       channel: CHANNEL_NAME,
       fact_type: factType,
       value: String(next),
       updated_at: new Date().toISOString()
-    }, { onConflict: 'username,channel,fact_type' });
+    }, { onConflict: FACT_CONFLICT });
     if (upErr) throw upErr;
     return next;
   } catch (e) {
-    logger.warn(`incrementUserCounter ${username}/${factType}: ${e.message}`);
+    logger.warn(`incrementUserCounter ${factType}: ${e.message}`);
     return null;
   }
 }
 
 // Lee un contador acumulado sin la caducidad de 30 días de getUserFacts. 0 sin Supabase/error.
-async function getUserCounter(username, factType) {
+async function getUserCounter(userId, factType) {
   const db = getClient();
-  if (!db) return 0;
+  if (!db || !userId) return 0;
   try {
     const { data, error } = await db.from('user_facts').select('value')
-      .eq('username', username.toLowerCase()).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
+      .eq('user_id', String(userId)).eq('channel', CHANNEL_NAME).eq('fact_type', factType).maybeSingle();
     if (error) throw error;
     return parseInt(data?.value, 10) || 0;
   } catch (e) {
-    logger.warn(`getUserCounter ${username}/${factType}: ${e.message}`);
+    logger.warn(`getUserCounter ${factType}: ${e.message}`);
     return 0;
   }
 }
 
-// Top N por contador (value es texto: se ordena en JS). [{ username, count }]
+// Top N por contador (value es texto: se ordena en JS). [{ userId, username, count }]; el nick sale de users
 async function getCounterLeaderboard(factType, limit) {
   const db = getClient();
   if (!db) return [];
   try {
-    const { data, error } = await db.from('user_facts').select('username, value')
+    const { data, error } = await db.from('user_facts').select('user_id, value')
       .eq('channel', CHANNEL_NAME).eq('fact_type', factType);
     if (error) throw error;
-    return (data || [])
-      .map(r => ({ username: r.username, count: parseInt(r.value, 10) || 0 }))
+    const top = (data || [])
+      .filter(r => r.user_id)
+      .map(r => ({ userId: r.user_id, count: parseInt(r.value, 10) || 0 }))
       .filter(r => r.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, limit);
+    if (!top.length) return [];
+    const { data: users, error: uErr } = await db.from('users').select('user_id, username').in('user_id', top.map(r => r.userId));
+    if (uErr) throw uErr;
+    const names = new Map((users || []).map(u => [u.user_id, u.username]));
+    return top.filter(r => names.get(r.userId)).map(r => ({ ...r, username: String(names.get(r.userId)).toLowerCase() }));
   } catch (e) {
     logger.warn(`getCounterLeaderboard ${factType}: ${e.message}`);
     return [];
   }
+}
+
+// ─── CADUCIDAD DE DATOS (la llama privacy/retention.js) ───────────────────────
+
+const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+
+// Usuarios sin actividad desde usersBefore: se borran con todos sus hechos y contadores.
+// Hechos que no son contadores: se borran al pasar factsBefore. Devuelve { users, facts }.
+async function purgeInactiveUsers({ usersBefore, factsBefore }) {
+  const db = getClient();
+  if (!db) return { users: 0, facts: 0 };
+  let users = 0;
+  let facts = 0;
+  const { data, error } = await db.from('users').select('user_id').lt('last_seen', usersBefore);
+  if (error) throw error;
+  const ids = (data || []).map(r => r.user_id);
+  for (const part of chunk(ids, 100)) {
+    const f = await db.from('user_facts').delete({ count: 'exact' }).in('user_id', part);
+    if (f.error) throw f.error;
+    facts += f.count || 0;
+    const u = await db.from('users').delete({ count: 'exact' }).in('user_id', part);
+    if (u.error) throw u.error;
+    users += u.count || 0;
+    if (usersCache) for (const id of part) delete usersCache[id];
+  }
+  const stale = await db.from('user_facts').delete({ count: 'exact' }).neq('fact_type', 'trivia_wins').lt('updated_at', factsBefore);
+  if (stale.error) throw stale.error;
+  facts += stale.count || 0;
+  const orphan = await db.from('user_facts').delete({ count: 'exact' }).eq('fact_type', 'trivia_wins').lt('updated_at', usersBefore);
+  if (orphan.error) throw orphan.error;
+  facts += orphan.count || 0;
+  return { users, facts };
+}
+
+async function deleteQualityLogBefore(isoDate) {
+  const db = getClient();
+  if (!db) return 0;
+  const { error, count } = await db.from('quality_log').delete({ count: 'exact' }).lt('created_at', isoDate);
+  if (error) throw error;
+  return count || 0;
+}
+
+async function deleteExpiredCooldowns(isoDate) {
+  const db = getClient();
+  if (!db) return 0;
+  const { error, count } = await db.from('cooldowns').delete({ count: 'exact' }).lt('expires_at', isoDate);
+  if (error) throw error;
+  return count || 0;
 }
 
 // ─── LORE APRENDIDO ──────────────────────────────────────────────────────────
@@ -719,11 +794,16 @@ async function upsertLoreRows(rows) {
 }
 
 // Devuelve la fila actualizada, null si no existe o no estaba en un estado permitido
-async function updateLoreStatus(id, status, fromStatuses) {
+async function updateLoreStatus(id, status, fromStatuses, approver = null) {
   const db = getClient();
   if (!db) return null;
   const patch = { status };
-  if (status === 'active') { patch.missed_streams = 0; patch.needs_approval = false; }
+  if (status === 'active') {
+    patch.missed_streams = 0;
+    patch.needs_approval = false;
+    patch.approved_by = approver ? String(approver).slice(0, 50) : 'mod';
+    patch.approved_at = new Date().toISOString();
+  }
   const { data, error } = await db.from('channel_lore')
     .update(patch)
     .eq('id', id).eq('channel', CHANNEL_NAME).in('status', fromStatuses)
@@ -739,9 +819,12 @@ async function insertChatLog(rows) {
   const db = getClient();
   if (!db) throw new Error('Supabase no configurado');
   let { error } = await db.from('chat_log').insert(rows);
-  // Migración 006 sin aplicar: guardar el chat sin la columna nueva antes que perderlo
-  if (error && /reply_parent_login/.test(error.message || '')) {
-    ({ error } = await db.from('chat_log').insert(rows.map(({ reply_parent_login, ...rest }) => rest)));
+  // Migraciones 006/010 sin aplicar: guardar el chat sin las columnas nuevas antes que perderlo
+  for (const col of ['reply_parent_login', 'user_id']) {
+    if (error && new RegExp(col).test(error.message || '')) {
+      rows = rows.map(({ [col]: _omit, ...rest }) => rest);
+      ({ error } = await db.from('chat_log').insert(rows));
+    }
   }
   if (error) throw error;
 }
@@ -761,12 +844,28 @@ async function getSessionChatLog(sessionId) {
   return out;
 }
 
-async function saveSelfReview({ sessionId, stats, report }) {
+// ─── REGISTRO DE CALIDAD (30 días; ver privacy/quality-log.js) ───────────────
+
+async function insertQualityLog(rows) {
   const db = getClient();
-  if (!db) return false;
-  const { error } = await db.from('bot_self_reviews').insert({ channel: CHANNEL_NAME, session_id: sessionId, stats, report });
-  if (error) { logger.warn(`saveSelfReview: ${error.message}`); return false; }
-  return true;
+  if (!db) throw new Error('Supabase no configurado');
+  const { error } = await db.from('quality_log').insert(rows);
+  if (error) throw error;
+}
+
+// Sesiones con chat guardado de antes de olderThan y sin resumen en quality_log
+async function getSessionsWithoutQualityLog(olderThan) {
+  const db = getClient();
+  if (!db) return [];
+  const { data, error } = await db.from('chat_log').select('session_id')
+    .lt('created_at', olderThan).not('session_id', 'is', null).limit(5000);
+  if (error) throw error;
+  const ids = [...new Set((data || []).map(r => r.session_id))];
+  if (!ids.length) return [];
+  const done = await db.from('quality_log').select('session_id').eq('kind', 'summary').in('session_id', ids);
+  if (done.error) throw done.error;
+  const have = new Set((done.data || []).map(r => r.session_id));
+  return ids.filter(id => !have.has(id));
 }
 
 // Devuelve cuántas filas borró
@@ -813,7 +912,8 @@ module.exports = {
   countSessionsOfGame,
   insertChatLog,
   getSessionChatLog,
-  saveSelfReview,
+  insertQualityLog,
+  getSessionsWithoutQualityLog,
   deleteChatLogBefore,
   getLoreRows,
   upsertLoreRows,
@@ -851,4 +951,9 @@ module.exports = {
   incrementUserCounter,
   getUserCounter,
   getCounterLeaderboard,
+  purgeInactiveUsers,
+  deleteQualityLogBefore,
+  deleteExpiredCooldowns,
+  forgetUserInCache,
+  setClientForTests,
 };
