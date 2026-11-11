@@ -78,15 +78,15 @@ function buildProvocationSystem({ examples = pickStyleExamples('provocacion', 5)
   );
 }
 
-function buildCohostSystem({ now = new Date(), game = '', minutes = null, deathLine = '', player = 'manu', mood = '', form, emoteLine = '', nameLine = '', loreBlock = '', modeLine = '', examples = pickStyleExamples('cohost', 4), event = false }) {
-  const stream = [game ? `Juegan a «${game}».` : '', minutes != null ? `Llevan ${minutes} min de directo.` : '', deathLine, playerLine(player), dayLine(now)].filter(Boolean).join(' ');
+function buildCohostSystem({ now = new Date(), game = '', minutes = null, deathLine = '', player = 'manu', mood = '', form, emoteLine = '', nameLine = '', loreBlock = '', modeLine = '', examples = pickStyleExamples('cohost', 4), event = false, weekday = true }) {
+  const stream = [game ? `Juegan a «${game}».` : '', minutes != null ? `Llevan ${quality.approxDuration(minutes)} de directo.` : '', deathLine, playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ');
   return join(
     IDENTITY,
     block('stream', stream),
     block('ambiente', mood ? `El chat está en modo ${mood}.` : ''),
     loreBlock,
     block('modo', modeLine),
-    block('forma', `${form.text} Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. ${nameLine} ${emoteLine}`.replace(/\s+/g, ' ')),
+    block('forma', `${form.text} Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. Al chat le atribuyes solo lo que aparece en <chat> o <resumen_chat>. ${nameLine} ${emoteLine}`.replace(/\s+/g, ' ')),
     renderExamples(examples),
     block('tarea', `Escribe 3 comentarios distintos entre sí, todos con esa forma, sobre ${event ? 'el suceso' : 'el tema indicado'}, con humor y la voz de Dios Fua. Devuelve solo este JSON: {"candidatos":["…","…","…"]}.${event ? '' : ' Si no hay nada que decir sin inventar, devuelve {"candidatos":[]}.'}`)
   );
@@ -98,7 +98,7 @@ function buildMentionSystem({ context = '', role = '', tone = '', emoteLine = ''
     block('contexto', context),
     block('quien_escribe', [role, tone].filter(Boolean).join(' ')),
     block('modo', modeLine),
-    block('forma', `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor; el toque del FUA va al final, aparte de la explicación. ${emoteLine}`.replace(/\s+/g, ' ')),
+    block('forma', `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. Las expresiones coloquiales («por la cara», «a lo loco») se entienden por su sentido de uso, y si no la pillas, pregunta con humor qué quiere decir. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor; el toque del FUA va al final, aparte de la explicación. ${emoteLine}`.replace(/\s+/g, ' ')),
     renderExamples(examples),
     block('tarea', 'Responde al mensaje del usuario con la voz de Dios Fua.')
   );
@@ -153,16 +153,16 @@ function buildSummaryPrompt({ streamer = 'ParLusorum', game, durationMinutes, de
 }
 
 // --- Momento real: día de la semana y parte del día (Madrid), para los prompts que hablan de "ahora" ---
-function dayLine(now = new Date()) {
+function dayLine(now = new Date(), { weekday = true } = {}) {
   const d = quality.madridDay(now);
-  return `Hoy es ${d.weekday} por la ${d.part}.`;
+  return weekday ? `Hoy es ${d.weekday} por la ${d.part}.` : `Ahora es de ${d.part}.`;
 }
 
 // --- Hook anti-silencio: una pregunta al chat sobre lo que ha pasado en el stream ---
-function buildHookSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('hook', 4) } = {}) {
+function buildHookSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('hook', 4), weekday = true } = {}) {
   return join(
     IDENTITY,
-    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ')),
     block('forma', 'Una pregunta al chat de menos de 140 caracteres que termina en «?», sobre lo que cuenta <suceso>, con una sola idea y palabras sencillas.'),
     renderExamples(examples),
     block('tarea', 'Escribe una pregunta al chat que rompa el silencio hablando de lo que ha pasado en el directo.')
@@ -170,11 +170,11 @@ function buildHookSystem({ game = '', player = 'manu', now = new Date(), example
 }
 
 // --- Timer IA: resumen de la última media hora ---
-function buildTimerSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('timer', 3) } = {}) {
+function buildTimerSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('timer', 3), weekday = true } = {}) {
   return join(
     IDENTITY,
-    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
-    block('forma', 'Una sola frase de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen>, en primera persona o hablando del FUA y del chat en general.'),
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ')),
+    block('forma', 'Una sola frase natural de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen> y <chat>. Del chat cuentas de qué se ha hablado en general, con tus palabras y como mucho una idea («el chat ayudando con el puzle»), sin nombres de usuario ni palabras sueltas copiadas; solo atribuyes al chat lo que se ve en <chat>. Sin cifras entre paréntesis ni formato de informe, y sin citar la hora ni el día.'),
     renderExamples(examples),
     block('tarea', 'Cuenta la última media hora del directo en una frase.')
   );
@@ -271,9 +271,21 @@ const FIX_BY_RULE = {
   cita: 'Cuenta lo ocurrido con tus propias palabras.',
   positivo: 'Cuenta el stream en positivo, con buen rollo y ánimo.',
   logro: 'Cuenta las muertes como caídas del streamer y celebra el aguante.',
+  minutos: 'Di el rato de directo aproximado («casi dos horas», «un buen rato») o no lo cuentes.',
+  viewers: 'Habla de los raiders como visitantes que llegan de otro canal, sin cifras de viewers.',
+  lista: 'Cuenta de qué ha hablado el chat en una idea general, con tus palabras.',
+  repetido: 'Cuenta algo nuevo con palabras que no hayas usado antes en el directo.',
+  hora: 'Habla del momento sin decir si es de día o de noche.',
+  mayusculas: 'Escribe las palabras normales en minúscula; solo el FUA y los nombres propios llevan mayúscula.',
+  ortografia: 'Escribe cada palabra con su ortografía y su género correctos.',
+  formato: 'Cuéntalo como una frase natural y sin cifras entre paréntesis.',
+  ruido: 'Escribe palabras normales del español, sin letras alargadas.',
+  selector: 'Una sola idea que se entienda a la primera y encaje con lo que acaba de pasar.',
 };
 // Para los motivos que solo traen texto (hook, timer, resumen…): se reconoce el tipo por palabras clave
 const FIX_BY_REASON = [
+  [/minutos exactos/i, 'minutos'], [/cifra de viewers/i, 'viewers'], [/lista de palabras|lista palabras/i, 'lista'], [/ya se us[oó] en este stream|«Entre X y Y|repite el d[ií]a de la semana/i, 'repetido'],
+  [/parte del d[ií]a/i, 'hora'], [/may[uú]sculas/i, 'mayusculas'], [/ortograf[ií]a/i, 'ortografia'], [/formato de informe|suena a informe/i, 'formato'], [/letras alargadas/i, 'ruido'],
   [/d[ií]a de la semana/i, 'dia'], [/etnias? o pueblos/i, 'etnia'], [/no es una pregunta/i, 'pregunta'], [/entrecomillado|cita un mensaje/i, 'cita'],
   [/es negativo/i, 'positivo'], [/como un logro/i, 'logro'], [/a[ñn]o del juego|g[eé]nero del juego/i, 'formula'], [/empieza igual/i, 'estructura'],
   [/razonamiento|no est[aá] en espa|no parece un mensaje/i, 'sentido'], [/etiquetes a nadie/i, 'nombre'],

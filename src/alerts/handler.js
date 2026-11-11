@@ -321,24 +321,39 @@ function onBits(client, channel, username, bits) {
   else throttleSay(client, channel, `✨ ¡Gracias @${username} por ${bits === 1 ? 'el' : 'los'} ${quality.countBits(bits)}! 💜`);
 }
 
+// Un mismo raid puede llegar repetido por IRC: se atiende una vez por canal de origen (ventana de 2 min)
+const RAID_DEDUPE_MS = 2 * 60 * 1000;
+const recentRaids = new Map();
+
+// Un solo agradecimiento por raid: el de la IA si sale bien (debe nombrar a quien hace el raid) y, si no, el fijo
 async function onRaid(client, channel, username, viewers) {
-  narrate('raid', `Raid de ${who(username)} con ${Number(viewers) || '?'} viewers`);
-  if (!isSilenced()) client.say(channel, `⚔️ ¡RAID de @${username} con ${viewers} viewers! ¡Bienvenidos a todos! 🔥`);
-  if (isSilenced() || !canMakeRequest()) { setRaidActive(username); return; }
-  try {
-    const raidInfo = await getChannelInfo(username);
-    const game = raidInfo?.game_name || null;
-    const context = game ? `Venían de streamear «${game}».` : '';
-    const response = await aiChat('alert', {
-      max_tokens: 100,
-      messages: [
-        { role: 'system', content: buildAlertSystem({ type: 'raid', maxChars: 300, extra: 'Si venían de jugar a algo, nómbralo.' }) },
-        { role: 'user', content: `<evento>Raid de @${username} con ${viewers} viewers. ${context}</evento>` }
-      ]
-    }, { names: [username] });
-    const extra = quality.fixMentions(quality.vetAuto(response.choices[0].message.content), [username]);
-    if (extra && !isSilenced()) client.say(channel, truncate(extra));
-  } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
+  const key = String(username || '').toLowerCase();
+  const now = Date.now();
+  for (const [k, ts] of recentRaids) if (now - ts > RAID_DEDUPE_MS) recentRaids.delete(k);
+  if (recentRaids.has(key)) { logger.info(`Raid de ${username} repetido, se ignora`); return; }
+  recentRaids.set(key, now);
+
+  let msg = '';
+  if (!isSilenced() && canMakeRequest()) {
+    try {
+      const raidInfo = await getChannelInfo(username);
+      const game = raidInfo?.game_name || null;
+      const context = game ? `Venían de streamear «${game}».` : '';
+      const response = await aiChat('alert', {
+        max_tokens: 100,
+        messages: [
+          { role: 'system', content: buildAlertSystem({ type: 'raid', maxChars: 300, extra: 'Si venían de jugar a algo, nómbralo.' }) },
+          { role: 'user', content: `<evento>Raid de @${username} con ${viewers} viewers. ${context}</evento>` }
+        ]
+      }, { names: [username] });
+      const text = quality.fixMentions(quality.vetAuto(response.choices[0].message.content), [username]);
+      if (text && text.toLowerCase().includes(`@${key}`)) msg = truncate(text);
+    } catch (err) { logger.error(`Error en raid IA: ${err.message}`); }
+  }
+  if (!msg) msg = `⚔️ ¡RAID de @${username} con ${viewers} viewers! ¡Bienvenidos a todos! 🔥`;
+  if (!isSilenced()) client.say(channel, msg);
+  // Los raiders son visitantes de otro canal: no cuentan como viewers del directo
+  narrate('raid', `Raid de ${who(username)}: llegan ${Number(viewers) || '?'} raiders de su canal (visitantes, no los espectadores del directo)`);
 
   setRaidActive(username);
 }

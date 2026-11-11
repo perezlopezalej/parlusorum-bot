@@ -24,6 +24,7 @@ function summaryProblem(text) {
   if (quality.negativeSummary(text)) return 'es negativo; el resumen siempre va en positivo';
   if (quality.achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
   if (quality.genderedParlusorum(text)) return 'pone género a ParLusorum';
+  if (quality.fuaGender(text)) return '"el FUA" va siempre en masculino';
   if (quality.summaryPersonalLife(text)) return 'habla de vida personal o charla ajena al stream (comida, clima, calor...); habla solo del juego, el stream y el ambiente del chat';
   const junk = quality.junkProblem(text, { minWords: 1 });
   if (junk) return junk.reason;

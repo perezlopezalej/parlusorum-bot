@@ -62,7 +62,8 @@ function extractGameQuery(text) {
   return null;
 }
 // Preguntas de identidad (se responden con plantillas fijas, sin IA): 'creator' (quién te creó), 'who' (quién eres), 'owner' (quién lleva el canal)
-const ID_CREATOR_RE = /\bquien (?:te )?(?:ha |a )?(?:creado|creo|programado|programo|hecho|hizo|desarrollado|desarrollo|inventado|invento|construido|construyo)\b|\bquien (?:es|fue) tu (?:creador|programador|desarrollador)\b|\bquien te (?:ha )?(?:hecho|creado|programado)\b/;
+// "quién desarrolló el Phantom Blade 0" es una pregunta de juego: la de identidad lleva "te" o habla de este bot
+const ID_CREATOR_RE = /\bquien te (?:ha |a )?(?:creado|creo|programado|programo|hecho|hizo|desarrollado|desarrollo|inventado|invento|construido|construyo)\b|\bquien (?:ha |a )?(?:creado|creo|programado|programo|hecho|hizo|desarrollado|desarrollo) (?:(?:a|al) )?(?:este |ese |el )?bot\b|\bquien (?:es|fue) tu (?:creador|programador|desarrollador)\b|\bquien te (?:ha )?(?:hecho|creado|programado)\b/;
 const ID_OWNER_RE = /\bquien (?:lleva|dirige|gestiona|maneja|manda|es el dueno|es el streamer) (?:en |de )?(?:este|el|esto|esta)? ?(?:canal|stream|directo)\b|\bde quien es (?:este |el )?(?:canal|stream|directo)\b|\bquien (?:esta )?detras (?:de este |del )?canal\b/;
 const ID_WHO_RE = /^(?:y )?(?:quien|que) eres(?: tu)?$/;
 function identityQuestion(text) {
@@ -115,7 +116,7 @@ function matchesFormula(text) { return FORMULAS.some(re => re.test(text)); }
 function mentionsUnrecordedDeaths(text, deathCount, extraNumbers = []) {
   if (!DEATH_WORDS_RE.test(text)) return false;
   if (!deathCount) return true;
-  const nums = [...text.matchAll(/(?:#|n[uú]mero |muerte |ca[ií]da )(\d+)|(\d+)\s*(?:muertes?|ca[ií]das?|veces)/gi)].map(m => parseInt(m[1] || m[2], 10));
+  const nums = [...text.matchAll(/(?:#|n[uú]mero |muerte |ca[ií]da )(\d+)|(\d+)\s*(?:muertes?|ca[ií]das?|veces|del d[ií]a|de hoy)/gi)].map(m => parseInt(m[1] || m[2], 10));
   return nums.some(n => n !== deathCount && !extraNumbers.includes(n));
 }
 
@@ -356,18 +357,30 @@ const ETHNIC_RE = /\b(payos?|payas?|gitanada|gitaner[ií]a|judiada|sudacas?|negr
 function mentionsEthnicTerms(text) { return ETHNIC_RE.test(String(text || '')); }
 
 // Juzgar el ambiente del chat ("el chat está quieto/dormilón") no es un comentario, es relleno
-const MOOD_JUDGING_RE = /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
+const MOOD_JUDGING_RE = /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?|mud[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
 function judgesChatMood(text) { return MOOD_JUDGING_RE.test(String(text || '')); }
 
 // --- Redacción y temas vetados (cohost, hook, timer, menciones y avisos) ---
 // Vida personal: el bot no comenta comida, sueño, familia, trabajo, salud ni fútbol de nadie
-const PERSONAL_RE = /\b(paella|tapas?|comer|comiendo|comida|cenar|cenando|cena|desayun\w*|almuerz\w*|hambre|sue[ñn]o|dormir|durmiendo|siesta|familia|hij[oa]s?|ni[ñn][oa]s?|madre|padre|abuel[oa]s?|novi[oa]|esposa|marido|trabajo|trabajar|curro|oficina|enferm[oa]s?|enfermedad|m[eé]dico|hospital|resfriad[oa]|salud|f[uú]tbol)\b/i;
+const PERSONAL_RE = /\b(paella|tapas?|comer|comiendo|comida|cenar|cenando|cena|desayun\w*|almuerz\w*|hambre|sue[ñn]o|dormir|durmiendo|siesta|familia|hij[oa]s?|ni[ñn][oa]s?|madre|padre|abuel[oa]s?|novi[oa]|esposa|marido|trabajo|trabajar|curro|oficina|enferm[oa]s?|enfermedad|m[eé]dico|hospital|resfriad[oa]|salud|f[uú]tbol|estudi(?:o|os|a|as|ar|ando|ante|antes)|universidad|universitari[oa]s?|carrera|facultad|ade|semestres?|ex[aá]men(?:es)?|asignaturas?|oposici[oó]n(?:es)?|instituto|colegio)\b/i;
+// "familia" como saludo al chat ("¡gracias, familia!", "la gran familia Lusorum") no es vida personal; "la familia de Manu" sí
+const FAMILY_GREETING_RE = /\b(?:gran |nuestra |toda la |querida |esta |mi |la )?familia\b(?!\s+(?:de|del)\s+(?!lusorums?\b|fua\b|los lusorums\b)\p{L})/giu;
+function personalMatch(text) { return PERSONAL_RE.test(String(text || '').replace(FAMILY_GREETING_RE, ' ')); }
 // Insultos y groserías del chat: el bot no las repite
 const PROFANITY_RE = /\b(put[oa]s?|joder|jod\w+|co[ñn]o|co[ñn]azo|mierda|cabr[oó]n\w*|gilipoll\w+|subnormal\w*|imb[eé]cil\w*|idiota\w*|cag\w+|polla|capull\w+|zorra|maric[oó]n\w*|hostia\w*|retrasad[oa]s?)\b/i;
 // El bot no habla de sí mismo en tercera persona
 const BOT_SELF_RE = /\b(?:el|este|ese) bot\b/i;
 // "el FUA" siempre en masculino
-const FUA_GENDER_RE = /\b(?:la|una|esa|esta|mi|tu|su)\s+fua\b/i;
+const FUA_GENDER_RE = /\b(?:la|una|esa|esta|mi|tu|su|nuestra|vuestra|otra|toda la|la gran)\s+fua\b/i;
+function fuaGender(text) { return FUA_GENDER_RE.test(String(text || '')); }
+// Arreglo directo (!dios_fua): "la FUA" pasa a "el FUA"
+const FUA_FIX = { la: 'el', una: 'un', esa: 'ese', esta: 'este', mi: 'mi', tu: 'tu', su: 'su', nuestra: 'nuestro', vuestra: 'vuestro', otra: 'otro' };
+function fixFuaGender(text) {
+  return String(text || '').replace(/\b(la|una|esa|esta|mi|tu|su|nuestra|vuestra|otra)(\s+)(fua)\b/gi, (m, art, sp, w) => {
+    const a = FUA_FIX[art.toLowerCase()];
+    return (art[0] === art[0].toUpperCase() ? a[0].toUpperCase() + a.slice(1) : a) + sp + w;
+  });
+}
 // Quien juega es Manu; Pao no
 const MANU_PAO_RE = /\bmanu y pao\b[^.!?]{0,40}\b(?:mueren|muere|caen|cae|juegan|juega|se levantan|renacen|siguen|sigue|brillan|vuelven|vuelvan|firmes?)\b/i;
 // Dios Fua es el bot del canal, no su creador (lo creó vlxj97)
@@ -385,7 +398,7 @@ function isCutOff(text) {
   const t = String(text || '').replace(/\bparlus1\w+/gi, '').replace(/[\s.!?…¡¿"”»)]+$/, '').trim();
   return DANGLING_RE.test(t);
 }
-function talksPersonalLife(text) { return PERSONAL_RE.test(String(text || '')); }
+function talksPersonalLife(text) { return personalMatch(text); }
 function repeatsProfanity(text) { return PROFANITY_RE.test(String(text || '')); }
 
 // Motivo de rechazo por redacción o tema vetado (null si pasa). opts.personal=false deja pasar la vida personal (menciones)
@@ -395,6 +408,13 @@ function styleProblem(text, { personal = true, minWords = 3, player = 'manu', no
   if (junk) return junk;
   if (isCutOff(t)) return { rule: 'cortada', reason: 'la frase está cortada o termina a medias; escribe una frase completa y sencilla' };
   if (ETHNIC_RE.test(t)) return { rule: 'etnia', reason: 'usa una expresión con etnias o pueblos; haz la broma sobre la partida o el FUA' };
+  if (hasElongation(t)) return { rule: 'ruido', reason: 'copia letras alargadas o ruido del chat ("parrrrr"); escribe palabras normales' };
+  if (wrongDayPart(t, now)) return { rule: 'hora', reason: 'habla de una parte del día que no es la de ahora (noche, mañana); habla del momento sin inventar la hora' };
+  const caps = oddCaps(t);
+  if (caps) return { rule: 'mayusculas', reason: `escribe «${caps}» con mayúsculas raras; las palabras normales van en minúscula y solo el FUA o los nombres propios en mayúscula` };
+  const spelling = spellingProblem(t);
+  if (spelling) return { rule: 'ortografia', reason: `ortografía: ${spelling}` };
+  if (reportFormat(t)) return { rule: 'formato', reason: 'suena a informe (paréntesis con cifras, «en los últimos N′»); cuéntalo como una frase natural' };
   if (wrongWeekday(t, now)) return { rule: 'dia', reason: 'cita un día de la semana que no es hoy; habla del momento sin inventar el día' };
   if (PROFANITY_RE.test(t)) return { rule: 'grosería', reason: 'repite una grosería o insulto; no los repitas ni los cites' };
   if (BOT_SELF_RE.test(t) && !/\bsoy\b[^.!?]{0,30}\bbot\b/i.test(t)) return { rule: 'bot', reason: 'habla de sí mismo como "el bot"; habla en primera persona o como el FUA' };
@@ -402,8 +422,139 @@ function styleProblem(text, { personal = true, minWords = 3, player = 'manu', no
   if (player !== 'pao' && player !== 'ambos' && MANU_PAO_RE.test(t)) return { rule: 'manu', reason: 'quien juega es Manu; no pongas a Pao a jugar ni a morir' };
   if (CHANNEL_OWNER_RE.test(t)) return { rule: 'canal', reason: 'el canal es de Manu y Pao; vlxj97 solo creó el bot, no le atribuyas el canal' };
   if (CREATOR_CLAIM_RE.test(t)) return { rule: 'creador', reason: 'eres el bot del canal, no su creador; te creó vlxj97' };
-  if (personal && PERSONAL_RE.test(t)) return { rule: 'personal', reason: 'habla de vida personal (comida, sueño, familia, trabajo, salud, fútbol); habla solo del stream, el juego y el chat sobre la partida' };
+  if (personal && personalMatch(t)) return { rule: 'personal', reason: 'habla de vida personal (comida, sueño, familia, trabajo, salud, fútbol); habla solo del stream, el juego y el chat sobre la partida' };
   return null;
+}
+
+// --- Directo del 10-11: ruido del chat, mayúsculas, ortografía, formato de informe, listas de palabras, hora y repeticiones del stream ---
+// Texto sin emotes del canal, @menciones ni enlaces: lo que queda son palabras del bot
+function plainWords(text) {
+  return String(text || '').replace(/https?:\/\/\S+/gi, ' ').replace(/@\w+/g, ' ').replace(/\bparlus1\w*/gi, ' ');
+}
+
+// "parrrrrrr": letras alargadas del chat que el bot copia (5 o más iguales seguidas)
+const ELONGATED_RE = /(\p{L})\1{4,}/u;
+function hasElongation(text) { return ELONGATED_RE.test(plainWords(text).replace(/\bFU+A+\b/gi, ' ')); }
+// Quita del chat que se enseña al modelo las palabras con letras alargadas (para que no las copie)
+function cleanChatNoise(text) {
+  return String(text || '').replace(/\S*(\p{L})\1{3,}\S*/gu, ' ').replace(/ {2,}/g, ' ').trim();
+}
+
+// Mayúsculas: solo el FUA y los nombres propios; "MasterClass", "SOULS" o "el Jefe" no
+const CAPS_OK = new Set(['FUA', 'IA', 'DLC', 'RPG', 'GG', 'ADE', 'GIF', 'OK', 'LOL', 'XP', 'NPC', 'HP', 'PS5', 'PS4', 'FPS', 'MMO', 'USA', 'EEUU', 'UE']);
+const CAMEL_OK = new Set(['PogChamp', 'TwitchCon', 'YouTube', 'PlayStation', 'GitHub', 'LinkedIn', 'DualSense', 'SoulsLike', 'FromSoftware']);
+const COMMON_NOUNS_CAP_RE = /\b(?:el|la|los|las|un|una|unos|unas|del|al|este|esta|ese|esa|estos|esas)\s+(?:Jefe|Jefes|Boss|Bosses|Suelo|Chat|Directo|Stream|Juego|Mando|Mapa|Dron|Canal|Streamer|Streamers|Muerte|Muertes|Ca[ií]da|Ca[ií]das|Combate|Enemigo|Enemigos|Pantalla|Partida)\b/u;
+function oddCaps(text) {
+  const t = plainWords(text);
+  for (const m of t.matchAll(/(?<!\p{L})\p{Lu}\p{Ll}+(?:\p{Lu}\p{Ll}+)+(?!\p{L})/gu)) if (!CAMEL_OK.has(m[0])) return m[0];
+  const hit = COMMON_NOUNS_CAP_RE.exec(t);
+  if (hit) return hit[0];
+  for (const sentence of t.split(/(?<=[.!?…])\s+/)) {
+    const caps = [...sentence.matchAll(/\b\p{Lu}{3,}\b/gu)].map(m => m[0]).filter(w => !CAPS_OK.has(w) && !/^FU+A+$/.test(w));
+    const allCaps = [...sentence.matchAll(/\b\p{Lu}{2,}\b/gu)].length;
+    if (caps.length && allCaps < 2) return caps[0]; // una frase entera en mayúsculas es un grito, no un error
+  }
+  return '';
+}
+
+// Errores de ortografía y género de palabras que la IA repite: "ignoreís", "menudo masterclass"
+const EIS_OK = /^(?:re|fre|sonre|engre|desfre)[ií]s$/iu; // reír y freír sí llevan «-eís»
+function spellingProblem(text) {
+  const t = plainWords(text);
+  for (const m of t.matchAll(/(?<!\p{L})\p{L}{3,}e[ií]s(?!\p{L})/giu)) {
+    if (/eís$/i.test(m[0]) && !EIS_OK.test(m[0])) return `«${m[0]}» lleva la tilde en la «e» (-éis)`;
+  }
+  if (/\b(?:el|un|menudo|vaya|buen|este|ese|del|qu[eé])\s+master\s?class\b/i.test(t)) return '«masterclass» es femenino («una masterclass»)';
+  return '';
+}
+
+// Formato de informe: "En los últimos 30′ …", "(5 del día)", minutos con prima
+const REPORT_FORMAT_RE = /\ben los [uú]ltimos \d+\s*(?:['′’]|min)|\(\s*\d+\s+(?:del d[ií]a|de hoy|hoy)\s*\)|\(\s*\d+\s*\)|\b\d+\s*['′’](?!\p{L})/iu;
+function reportFormat(text) { return REPORT_FORMAT_RE.test(String(text || '')); }
+
+// Listas de palabras sueltas del chat o nicks pegados: "el chat suelta harocho3847, tienes, parlusorum, poco y dron"
+const WORD_LIST_RE = /\b(?:suelta|sueltan|tira|tiran|repite|repiten|escribe|escriben|dice|dicen|spamea\w*|grita|gritan)\s+["“«]?\p{L}[\p{L}\d]*(?:,\s+\p{L}[\p{L}\d]*){2,}/iu;
+function wordListProblem(text) {
+  const t = plainWords(String(text || ''));
+  if (WORD_LIST_RE.test(t)) return 'lista de palabras sueltas del chat';
+  return '';
+}
+
+// Hora que no cuadra con la real (Madrid): "plus de nocturnidad" a las 19:49
+const NIGHT_RE = /\b(?:nocturnidad|nocturn[oa]s?|de madrugada|por la noche|esta noche|noche de|de noche|buenas noches|trasnochar\w*)\b/i;
+const MORNING_RE = /\b(?:por la ma[ñn]ana|esta ma[ñn]ana|ma[ñn]anero|ma[ñn]anera|madrugar|de buena ma[ñn]ana)\b/i;
+function wrongDayPart(text, now = new Date()) {
+  const part = madridDay(now).part;
+  if ((part === 'tarde' || part === 'mañana') && NIGHT_RE.test(text)) return true;
+  if (part !== 'mañana' && MORNING_RE.test(text)) return true;
+  return false;
+}
+
+// Minutos exactos del directo ("116 minutos", "1h 18m"): se dicen aproximados ("casi dos horas")
+const EXACT_MINUTES_RE = /\b\d{2,3}\s*(?:minutos|mins?)\b|\b\d+\s*h\s*\d+\s*m\b|\b\d+\s*horas?\s+y\s+\d+\s*(?:minutos|min)\b/i;
+function exactMinutes(text) { return EXACT_MINUTES_RE.test(String(text || '')); }
+
+// Duración aproximada en palabras: nunca los minutos exactos
+function approxDuration(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  if (m < 20) return 'un ratito';
+  if (m < 40) return 'media hora';
+  if (m < 55) return 'casi una hora';
+  if (m < 70) return 'una hora';
+  const h = Math.floor(m / 60);
+  const rem = m - h * 60;
+  const word = n => ['cero', 'una', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce'][n] || String(n);
+  const hours = n => (n === 1 ? 'una hora' : `${word(n)} horas`);
+  if (rem < 12) return h === 1 ? 'una hora' : `unas ${word(h)} horas`;
+  if (rem < 25) return `${hours(h)} y pico`;
+  if (rem < 40) return `${hours(h)} y media`;
+  return `casi ${hours(h + 1)}`;
+}
+
+// Cifras de viewers: el bot no las cita (los de una raid son visitantes, no los viewers del canal)
+function citesViewers(text) { return /\b\d+\s+(?:viewers?|espectadores)\b/i.test(String(text || '')); }
+
+// Marcas por stream: lo que solo puede salir una vez (día de la semana, "Entre X y Y…") o no repetirse (palabras llamativas)
+const WEEKDAY_RE = /\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b/i;
+const ENTRE_RE = /^[¡¿"“\s]*entre\b[^.!?]{2,70}?\by\b/i;
+const NOTABLE_SKIP = new Set(['parlusorum', 'lusorums', 'streamer', 'streamers', 'directo', 'siguiente', 'caidas', 'muertes', 'jugando', 'personas', 'compañero']);
+function notableWords(text, game = '') {
+  const gameWords = new Set(norm(game).split(/[^a-z0-9]+/).filter(Boolean));
+  const out = new Set();
+  for (const w of plainWords(text).split(/[^\p{L}]+/u)) {
+    const k = norm(w);
+    if (k.length >= 9 && !NOTABLE_SKIP.has(k) && !gameWords.has(k)) out.add(k);
+  }
+  return out;
+}
+// Marcas de este texto para `markStructure`: estructura, día de la semana, "Entre…" y palabras largas
+function streamMarks(text, game = '') {
+  const marks = [];
+  const s = structureKey(text);
+  if (s) marks.push(s);
+  if (WEEKDAY_RE.test(text)) marks.push('dia-semana');
+  if (ENTRE_RE.test(text)) marks.push('entre-x-y');
+  for (const w of notableWords(text, game)) marks.push(`w:${w}`);
+  return marks;
+}
+// Motivo si el texto repite algo que ya salió en el stream (used = Set de marcas)
+function repeatedInStream(text, used = new Set(), game = '') {
+  if (!used || !used.size) return '';
+  if (used.has('dia-semana') && WEEKDAY_RE.test(text)) return 'repite el día de la semana, que ya se dijo en este stream; habla del momento sin nombrarlo';
+  if (used.has('entre-x-y') && ENTRE_RE.test(text)) return 'repite la estructura «Entre X y Y…» de este stream; empieza de otra forma';
+  for (const w of notableWords(text, game)) if (used.has(`w:${w}`)) return `repite la palabra «${w}», que ya se usó en este stream; usa otra`;
+  return '';
+}
+
+// Último «¡FUA!» de cierre: solo en una de cada tres menciones (recentFlags = si cerraron así las últimas)
+const TRAILING_FUA_RE = /[\s,;]*¡?\bFUA\b!*[\s.]*$/i;
+function limitTrailingFua(text, recentFlags = []) {
+  const t = String(text || '');
+  if (!TRAILING_FUA_RE.test(t) || t.replace(TRAILING_FUA_RE, '').trim().length < 8) return { text: t, had: false };
+  if (!recentFlags.slice(-2).some(Boolean)) return { text: t, had: true };
+  let out = t.replace(TRAILING_FUA_RE, '').trimEnd();
+  if (!/[.!?…\p{Extended_Pictographic}]$/u.test(out)) out += '.';
+  return { text: out, had: false };
 }
 
 // Nombres ya citados: si la frase empieza con ellos como vocativo ("Mujica90, ...") se quitan; en otro sitio no hay arreglo (null)
@@ -427,21 +578,29 @@ function validateAuto(text) {
   return { ok: true };
 }
 
+const EXACT_MINUTES_REASON = 'cita los minutos exactos del directo; usa una expresión aproximada («casi dos horas», «un buen rato»)';
+const VIEWERS_REASON = 'cita una cifra de viewers; los de una raid son visitantes de otro canal, no los espectadores del canal';
+
 // Validación del cohost. ctx: { deathCount, recent: string[], sameKind: string[], named: Map, now, nameWindowMs }
 // Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
 // se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
-function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set(), lastCitedDeaths = false, player = 'manu' } = {}) {
+function validateCohost(text, { deathCount = 0, recent = [], sameKind = [], named = new Map(), now = Date.now(), nameWindowMs = 15 * 60 * 1000, usedStructures = new Set(), lastCitedDeaths = false, player = 'manu', game = '' } = {}) {
   if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
   if (hasLatam(text)) return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount)) return { ok: false, rule: 'muertes', reason: 'menciona muertes que no están en el contador' };
-  const style = styleProblem(text, { player });
+  const style = styleProblem(text, { player, now: new Date(now) });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, rule: 'contador', reason: DEATH_REPEAT_REASON };
-  const game = gameTalkProblem(text);
-  if (game) return { ok: false, rule: 'juego', reason: game };
+  const gameProblem = gameTalkProblem(text);
+  if (gameProblem) return { ok: false, rule: 'juego', reason: gameProblem };
+  if (exactMinutes(text)) return { ok: false, rule: 'minutos', reason: EXACT_MINUTES_REASON };
+  if (citesViewers(text)) return { ok: false, rule: 'viewers', reason: VIEWERS_REASON };
+  if (WORD_LIST_RE.test(plainWords(text))) return { ok: false, rule: 'lista', reason: 'lista palabras sueltas del chat; cuenta el tema en una idea' };
   const names = recentlyNamedIn(text, named, now, nameWindowMs);
   if (names.length) return { ok: false, soft: true, rule: 'nombre', reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas` };
+  const repeated = repeatedInStream(text, usedStructures, game);
+  if (repeated) return { ok: false, soft: true, rule: 'repetido', reason: repeated };
   const structure = structureKey(text);
   if (structure && usedStructures.has(structure)) return { ok: false, soft: true, rule: 'estructura', reason: 'repite la estructura "Manu lleva N caídas y el FUA…" que ya usaste en este stream; cambia de enfoque y no cites el contador' };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, soft: true, rule: 'formula', reason: 'repite una fórmula que ya usaste' };
@@ -461,7 +620,7 @@ function vetAuto(text) {
 
 // Hook anti-silencio: voz de Dios Fua, sin deporte, sin muertes inventadas ni repetir los últimos hooks
 const DEATH_REPEAT_REASON = 'el mensaje anterior del bot ya citó el número de muertes; no lo cites ahora, habla de otra cosa';
-function validateHook(text, { deathCount = 0, recent = [], lastCitedDeaths = false, player = 'manu', requireQuestion = false, extraDeathNumbers = [] } = {}) {
+function validateHook(text, { deathCount = 0, recent = [], lastCitedDeaths = false, player = 'manu', requireQuestion = false, extraDeathNumbers = [], now = Date.now() } = {}) {
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
   if (requireQuestion && !/\?/.test(text)) return { ok: false, reason: 'no es una pregunta al chat' };
@@ -469,8 +628,10 @@ function validateHook(text, { deathCount = 0, recent = [], lastCitedDeaths = fal
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount, extraDeathNumbers)) return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  if (exactMinutes(text)) return { ok: false, reason: EXACT_MINUTES_REASON };
+  if (citesViewers(text)) return { ok: false, reason: VIEWERS_REASON };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
-  const style = styleProblem(text, { player });
+  const style = styleProblem(text, { player, now: new Date(now) });
   if (style) return { ok: false, reason: style.reason };
   const game = gameTalkProblem(text);
   if (game) return { ok: false, reason: game };
@@ -509,6 +670,7 @@ function inventedQuote(text, source = '') {
 }
 
 function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '' } = {}) {
+  if (fuaGender(text)) return '"el FUA" va siempre en masculino';
   const junk = junkProblem(text);
   if (junk) return junk.reason;
   if (achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
@@ -544,9 +706,15 @@ function validateTimerIA(text, { extraDeathNumbers = [], deathCount = 0, recent 
   if (sameOpening(text, recent)) return { ok: false, reason: 'empieza igual que un mensaje anterior; cambia la estructura de la frase y no abras con el tiempo o el contador' };
   const structure = structureKey(text);
   if (structure && usedStructures.has(structure)) return { ok: false, reason: 'repite la estructura "Manu lleva N caídas y el FUA…" de este stream; no cites el contador y cambia de enfoque' };
+  if (exactMinutes(text)) return { ok: false, reason: EXACT_MINUTES_REASON };
+  if (citesViewers(text)) return { ok: false, reason: VIEWERS_REASON };
+  const listed = wordListProblem(text);
+  if (listed) return { ok: false, reason: `${listed}; cuenta de qué ha hablado el chat en general, con tus palabras` };
+  const repeatedMark = repeatedInStream(text, usedStructures, currentGame);
+  if (repeatedMark) return { ok: false, reason: repeatedMark };
   if (citesGameScore(text)) return { ok: false, reason: 'cita la nota o la fuente del juego; no la menciones' };
   if (/@\w/.test(text)) return { ok: false, reason: 'no etiquetes a nadie con @' };
-  const style = styleProblem(text, { player });
+  const style = styleProblem(text, { player, now: new Date(now) });
   if (style) return { ok: false, reason: style.reason };
   if (matchesFormula(text) && repeatsFormula(text, recent)) return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent, 0.5)) return { ok: false, reason: 'repite una idea de un comentario anterior de este stream' };
@@ -575,7 +743,7 @@ function negativeSummary(text) { return NEGATIVE_SUMMARY_RE.test(text); }
 const SUMMARY_PERSONAL_RE = /\b(hamburguesas?|pizzas?|bocadill\w+|merienda\w*|tortilla|helados?|cervezas?|calor|calurosa?|veran(?:o|iego|iega)|invierno|fr[ií]o|lluvi\w+|llov\w+|clima|temperatura|playa|piscina|vacaciones|cumplea[ñn]os|boda|ex[aá]menes?|examen|estudi(?:o|os|ar|ando)|universidad|instituto|clase|jefe del trabajo|resaca|borrach\w+|fiesta)\b/i;
 function summaryPersonalLife(text) {
   const t = String(text || '');
-  return PERSONAL_RE.test(t) || SUMMARY_PERSONAL_RE.test(t);
+  return personalMatch(t) || SUMMARY_PERSONAL_RE.test(t.replace(FAMILY_GREETING_RE, ' '));
 }
 
 // ─── Atributos inventados: país/nacionalidad, personas y cifras que no están en los datos ───
@@ -784,11 +952,12 @@ function limitLusorums(text, recentFlags = []) {
 }
 
 module.exports = {
-  stripFillers, limitFillers, hasLusorums, limitLusorums,
+  stripFillers, limitFillers, hasLusorums, limitLusorums, limitTrailingFua, personalMatch,
+  hasElongation, cleanChatNoise, oddCaps, spellingProblem, reportFormat, wordListProblem, wrongDayPart, exactMinutes, approxDuration, citesViewers, notableWords, streamMarks, repeatedInStream, plainWords,
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
-  vetAuto, styleProblem, claimsChannelOwner, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
+  fuaGender, fixFuaGender, vetAuto, styleProblem, claimsChannelOwner, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, summaryPersonalLife, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   dropPartialEmote, fitWithEmotes, junkProblem, malformedNumber, citesDeathCount, numberWordsEs, mentionsGenre, forcedComparison, selfHelp, openingKey, sameOpening, moveEmotesToEnd,

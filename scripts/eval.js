@@ -8,6 +8,8 @@
  * Casos con "filter": pasan una frase real del bot por los validadores de quality y por la revisión de sentido de factcheck
  * (cohost, timer_ia, hook o mention) y esperan que se descarte (expect.rejected) o que pase.
  *
+ * Casos con "filter": "pick" (candidates, chat, activity, expect.pick = número 1-based o 'none') prueban el selector con IA de src/ai/pick-best.js.
+ *
  * Uso: npm run eval [-- --only id1,id2] [-- --verbose] [-- --repeat N]
  * Sale con código 1 si algún caso no cumple lo esperado.
  */
@@ -100,11 +102,33 @@ function flattenPool(key) {
 
 const stripMention = s => String(s || '').replace(/^@\S+\s*/, '');
 
+// Caso de selector: candidatos reales (buenos y malos) y el contexto; el selector con IA debe elegir el bueno o callar (pick: 'none')
+async function runPickCase(c) {
+  const { pickBest } = require('../src/ai/pick-best');
+  const { dayLine } = require('../src/ai/style');
+  const started = realNow();
+  const res = await pickBest(c.candidates, {
+    dayLine: dayLine(c.at ? new Date(c.at) : new Date()),
+    game: c.game || 'Hell Is Us',
+    facts: `Caídas anotadas: ${c.deaths ?? 5}. Juega Manu.`,
+    chat: (c.chat || []).join('\n'),
+    activity: c.activity ?? (c.chat || []).length,
+  });
+  const failures = [];
+  const chosen = res.status === 'ok' ? res.index + 1 : res.status === 'none' ? 'none' : null;
+  if (res.status === 'error') failures.push('el selector no pudo contestar (cupo o fallo)');
+  else if (c.expect?.pick !== undefined && chosen !== c.expect.pick) failures.push(`esperaba pick ${c.expect.pick} y eligió ${chosen}`);
+  if (res.status === 'ok' && (c.expect?.pickNot || []).includes(chosen)) failures.push(`eligió el candidato ${chosen}, que no debía`);
+  const reply = res.status === 'ok' ? `elige ${chosen}: ${c.candidates[res.index]}` : res.status === 'none' ? '(el selector descarta todos)' : '(sin respuesta)';
+  return { c, kind: 'selector', reply, answer: '', tool: null, discarded: null, retried: [], failures, ms: realNow() - started, calls: aiCalls.map(a => a.model.split('/').pop() + ' ' + (a.ms / 1000).toFixed(1) + 's'), rate429: 0, logs: currentLogs.slice() };
+}
+
 // Caso de filtro: no genera nada, comprueba que una frase real mala se descarta (o que una buena pasa)
 async function runFilterCase(c) {
+  if (c.filter === 'pick') return runPickCase(c);
   const deaths = c.deaths ?? 5;
   const game = c.game || 'Phantom Blade Zero';
-  const ctx = { deathCount: deaths, recent: c.recent || [], named: new Map(), currentGame: game, channelGames: [], usedStructures: new Set(c.usedStructures || []), lastCitedDeaths: !!c.lastCitedDeaths, player: c.player || 'manu' };
+  const ctx = { deathCount: deaths, recent: c.recent || [], named: new Map(), now: c.at ? new Date(c.at).getTime() : Date.now(), currentGame: game, channelGames: [], usedStructures: new Set(c.usedStructures || []), lastCitedDeaths: !!c.lastCitedDeaths, player: c.player || 'manu' };
   const rules = {
     cohost: t => quality.validateCohost(t, ctx),
     timer_ia: t => quality.validateTimerIA(t, ctx),

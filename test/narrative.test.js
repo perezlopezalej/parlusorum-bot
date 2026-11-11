@@ -78,8 +78,8 @@ describe('condenseChat', () => {
   });
 
   test('trunca los últimos mensajes y omite palabras de relleno', () => {
-    const out = condenseChat([{ username: 'a', message: 'x'.repeat(300) }], { maxLast: 10 });
-    assert.ok(out.endsWith(`a: ${'x'.repeat(10)}`));
+    const out = condenseChat([{ username: 'a', message: 'ab '.repeat(100) }], { maxLast: 10 });
+    assert.ok(out.endsWith('a: ab ab ab a'));
     assert.ok(!out.includes('Se repite'));
   });
 });

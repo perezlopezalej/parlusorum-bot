@@ -124,7 +124,8 @@ test('freeAngleNote: ángulo con datos reales tras un SKIP', () => {
   const { freeAngleNote } = require('../src/utils/narrative');
   const note = freeAngleNote({ minutes: 125, bosses: 2, game: 'Phantom Blade Zero', deathCount: 7, pick: () => 0 });
   assert.match(note, /NO respondas SKIP/);
-  assert.match(note, /2 h 5 min/);
+  assert.match(note, /unas dos horas/);
+  assert.doesNotMatch(note, /\d+ min/);
   const noDeaths = freeAngleNote({ minutes: 10, bosses: 0, game: '', deathCount: 7, canCiteDeaths: false, pick: () => 0.5 });
   assert.doesNotMatch(noDeaths, /7 anotadas/);
   assert.match(noDeaths, /lore/);

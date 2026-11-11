@@ -149,8 +149,18 @@ const lusorumsHistory = [];
 function noteLusorums(had) { lusorumsHistory.push(!!had); if (lusorumsHistory.length > 3) lusorumsHistory.shift(); }
 function getLusorumsHistory() { return [...lusorumsHistory]; }
 
+// ¿Cerraron con «¡FUA!» las últimas respuestas a menciones? (quality.limitTrailingFua: solo 1 de cada 3)
+const mentionFuaHistory = [];
+function noteMentionFua(had) { mentionFuaHistory.push(!!had); if (mentionFuaHistory.length > 3) mentionFuaHistory.shift(); }
+function getMentionFuaHistory() { return [...mentionFuaHistory]; }
+
+// Un solo mensaje de inicio por directo: el aviso normal y el de calentamiento se disputan el turno
+let startAnnounced = false;
+function claimStartAnnouncement() { if (startAnnounced) return false; startAnnounced = true; return true; }
+function resetStartAnnouncement() { startAnnounced = false; }
+
 function getBotHistory() { return [...botMessageHistory]; }
-function resetBotHistory() { botMessageHistory = []; cohostTextsByKind.clear(); usedStructures.clear(); }
+function resetBotHistory() { botMessageHistory = []; cohostTextsByKind.clear(); usedStructures.clear(); startAnnounced = false; mentionFuaHistory.length = 0; }
 
 // Estructuras de frase (quality.structureKey) ya usadas por el cohost/timer en este stream
 const usedStructures = new Set();
@@ -485,7 +495,7 @@ module.exports = {
   setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt,
   addNarrativeEvent, onNarrativeEvent, getStreamNarrative, resetStreamNarrative, setStreamNarrative, onNarrativeChange,
   recordCohost, getLastCohostTime, getCohostTimes, claimHookPause,
-  addBotMessage, noteLusorums, getLusorumsHistory, getBotHistory, resetBotHistory, addCohostText, getCohostTexts, markNamed, getNamedUsers, resetNamedUsers,
+  addBotMessage, noteLusorums, getLusorumsHistory, noteMentionFua, getMentionFuaHistory, claimStartAnnouncement, resetStartAnnouncement, getBotHistory, resetBotHistory, addCohostText, getCohostTexts, markNamed, getNamedUsers, resetNamedUsers,
   getLastCohostContextHash, setLastCohostContextHash,
   tickReinforce, resetReinforceCounter,
   setGameContextFailed, getGameContextFailed,

@@ -68,7 +68,7 @@ describe('prompts nuevos: sin prohibidas citadas', () => {
 describe('ejemplos y formas', () => {
   test('los ejemplos del cohost salen del archivo editable y rotan', () => {
     const data = style.loadExamples();
-    assert.equal(data.cohost.length, 8);
+    assert.equal(data.cohost.length, 13);
     const seen = new Set();
     for (let i = 0; i < 30; i++) seen.add(style.pickStyleExamples('cohost', 4).join('|'));
     assert.ok(seen.size > 3);
