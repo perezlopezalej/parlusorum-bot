@@ -395,12 +395,6 @@ async function handleTop(client, channel) {
   client.say(channel, truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${winsText(r.count)})`).join(' · ')));
 }
 
-// Campeón actual para el contexto de la IA (null si no hay ranking)
-async function getChampion() {
-  const [first] = await getTop(1);
-  return first || null;
-}
-
 function handle(client, channel, tags, command, args) {
   switch (command) {
     case 'trivia':
@@ -412,4 +406,4 @@ function handle(client, channel, tags, command, args) {
   }
 }
 
-module.exports = { handle, handleTrivia, checkTriviaAnswer, getChampion, isAnswerMatch, buildHints, normalizeAnswer };
+module.exports = { handle, handleTrivia, checkTriviaAnswer, isAnswerMatch, buildHints, normalizeAnswer };

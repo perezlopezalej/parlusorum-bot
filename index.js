@@ -200,7 +200,7 @@ setInterval(() => {
 
 let timersStarted = false;
 
-// BUG FIX #1: deduplicación de mensajes para evitar doble respuesta en reconexiones
+// deduplicación de mensajes para evitar doble respuesta en reconexiones
 const processedMessages = new Set();
 setInterval(() => processedMessages.clear(), 60 * 1000);
 
@@ -300,7 +300,7 @@ client.on('message', async (channel, tags, message, self) => {
   // Fix doble respuesta: el bot a veces recibe sus propios mensajes sin self=true
   if ((tags['username'] || '').toLowerCase().includes(BOT_NAME)) return;
 
-  // BUG FIX #1: ignorar mensajes ya procesados (evita doble respuesta en reconexiones)
+  // ignorar mensajes ya procesados (evita doble respuesta en reconexiones)
   const msgId = tags['id'];
   if (msgId) {
     if (processedMessages.has(msgId)) return;

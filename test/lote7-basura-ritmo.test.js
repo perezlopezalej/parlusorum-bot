@@ -120,17 +120,6 @@ test('ritmo: con muchas muertes el cohost no pasa de 4 por hora ni de ~26 en 6,5
   assert.ok(sent.length >= 20, `${sent.length} comentarios: no debe quedarse corto con chat activo`);
 });
 
-test('freeAngleNote: ángulo con datos reales tras un SKIP', () => {
-  const { freeAngleNote } = require('../src/utils/narrative');
-  const note = freeAngleNote({ minutes: 125, bosses: 2, game: 'Phantom Blade Zero', deathCount: 7, pick: () => 0 });
-  assert.match(note, /NO respondas SKIP/);
-  assert.match(note, /unas dos horas/);
-  assert.doesNotMatch(note, /\d+ min/);
-  const noDeaths = freeAngleNote({ minutes: 10, bosses: 0, game: '', deathCount: 7, canCiteDeaths: false, pick: () => 0.5 });
-  assert.doesNotMatch(noDeaths, /7 anotadas/);
-  assert.match(noDeaths, /lore/);
-});
-
 test('resumen de fin de stream: informa de los SKIP del modelo', () => {
   const { formatCohostStats } = require('../src/eventsub');
   const line = formatCohostStats({ attempts: { event: 2, free: 5 }, sent: { event: 2, free: 2 }, discards: { skip: 3, sin_tema: 1 }, groq429: 0 });
@@ -255,7 +244,7 @@ test('resumen de fin de stream: sin vida personal (lista ampliada solo aquí)', 
   assert.equal(q.summaryPersonalLife('Manu cayó 12 veces ante el jefe final y el chat no paró de animar'), false);
   // el resto de tipos no usa la lista ampliada: "el calor del combate" sigue valiendo en directo
   assert.equal(q.validateCohost('Con el calor del combate el FUA sigue encendido, Manu.', { deathCount: 0 }).ok, true);
-  assert.equal(q.talksPersonalLife('Con el calor del combate el FUA sigue encendido'), false);
+  assert.equal(q.personalMatch('Con el calor del combate el FUA sigue encendido'), false);
 });
 
 test('resumen de fin de stream: onStreamEnd filtra momentos y frases personales y reintenta', async () => {

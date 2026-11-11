@@ -2,7 +2,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
-  cohostProbability, hourlyCapReached, pruneHourly,
+  hourlyCapReached, pruneHourly,
 } = require('../src/utils/narrative');
 const state = require('../src/utils/state');
 
@@ -81,25 +81,6 @@ describe('condenseChat', () => {
     const out = condenseChat([{ username: 'a', message: 'ab '.repeat(100) }], { maxLast: 10 });
     assert.ok(out.endsWith('a: ab ab ab a'));
     assert.ok(!out.includes('Se repite'));
-  });
-});
-
-describe('cohostProbability', () => {
-  const base = { base: 0.1, cooldownMs: 100000 };
-
-  test('es 0 dentro del cooldown', () => {
-    assert.equal(cohostProbability({ ...base, elapsedMs: 99999 }), 0);
-  });
-
-  test('vale la base al salir del cooldown y crece con el tiempo', () => {
-    assert.ok(Math.abs(cohostProbability({ ...base, elapsedMs: 100000 }) - 0.1) < 1e-9);
-    assert.ok(Math.abs(cohostProbability({ ...base, elapsedMs: 200000 }) - 0.4) < 1e-9);
-  });
-
-  test('aplica el multiplicador del modo y no pasa del tope', () => {
-    assert.ok(Math.abs(cohostProbability({ ...base, multiplier: 2, elapsedMs: 100000 }) - 0.2) < 1e-9);
-    assert.equal(cohostProbability({ ...base, elapsedMs: 10_000_000 }), 0.9);
-    assert.equal(cohostProbability({ ...base, multiplier: 0.3, elapsedMs: 100000 }) < 0.1, true);
   });
 });
 

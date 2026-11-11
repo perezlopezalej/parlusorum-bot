@@ -166,13 +166,13 @@ describe('minutos aproximados y repeticiones del stream', () => {
 describe('vida personal: estudios y "familia" como saludo', () => {
   test('ADE, universidad y carrera cuentan como vida personal', () => {
     for (const t of ['Entre Pao haciendo chistes de ADE y Manu repartiendo caídas, vaya directo.', 'Pao ya va por el tercer año de carrera.', 'La universidad no perdona, ni el jefe.', 'Tocan los exámenes y el FUA sufre.'])
-      assert.equal(q.talksPersonalLife(t), true, t);
+      assert.equal(q.personalMatch(t), true, t);
     assert.equal(q.validateCohost('Entre Pao haciendo chistes de ADE y Manu repartiendo caídas, vaya directo.', { deathCount: 5 }).rule, 'personal');
   });
   test('"familia" como saludo no se descarta; "la familia de Manu" sí', () => {
-    assert.equal(q.talksPersonalLife('¡Gracias por el directo, familia Lusorum!'), false);
-    assert.equal(q.talksPersonalLife('Qué grande sois, familia.'), false);
-    assert.equal(q.talksPersonalLife('La familia de Manu viene a cenar.'), true);
+    assert.equal(q.personalMatch('¡Gracias por el directo, familia Lusorum!'), false);
+    assert.equal(q.personalMatch('Qué grande sois, familia.'), false);
+    assert.equal(q.personalMatch('La familia de Manu viene a cenar.'), true);
     assert.equal(summaryProblem('Gran directo de Hell Is Us, familia: Manu cayó diez veces y el chat no paró de animar.'), null);
     assert.ok(summaryProblem('Directo de Hell Is Us con charla sobre la familia de Pao y sus exámenes.'));
   });

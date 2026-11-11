@@ -167,13 +167,13 @@ function checkAnniversary(client, channel, username, userData, now) {
   }
 }
 
-// --- Lurker Love --- FIX #2: no disparar lurker en los primeros minutos del stream
+// --- Lurker Love --- no disparar lurker en los primeros minutos del stream
 const lurkerMap = new Map();
 // Como mucho un aviso de "vuelve el lurker" por persona y stream
 const lurkerGreeted = new Set();
 const LURKER_THRESHOLD = parseInt(process.env.LURKER_THRESHOLD_MS || String(15 * 60 * 1000), 10);
 
-// FIX #2: timestamp de inicio del stream actual
+// timestamp de inicio del stream actual
 let streamOnlineTimestamp = 0;
 
 // Llamar esto cuando EventSub detecta stream.online
@@ -200,7 +200,7 @@ function trackLurker(client, channel, tags) {
 
   const now = Date.now();
 
-  // FIX #2: no disparar lurker en los primeros LURKER_THRESHOLD ms del stream
+  // no disparar lurker en los primeros LURKER_THRESHOLD ms del stream
   // Si el stream acaba de arrancar, no contar como lurker
   if (streamOnlineTimestamp > 0 && now - streamOnlineTimestamp < LURKER_THRESHOLD) {
     lurkerMap.set(userId, now);

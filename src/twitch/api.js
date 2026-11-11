@@ -208,10 +208,6 @@ async function getStreamInfo() {
   }
 }
 
-function isStreamLive() {
-  return streamCache?.live === true;
-}
-
 // --- Juego actual ---
 let currentGameCache = null;
 let lastGameCheck = 0;
@@ -247,24 +243,6 @@ async function getCurrentGame() {
   } catch (e) {
     logger.error(`Error al obtener juego actual: ${e.message}`);
     return currentGameCache || { game: null };
-  }
-}
-
-// --- Historial de juegos recientes via API ---
-async function getRecentGames(limit = 10) {
-  try {
-    const broadcasterId = channelConfig.broadcaster_id;
-    const res = await helixFetch(
-      `https://api.twitch.tv/helix/videos?user_id=${broadcasterId}&type=archive&first=${limit}`
-    );
-    const data = await res.json();
-    const games = [...new Set(
-      data.data?.map(v => v.game_name || null).filter(Boolean) || []
-    )];
-    return games;
-  } catch (e) {
-    logger.error(`Error al obtener juegos recientes: ${e.message}`);
-    return channelConfig.games_played || [];
   }
 }
 
@@ -403,7 +381,7 @@ async function getChannelInfo(username) {
   }
 }
 
-// --- Crear stream marker --- FIX #10
+// --- Crear stream marker ---
 // Requiere scope user:edit:broadcast en el broadcaster token
 async function createStreamMarker(description = 'Momento epico') {
   const broadcasterId = channelConfig.broadcaster_id;
@@ -433,7 +411,7 @@ async function createStreamMarker(description = 'Momento epico') {
 }
 
 module.exports = {
-  getStreamInfo, isStreamLive, getCurrentGame, getRecentGames,
+  getStreamInfo, getCurrentGame,
   createClip, createStreamMarker, getGameInfo, lookupGameInfo, getFollowerCount, getChannelInfo, getUserIdByLogin,
   refreshBroadcasterToken, loadBroadcasterTokens,
   validateBotToken, refreshBotToken, ensureBotToken, refreshBotTokenIfNeeded,

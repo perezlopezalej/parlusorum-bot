@@ -13,7 +13,7 @@ const {
   setStreamIsLive, getStreamIsLive, getFilterStats, resetFilterStats, isSilenced, setSilenceMode, setMuteUntil, setBotMode, setBrbMode, setStreamEndGraceUntil,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, setDeathCount, setBossCount,
-  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter,
+  resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory,
   getActivePrediction, setActivePrediction, clearActivePrediction,
   getGroqFallbackUse, resetGroqFallbackUse, getGroqTokenUse, resetGroqTokenUse, getAiUsage, resetAiStreamUsage, getCohostStats, resetCohostStats, resetPlayer, resetFreeCohostPause,
 } = require('./utils/state');
@@ -466,7 +466,6 @@ function createEventSubHandler(client, channel, deps) {
         try { resetStreamChatBuffer(); } catch {}
         try { resetStreamNarrative(); } catch {}
         try { resetBotHistory(); resetPlayer(); resetFreeCohostPause(); } catch {}
-        try { resetReinforceCounter(); } catch {}
         try { clearUserFactsCache(); } catch {}
         // I/O asíncrono en background — no bloquea la respuesta a Twitch
         setImmediate(async () => {

@@ -36,7 +36,7 @@ const _emoteAfterRe  = _emotePattern ? new RegExp(`(${_emotePattern})(\\S)`, 'g'
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Modelos de reserva (GROQ_MODEL_FALLBACKS, separados por comas). Por defecto, el modelo rápido.
-// Las cadenas por tipo de llamada y el reparto con Gemini viven en ai-router.js.
+// Las cadenas por tipo de llamada viven en ai-router.js.
 const GROQ_MODEL_FALLBACKS = (process.env.GROQ_MODEL_FALLBACKS || GROQ_MODEL_FAST)
   .split(',').map(m => m.trim()).filter(Boolean);
 

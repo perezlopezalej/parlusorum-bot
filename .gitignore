@@ -3,7 +3,5 @@ node_modules/
 logs/
 backups/
 *.code-workspace
-AUDITORIA.md
 .claude/settings.json
 .claude/settings.local.json
-INVENTARIO_FUNCIONES_v5.md

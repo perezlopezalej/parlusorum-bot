@@ -1,17 +1,17 @@
 /**
- * compare-models.js — Compara modelos GRATUITOS (Groq y Gemini) con los casos reales del bot. Gasta cupo: no va en `npm test`.
+ * compare-models.js — Compara modelos GRATUITOS (solo Groq) con los casos reales del bot. Gasta cupo: no va en `npm test`.
  *
  * Pasa los casos de test/eval-cases.json (!dios_fua y menciones) y unos escenarios de cohost sacados de los chatlogs
  * por los handlers reales (prompts, buscar_juego, filtros de quality, factcheck). Solo cambia el cliente de Groq:
  *   - generación (handlers)      → el modelo candidato
- *   - revisiones (factcheck.js)  → un revisor común para todos (--aux, por defecto Flash Lite) para que la
+ *   - revisiones (factcheck.js)  → un revisor común para todos (--aux, por defecto groq-20b) para que la
  *                                  diferencia sea solo del generador y no se gaste el cupo de Groq del directo
  * Cada candidato corre en un proceso aparte (mismo estado inicial). No envía nada a Twitch ni escribe en Supabase.
  *
  * Uso:
  *   node scripts/compare-models.js                         # todos los candidatos
- *   node scripts/compare-models.js --models gemma,gemini-lite [--only id1,id2]
- *   node scripts/compare-models.js --filters --models groq-120b,gemini-lite   # el candidato hace de REVISOR en los casos "filter"
+ *   node scripts/compare-models.js --models groq-20b,groq-qwen [--only id1,id2]
+ *   node scripts/compare-models.js --filters --models groq-120b,groq-qwen   # el candidato hace de REVISOR en los casos "filter"
  *   node scripts/compare-models.js --report                 # solo regenera el informe con los JSON guardados
  * Salida: logs/compare/<candidato>.json y logs/comparativa-modelos.md (respuestas lado a lado).
  */
@@ -26,20 +26,13 @@ const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'logs', 'compare');
 const REPORT = path.join(ROOT, 'logs', 'comparativa-modelos.md');
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-// Límites del nivel gratuito (Groq: cabeceras reales; Gemini: los del proyecto). maxRequests/maxTokens = tope de ESTA prueba
+// Límites del nivel gratuito (cabeceras reales de Groq). maxRequests/maxTokens = tope de ESTA prueba
 const TARGETS = {
-  'groq-120b': { provider: 'groq', model: 'openai/gpt-oss-120b', reasoning: 'low', headroom: 64, rpm: 30, tpm: 8000, maxTokens: 75000 },
-  'groq-20b': { provider: 'groq', model: 'openai/gpt-oss-20b', reasoning: 'low', headroom: 64, rpm: 30, tpm: 8000, maxTokens: 75000 },
-  'groq-qwen': { provider: 'groq', model: 'qwen/qwen3.8-27b', rpm: 30, tpm: 8000, maxTokens: 75000 },
-  'gemini-flash': { provider: 'gemini', model: 'gemini-3.8-flash', reasoning: 'low', headroom: 64, rpm: 5, tpm: 250000, maxRequests: 18 },
-  'gemini-lite': { provider: 'gemini', model: 'gemini-3.5-flash-lite', reasoning: 'low', headroom: 64, rpm: 15, tpm: 250000, maxRequests: 200 },
-  'gemma': { provider: 'gemini', model: 'gemma-4-31b-it', headroom: 700, rpm: 30, tpm: 16000, maxRequests: 200, stripThought: true, retry5xx: 3 },
+  'groq-120b': { model: 'openai/gpt-oss-120b', reasoning: 'low', headroom: 64, rpm: 30, tpm: 8000, maxTokens: 75000 },
+  'groq-20b': { model: 'openai/gpt-oss-20b', reasoning: 'low', headroom: 64, rpm: 30, tpm: 8000, maxTokens: 75000 },
+  'groq-qwen': { model: 'qwen/qwen3.8-27b', rpm: 30, tpm: 8000, maxTokens: 75000 },
 };
-// Gemini Flash: 20 peticiones al día → solo 10 casos (sin los que dependen de IGDB ni los que responde el código)
-const FLASH_CASES = ['abejas', 'quien-eres-comando', 'cielo-azul', 'signo-zodiaco', 'provocacion', 'quien-eres', 'mencion-opinion-muertes', 'cohost-libre-bosses', 'cohost-libre-motor', 'cohost-muerte'];
-
 // Escenarios de cohost con chat real (logs/chat-2026-11-01.txt y 11-02)
 const COHOST_CASES = [
   { id: 'cohost-libre-bosses', deaths: 5, note: 'Libre: el chat habla de cuántos bosses tiene el juego.', chat: [
@@ -99,7 +92,7 @@ async function runWorker(name) {
   const only = argVal('--only') ? argVal('--only').split(',') : null;
 
   // Una sola entrada en todas las cadenas del router: los reintentos no saltan de modelo y route() decide el destino
-  // (el candidato o el revisor común). Así este script no depende de GEMINI_API_KEY ni de la seudonimización del router.
+  // (el candidato o el revisor común). Así este script no depende de la seudonimización del router.
   for (const k of ['MENTION', 'PROVOCATION', 'DIOSFUA', 'TRIVIA', 'QUEMEPERDI', 'COMMAND', 'COHOST', 'TIMER', 'HOOK', 'ALERT', 'REACTION', 'ENDSTREAM', 'REVIEW', 'PICK']) process.env[`AI_CHAIN_${k}`] = 'groq:openai/gpt-oss-120b';
   process.env.BOT_USERNAME = process.env.BOT_USERNAME || 'dios_fua';
 
@@ -134,7 +127,6 @@ async function runWorker(name) {
     const base = params.max_tokens ? params.max_tokens - (params.reasoning_effort ? 64 : 0) : undefined;
     const messages = params.messages.map(m => {
       const c = { ...m };
-      if (t.provider !== 'groq') { delete c.reasoning; delete c.executed_tools; }
       if (c.role === 'assistant' && c.content == null) c.content = '';
       return c;
     });
@@ -142,8 +134,7 @@ async function runWorker(name) {
     if (base) body.max_tokens = base + (t.headroom || 0);
     if (params.temperature != null) body.temperature = params.temperature;
     if (params.tools) { body.tools = params.tools; if (params.tool_choice) body.tool_choice = params.tool_choice; }
-    // La capa compatible de Gemini rechaza frequency/presence_penalty
-    if (t.provider === 'groq') for (const k of ['frequency_penalty', 'presence_penalty']) if (params[k] != null) body[k] = params[k];
+    for (const k of ['frequency_penalty', 'presence_penalty']) if (params[k] != null) body[k] = params[k];
     if (t.reasoning) body.reasoning_effort = t.reasoning;
     return body;
   }
@@ -165,20 +156,12 @@ async function runWorker(name) {
     const t0 = realNow();
     const rec = { case: currentCase, role, target: t.label, model: t.model };
     try {
-      // retry5xx: solo para muestrear la calidad de un modelo inestable (Gemma da 500/503 a menudo); el bot no reintenta 5xx
-      let r;
-      for (let attempt = 0; ; attempt++) {
-        r = await fetch(t.provider === 'groq' ? GROQ_URL : GEMINI_URL, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${t.provider === 'groq' ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(90000),
-        });
-        if (r.status < 500 || attempt >= (t.retry5xx || 0)) break;
-        rec.retries5xx = attempt + 1;
-        u.requests++;
-        await new Promise(res => setTimeout(res, 2000));
-      }
+      const r = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(90000),
+      });
       const text = await r.text();
       let j = null; try { j = JSON.parse(text); } catch { /* cuerpo no JSON */ }
       rec.ms = realNow() - t0;
@@ -194,12 +177,6 @@ async function runWorker(name) {
       rec.finish = j.choices?.[0]?.finish_reason;
       u.tokens += usage.total_tokens || est;
       slot.tokens = usage.total_tokens || est;
-      for (const c of j.choices || []) {
-        if (typeof c.message?.content === 'string' && t.stripThought && /<\/?thought>/.test(c.message.content)) {
-          rec.thought = true;
-          c.message.content = c.message.content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').replace(/^[\s\S]*<\/thought>/i, '').trim();
-        }
-      }
       if (j.choices?.[0]?.message?.tool_calls?.length) rec.tool = true;
       calls.push(rec);
       return j;
@@ -240,7 +217,6 @@ async function runWorker(name) {
   let cases = filters
     ? all.filter(c => c.filter)
     : [...all.filter(c => !c.filter), ...COHOST_CASES.map(c => ({ ...c, cohost: true, input: c.moment ? `[evento] ${c.moment.description}` : '[libre] ' + c.chat.map(([u, m]) => `${u}: ${m}`).join(' / ') }))];
-  if (name === 'gemini-flash' && !filters) cases = cases.filter(c => FLASH_CASES.includes(c.id));
   if (only) cases = cases.filter(c => only.includes(c.id));
 
   const results = [];
@@ -374,7 +350,7 @@ function writeReport() {
       const all = mainAll(g);
       L.push(`| ${g.candidate} | ${g.model} | ${r.length} | ${r.filter(x => x.reply && x.mainCalls && !x.fromPool && !x.template).length} | ${scored.filter(x => !x.failures.length).length}/${scored.length} | ${r.filter(x => x.fromPool || x.template).length} | ${all.length - ok.length}/${all.length} | ${(med(ms) / 1000).toFixed(1)} s / ${(p90(ms) / 1000).toFixed(1)} s / ${((Math.max(0, ...ms)) / 1000).toFixed(1)} s | ${avg(ok.map(c => c.prompt))} / ${avg(ok.map(c => c.completion))} / ${avg(ok.map(c => c.total))} | ${r.reduce((s, x) => s + x.latam.length, 0)} |`);
     }
-    L.push('', '\\* Expectativas automáticas de `test/eval-cases.json` (sin cohost ni casos informativos). Gemini Flash solo corre 10 casos por su cupo de 20 peticiones al día.', '\\*\\* Sin contar textos fijos de `config/messages.json` (reservas), plantillas de juego ni lo que responde el código sin IA (muertes, qué juego, dificultad). Los cohost que responden SKIP no tienen respuesta y es correcto.', '');
+    L.push('', '\\* Expectativas automáticas de `test/eval-cases.json` (sin cohost ni casos informativos).', '\\*\\* Sin contar textos fijos de `config/messages.json` (reservas), plantillas de juego ni lo que responde el código sin IA (muertes, qué juego, dificultad). Los cohost que responden SKIP no tienen respuesta y es correcto.', '');
     L.push('## Tokens medidos por tipo de llamada (generación, solo llamadas correctas)', '', '| Candidato | Tipo | Llamadas | Entrada media | Salida media | Total medio (con razonamiento) |', '|---|---|---|---|---|---|');
     for (const g of gen) {
       const kindOf = Object.fromEntries(g.results.map(x => [x.id, x.kind.split(' ')[0]]));

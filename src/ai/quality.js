@@ -377,7 +377,6 @@ function wrongWeekday(text, now = new Date()) {
 }
 // Expresiones con etnias o pueblos (la broma no va por ahí)
 const ETHNIC_RE = /\b(payos?|payas?|gitanada|gitaner[ií]a|judiada|sudacas?|negratas?|hacer el indio|trabajar como un negro)\b/i;
-function mentionsEthnicTerms(text) { return ETHNIC_RE.test(String(text || '')); }
 
 // Juzgar el ambiente del chat ("el chat está quieto/dormilón") no es un comentario, es relleno
 const MOOD_JUDGING_RE = /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?|mud[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
@@ -421,8 +420,6 @@ function isCutOff(text) {
   const t = String(text || '').replace(/\bparlus1\w+/gi, '').replace(/[\s.!?…¡¿"”»)]+$/, '').trim();
   return DANGLING_RE.test(t);
 }
-function talksPersonalLife(text) { return personalMatch(text); }
-function repeatsProfanity(text) { return PROFANITY_RE.test(String(text || '')); }
 
 // Motivo de rechazo por redacción o tema vetado (null si pasa). opts.personal=false deja pasar la vida personal (menciones)
 function styleProblem(text, { personal = true, minWords = 3, player = 'manu', now = new Date(), names = [] } = {}) {
@@ -1001,10 +998,10 @@ module.exports = {
   LATAM_RE, ROBOT_REFUSAL_RE, FORMULAS,
   judgesChatMood, hasLatam, isRobotRefusal, matchesFormula, mentionsUnrecordedDeaths, recentlyNamedIn, namesIn,
   hasEmote, emoteAllowed, stripEmotes, applyEmotePolicy, similarity, tooSimilar, repeatsFormula,
-  fuaGender, fixFuaGender, vetAuto, styleProblem, claimsChannelOwner, isCutOff, talksPersonalLife, repeatsProfanity, stripLeadingNames, validateAuto,
+  fuaGender, fixFuaGender, vetAuto, styleProblem, claimsChannelOwner, isCutOff, stripLeadingNames, validateAuto,
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, summaryPersonalLife, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   dropPartialEmote, fitWithEmotes, junkProblem, malformedNumber, citesDeathCount, numberWordsEs, mentionsGenre, forcedComparison, selfHelp, openingKey, sameOpening, moveEmotesToEnd,
-  identityQuestion, extractGameQuery, extractGameMention, madridDay, wrongWeekday, mentionsEthnicTerms, inventedQuote, unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
+  identityQuestion, extractGameQuery, extractGameMention, madridDay, wrongWeekday, inventedQuote, unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
   mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesGameScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

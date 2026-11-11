@@ -15,7 +15,6 @@ function loadExamples() {
   try { examplesCache = JSON.parse(fs.readFileSync(EXAMPLES_FILE, 'utf8')); } catch { examplesCache = {}; }
   return examplesCache;
 }
-function setExamples(data) { examplesCache = data; } // tests
 
 function shuffled(list, rng = Math.random) {
   const a = [...list];
@@ -313,7 +312,7 @@ function retryNote(ruleOrReason) {
 }
 
 module.exports = {
-  IDENTITY, COHOST_FORMS, ALERT_TASKS, WELCOME_NAME_RULE, loadExamples, setExamples, pickStyleExamples, renderExamples, playerLine, roleLine, pickCohostForm,
+  IDENTITY, COHOST_FORMS, ALERT_TASKS, WELCOME_NAME_RULE, loadExamples, pickStyleExamples, renderExamples, playerLine, roleLine, pickCohostForm,
   buildProvocationSystem, buildCohostSystem, buildMentionSystem, buildQuestionSystem, buildAlertSystem, buildSummaryPrompt,
   dayLine, buildHookSystem, buildTimerSystem, buildShoutoutSystem, buildQueMePerdiSystem,
   parseCandidates, rankCandidates, positiveFix, retryNote,

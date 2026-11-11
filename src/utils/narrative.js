@@ -65,13 +65,6 @@ function condenseChat(lines, { topUsers = 3, topWords = 4, lastN = 3, maxLast = 
     + ` Últimos: ${last}`;
 }
 
-// Probabilidad por mensaje: 0 dentro del cooldown; `base` justo al salir y crece con el silencio del cohost hasta `cap`
-function cohostProbability({ base, multiplier = 1, elapsedMs, cooldownMs, cap = 0.9 }) {
-  if (elapsedMs < cooldownMs) return 0;
-  const ramp = 1 + 3 * ((elapsedMs - cooldownMs) / Math.max(cooldownMs, 1));
-  return Math.min(cap, base * multiplier * ramp);
-}
-
 // Descarta marcas de más de 1 h y dice si se alcanzó el tope por hora
 function pruneHourly(stamps, now = Date.now()) {
   return stamps.filter(t => now - t < HOUR_MS);
@@ -264,22 +257,11 @@ function chatSample(lines = [], { n = 8, minLen = 18, maxLen = 90 } = {}) {
   return [...new Set(out)].slice(-n);
 }
 
-// Palabras más repetidas del chat (sin nombres de usuario)
-function topChatWords(lines = [], n = 5, min = 2) {
-  const words = new Map();
-  for (const { message } of lines) {
-    for (const w of new Set(String(message).toLowerCase().split(/[^\p{L}\p{N}_]+/u))) {
-      if (w.length >= 4 && !STOPWORDS.has(w)) words.set(w, (words.get(w) || 0) + 1);
-    }
-  }
-  return [...words.entries()].filter(([, c]) => c >= min).sort((a, b) => b[1] - a[1]).slice(0, n).map(([w]) => w);
-}
-
 module.exports = {
-  windowFacts, topChatWords, chatSample, mergeBossMoments, bossInBatch, BOSS_MERGE_MS, BOSS_SETTLE_MS,
-  streakAllowed, STREAK_COHOST_GAP_MS, freeAngleNote, pickFreeTopic,
+  windowFacts, chatSample, mergeBossMoments, bossInBatch, BOSS_MERGE_MS, BOSS_SETTLE_MS,
+  streakAllowed, STREAK_COHOST_GAP_MS, pickFreeTopic,
   MAX_NARRATIVE_EVENTS, pruneNarrative, restoreNarrative, buildStoryBlock, condenseChat,
-  cohostProbability, pruneHourly, hourlyCapReached,
+  pruneHourly, hourlyCapReached,
   EVENT_COHOST_MIN_GAP_MS, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR,
   deathStreakLength, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue,
   MODE_WINDOWS, MIN_MODE_DWELL_MS, DEATHS_FOR_FOCUS, CALM_CHAT_MAX_MSGS, decideMode, resolveModeConfig,

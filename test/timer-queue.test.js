@@ -12,7 +12,7 @@ const stub = (rel, exports) => {
 
 stub('src/eventsub.js', { isLiveViaEventSub: () => true, getStreamUptime: () => '1h' });
 stub('src/twitch/api.js', { getCurrentGame: async () => null, getGameInfo: async () => null });
-stub('src/ai/handler.js', { getBotPersonality: () => '' });
+stub('src/ai/handler.js', {});
 stub('src/lore/handler.js', { getLoreContext: async () => '' });
 
 const { enqueueTimerMessage, stop } = require('../src/timers/handler');

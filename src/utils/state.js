@@ -213,21 +213,6 @@ let lastCohostContextHash = '';
 function getLastCohostContextHash() { return lastCohostContextHash; }
 function setLastCohostContextHash(hash) { lastCohostContextHash = hash; }
 
-// --- Anclaje periódico de personalidad ---
-let messagesSinceReinforce = 0;
-const REINFORCE_EVERY = 50;
-
-function tickReinforce() {
-  messagesSinceReinforce++;
-  if (messagesSinceReinforce >= REINFORCE_EVERY) {
-    messagesSinceReinforce = 0;
-    return true;
-  }
-  return false;
-}
-
-function resetReinforceCounter() { messagesSinceReinforce = 0; }
-
 // --- Estado de contexto de juego ---
 let _gameContextFailed = false;
 function setGameContextFailed(val) { _gameContextFailed = val; }
@@ -435,16 +420,9 @@ function aiBlockedUntil(key) { return aiBlocks.get(key) || 0; }
 function isAiBlocked(key, now = Date.now()) { return aiBlockedUntil(key) > now; }
 function resetAiBlocks() { aiBlocks.clear(); }
 
-// Groq repone el cupo a las 00:00 UTC; Gemini a medianoche del Pacífico (09:00 en España)
-const PACIFIC_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' });
-const PACIFIC_CLOCK_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Los_Angeles', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// Groq repone el cupo a las 00:00 UTC (el parámetro `provider` se conserva por compatibilidad de las claves `proveedor:modelo`)
 function aiDayKey(provider, now = Date.now()) {
-  return provider === 'gemini' ? PACIFIC_FMT.format(now) : new Date(now).toISOString().slice(0, 10);
-}
-// Ms hasta la próxima medianoche del Pacífico (en los dos días de cambio de hora se desvía como mucho 1 h)
-function msUntilPacificMidnight(now = Date.now()) {
-  const [h, m, s] = PACIFIC_CLOCK_FMT.format(now).split(':').map(Number);
-  return 86400000 - ((h * 60 + m) * 60 + s) * 1000 - (now % 1000);
+  return new Date(now).toISOString().slice(0, 10);
 }
 
 const AI_MINUTE_MS = 60 * 1000;
@@ -540,7 +518,6 @@ function recordCohostDiscard(reason) {
   recordFilterDiscard('cohost', String(reason || '').replace(/^quality:/, ''));
 }
 function getCohostDiscards() { return Object.fromEntries(cohostDiscards); }
-function resetCohostDiscards() { cohostDiscards.clear(); }
 
 // Intentos y envíos del cohost por tipo ('event' | 'free'), y 429 de Groq (límite del proveedor, no el interno)
 const cohostAttempts = { event: 0, free: 0 };
@@ -597,7 +574,7 @@ module.exports = {
   blockAi, aiBlockedUntil, isAiBlocked, resetAiBlocks, aiDayKey,
   startAiRequest, finishAiRequest, getAiMinuteUsage, getAiDayUsage, getAiUsage, resetAiStreamUsage, resetAiUsage,
   noteChatter, getChatterNames, resetChatters,
-  recordCohostDiscard, getCohostDiscards, resetCohostDiscards,
+  recordCohostDiscard, getCohostDiscards,
   getPlayer, setPlayer, resetPlayer, pauseFreeCohost, isFreeCohostPaused, resetFreeCohostPause,
   recordCohostAttempt, recordCohostSent, recordGroq429, getCohostStats, resetCohostStats,
   addLoreSample, getLoreSample, getLoreSampleIds, resetLoreSample,
@@ -614,7 +591,6 @@ module.exports = {
   recordCohost, getLastCohostTime, getCohostTimes, claimHookPause,
   addBotMessage, noteLusorums, getLusorumsHistory, noteMentionFua, getMentionFuaHistory, claimStartAnnouncement, resetStartAnnouncement, getBotHistory, resetBotHistory, addCohostText, getCohostTexts, markNamed, getNamedUsers, resetNamedUsers,
   getLastCohostContextHash, setLastCohostContextHash,
-  tickReinforce, resetReinforceCounter,
   setGameContextFailed, getGameContextFailed,
   setLastCapsRageTime, getLastCapsRageTime,
   setStreamStartedAt, getStreamStartedAt,

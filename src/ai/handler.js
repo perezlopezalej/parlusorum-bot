@@ -50,7 +50,7 @@ const GENERAL_TEMPERATURE = 0.3; // cultura general: menos creatividad, menos da
 const MENTION_MAX_CHARS = 200; // tope de las respuestas a menciones (con el @usuario), recortadas en final de frase
 const QUESTION_COOLDOWN_MS = parseInt(process.env.QUESTION_COOLDOWN_MS || '10000', 10);
 
-// FIX #1: roles claramente definidos
+// roles claramente definidos
 const CREATOR_USERNAME = (channelConfig.creator_username || '').toLowerCase();
 const STREAMER_USERNAME = (channelConfig.streamer_username || '').toLowerCase();
 
@@ -463,7 +463,6 @@ async function runCohost(client, channel, moment = null) {
     const deathLine = `${baseDeathLine}${lastCitedDeaths ? ' Esta vez deja fuera la cifra de caídas.' : ''}${raidLine}`;
     const validateCtx = { player: getPlayer(), deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures(), lastCitedDeaths, game: gameInfo?.game || '' };
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
-    // Lo que genera Gemini no pasa por la revisión de sentido por IA (solo reglas de quality.js y factcheck si habla del juego)
     let generatorModel; // modelo que escribió los candidatos: el selector es de otra familia
     const reviewText = async (text, { sense = true } = {}) => {
       const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense });
@@ -572,11 +571,6 @@ async function runCohost(client, channel, moment = null) {
     recordCohostDiscard(err.code === 'NO_QUOTA' ? 'sin_cupo' : err.status === 429 ? 'groq429' : 'error');
     return 'dropped';
   } finally { cohostRunning = false; }
-}
-
-// Compatibilidad: un único comentario inmediato (evento o libre); devuelve true si habló
-async function handleCohost(client, channel, moment = null) {
-  return (await runCohost(client, channel, moment)) === 'sent';
 }
 
 // Cola de eventos: se comentan todos, de uno en uno; los que esperan más de COHOST_EVENT_TTL caducan
@@ -828,7 +822,7 @@ Cuenta lo ocurrido.` }
   }
 }
 
-// --- Conversation hooks --- FIX #6: game hooks enriquecidos con la ficha del juego + comentarios IA espontáneos
+// --- Conversation hooks --- game hooks enriquecidos con la ficha del juego + comentarios IA espontáneos
 let lastHookTime = 0;
 const recentHooks = [];
 const usedStaticHooks = new Set(); // hooks estáticos ya dichos en este stream
@@ -979,7 +973,7 @@ setInterval(() => { const now = Date.now(); for (const [k,v] of chisteCooldowns)
 function handleChiste(client, channel, tags) {
   if (isSilenced()) return;
   const username = tags['display-name'];
-  // BUG FIX #2: fallback si user-id es undefined (evita cooldown compartido)
+  // fallback si user-id es undefined (evita cooldown compartido)
   const userId = tags['user-id'] || tags['username'] || username;
   const key = `chiste-${userId}`;
   const now = Date.now();
@@ -1027,18 +1021,14 @@ async function buscarJuegoLookup(nombre, question = '') {
   return { text, info };
 }
 
-async function buscarJuegoTool(nombre) {
-  return (await buscarJuegoLookup(nombre)).text;
-}
-
-// --- !dios_fua --- FIX #4 + #7: prompt mejorado + busqueda web Tavily
+// --- !dios_fua ---
 const questionCooldowns = new Map();
 setInterval(() => { const now = Date.now(); for (const [k,v] of questionCooldowns) if (now > v) questionCooldowns.delete(k); }, 30 * 60 * 1000);
 
 async function handleQuestion(client, channel, tags, args) {
   if (isSilenced()) return;
   const username = tags['display-name'];
-  // BUG FIX #2: fallback si user-id es undefined
+  // fallback si user-id es undefined
   const userId = tags['user-id'] || tags['username'] || username;
   const now = Date.now();
 
@@ -1225,7 +1215,7 @@ async function handleShoutout(client, channel, tags, targetUsername) {
   }
 }
 
-// --- Deteccion de highlights para stream markers --- FIX #10
+// --- Deteccion de highlights para stream markers ---
 const highlightKeywords = [
   'clip', 'clipa', 'clipalo', 'marca', 'wtf', 'wow', 'fua',
   'increible', 'brutal', 'epico', 'epica', 'locura', 'boom', 'gg', 'no puede ser'
@@ -1632,19 +1622,6 @@ async function generateProvocationReply(username, question, maxChars) {
   return pickProvocationReply();
 }
 
-// Logins distintos que han escrito en los últimos windowMs (más recientes primero)
-function getRecentChatters(windowMs = 5 * 60 * 1000, now = Date.now()) {
-  const botName = (process.env.BOT_USERNAME || '').toLowerCase();
-  const seen = new Set();
-  for (let i = chatHistory.length - 1; i >= 0; i--) {
-    const m = chatHistory[i];
-    if (now - m.ts > windowMs) break;
-    const login = String(m.username || '').toLowerCase();
-    if (login && login !== botName) seen.add(login);
-  }
-  return [...seen];
-}
-
 function getStreamChatBuffer() {
   return streamChatBuffer.map(m => `${m.username}: ${m.message}`).join('\n');
 }
@@ -1668,12 +1645,12 @@ function restoreCooldowns(data) {
 }
 
 module.exports = {
-  handleCohost, runCohost, enqueueCohostMoment, startEventCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi,
+  runCohost, enqueueCohostMoment, startEventCohost, handleChiste, handleQuestion, handleShoutout, handleQueMePerdi,
   addToHistory, updateLastChatTime, getRecentHistory, checkChatHook, checkStreamStatus,
   initStreamStatus, checkForHighlight,
   checkEmoteSpam, checkCapsRage, checkPatternMatch,
   getActiveUsers, getActiveUsersWithMinMessages, resetActiveUsers, onWarmupMode, postStreamEnd,
-  getStreamChatBuffer, resetStreamChatBuffer, getRecentChatters,
+  getStreamChatBuffer, resetStreamChatBuffer,
   restoreCooldowns, clearUserFactsCache, getCachedUserFacts, getActiveUserIds, forgetUserInMemory,
   // solo tests
   addToUserConversation, getUserConversation,

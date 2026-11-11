@@ -1,4 +1,4 @@
-// Seudonimización de nicks hacia proveedores que pueden usar los datos (Gemini gratuito):
+// Seudonimización de nicks hacia proveedores externos de IA (privacidad):
 // los nicks del chat se cambian por user1, user2… en el prompt y se restauran en la respuesta.
 const channelConfig = require('../../config/channel.json');
 
