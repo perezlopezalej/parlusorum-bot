@@ -30,7 +30,6 @@ const client = { say: (ch, msg) => { sent.push(msg); } };
 function stubModels(fn) {
   const t = async p => { prompts.push(p.messages); return fn(p); };
   router.setTransport('groq', t);
-  router.setTransport('gemini', t);
 }
 const json = (...c) => ({ choices: [{ message: { content: JSON.stringify({ candidatos: c }) }, finish_reason: 'stop' }] });
 const text = c => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
@@ -164,7 +163,7 @@ describe('cohost con tres candidatos', () => {
 
   test('suceso: la forma cambia entre llamadas y no se repite', async () => {
     const forms = [];
-    stubModels(p => { forms.push((/<forma>([^.]*\.)/.exec(p.messages[0].content) || [])[1]); return json('Buen intento de Manu, el FUA aplaude desde su nube.', 'El FUA se levanta antes que el propio jefe de la zona.', 'Otra para el álbum de caídas con más estilo del canal.'); });
+    stubModels(p => { forms.push((/<ajustes>([^.]*\.)/.exec(p.messages[0].content) || [])[1]); return json('Buen intento de Manu, el FUA aplaude desde su nube.', 'El FUA se levanta antes que el propio jefe de la zona.', 'Otra para el álbum de caídas con más estilo del canal.'); });
     for (let i = 0; i < 4; i++) {
       state.resetCohostTexts?.();
       await ai.runCohost(client, '#parlusorum', { kind: 'death', description: 'Manu ha caído contra un jefe' });

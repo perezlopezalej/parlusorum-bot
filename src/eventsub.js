@@ -86,15 +86,13 @@ function formatTokenUse({ stream, day }, limit = GROQ_DAILY_TOKEN_LIMIT) {
   }).join('; ');
 }
 
-// Peticiones por proveedor:modelo: este stream y hoy (Gemini: día del Pacífico) frente al RPD de Gemini
-const GEMINI_RPD = parseInt(process.env.AI_GEMINI_RPD || '500', 10);
-function formatAiUsage(usage, rpd = GEMINI_RPD) {
+// Peticiones por modelo: este stream y hoy (UTC)
+function formatAiUsage(usage) {
   const keys = Object.keys(usage);
   if (!keys.length) return 'peticiones de IA: ninguna';
   return 'peticiones de IA — ' + keys.map(k => {
     const u = usage[k];
-    const quota = k.startsWith('gemini:') && rpd > 0 ? ` (${Math.round(u.day.requests / rpd * 100)}% de ${rpd})` : '';
-    return `${k}: ${u.stream.requests} este stream, ${u.day.requests} hoy${quota}`;
+    return `${k}: ${u.stream.requests} este stream, ${u.day.requests} hoy`;
   }).join('; ');
 }
 

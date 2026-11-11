@@ -40,7 +40,6 @@ const client = { say: (ch, msg) => { said.push(msg); } };
 function stubModels(fn) {
   const t = async p => { prompts.push(p.messages); return fn(p); };
   router.setTransport('groq', t);
-  router.setTransport('gemini', t);
 }
 const text = c => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
 

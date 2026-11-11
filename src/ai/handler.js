@@ -8,6 +8,7 @@ const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDO
 const factcheck = require('./factcheck');
 const { pickBest } = require('./pick-best');
 const { buildGameTemplate } = require('./game-template');
+const { buildGameSheet, leaksSheetRaw } = require('./game-sheet');
 const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudget, isStale } = require('./patterns');
 const { translateGenres } = require('../utils/genres');
 const quality = require('./quality');
@@ -34,6 +35,7 @@ const COHOST_STREAK_GAP = parseInt(process.env.COHOST_STREAK_GAP_MS || String(ST
 const COHOST_FREE_MAX_PER_HOUR = parseInt(process.env.COHOST_FREE_MAX_PER_HOUR || String(FREE_COHOST_MAX_PER_HOUR), 10);
 const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || String(EVENT_COHOST_MAX_PER_HOUR), 10);
 const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
+const COHOST_CANDIDATES = parseInt(process.env.COHOST_CANDIDATES || '2', 10) === 3 ? 3 : 2; // candidatos por llamada del cohost (2 por defecto: en la prueba 2 bastan y gastan menos tokens)
 // Provocaciones: solo la primera de cada usuario en esta ventana recibe réplica
 const PROVOCATION_WINDOW = parseInt(process.env.PROVOCATION_WINDOW_MS || '600000', 10);
 // Menciones: máximo MENTION_MAX_PER_USER respuestas por usuario cada MENTION_WINDOW_MS; una respuesta que lleva
@@ -431,8 +433,8 @@ async function runCohost(client, channel, moment = null) {
     const validateCtx = { player: getPlayer(), deathCount, recent: recentBot, sameKind: getCohostTexts(kindKey), named: namesAllowed ? new Map() : named, now, nameWindowMs: COHOST_NAME_WINDOW, usedStructures: getUsedStructures(), lastCitedDeaths, game: gameInfo?.game || '' };
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
     // Lo que genera Gemini no pasa por la revisión de sentido por IA (solo reglas de quality.js y factcheck si habla del juego)
-    let senseReview = true;
-    const reviewText = async (text, { sense = senseReview } = {}) => {
+    let generatorModel; // modelo que escribió los candidatos: el selector es de otra familia
+    const reviewText = async (text, { sense = true } = {}) => {
       const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense });
       if (review.discard) {
         logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`);
@@ -464,15 +466,15 @@ async function runCohost(client, channel, moment = null) {
     let freeTopic = moment ? null : pickFreeTopic({ ...topicCtx, last: lastFreeTopic });
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
       if (attempt > 0 && !canMakeRequest()) { reason = 'ratelimit'; break; }
-      const system = buildCohostSystem({ game: gameInfo?.game || '', minutes, deathLine, player: getPlayer(), mood, form, emoteLine, nameLine, loreBlock, modeLine: modeConfig.prompt_extension, event: !!moment, weekday: !getUsedStructures().has('dia-semana') }) + retryNote(fixKey);
+      const system = buildCohostSystem({ game: gameInfo?.game || '', minutes, deathLine, player: getPlayer(), mood, form, emoteLine, nameLine, loreBlock, candidates: COHOST_CANDIDATES, modeLine: modeConfig.prompt_extension, event: !!moment, weekday: !getUsedStructures().has('dia-semana') }) + retryNote(fixKey);
       const chatBlock = recentContext ? `<chat>\n${recentContext}\n</chat>` : '';
       const user = moment
         ? `<suceso>${moment.description}</suceso>\n${chatBlock}\nComenta el suceso.`
         : `${chatBlock}${chatSummary ? `\n<resumen_chat>${chatSummary}</resumen_chat>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\n<tema>${freeTopic.note}</tema>\nComenta el tema.`;
       const response = await aiChat('cohost', { max_tokens: 220, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
-      senseReview = response._ai?.provider !== 'gemini';
+      generatorModel = response._ai?.model;
       const raw = (response.choices[0].message.content || '').trim();
-      const candidates = /^SKIP\b/i.test(raw) ? [] : parseCandidates(raw);
+      const candidates = /^SKIP\b/i.test(raw) ? [] : parseCandidates(raw, COHOST_CANDIDATES);
       if (!candidates.length) {
         if (moment) { fixKey = 'vacio'; reason = 'quality:vacio'; continue; }
         recordCohostDiscard('skip'); // cuenta cada lista vacía del modelo (sale en el resumen de fin de stream)
@@ -494,6 +496,7 @@ async function runCohost(client, channel, moment = null) {
           facts: `Caídas anotadas: ${deathCount}. Juega ${getPlayer() === 'pao' ? 'Pao' : 'Manu'}.${minutes != null ? ` Llevan ${quality.approxDuration(minutes)} de directo.` : ''}${moment ? ` Suceso: ${moment.description}.` : ''}`,
           chat: getRecentHistory(8),
           activity: chatHistory.filter(m => m.ts > now - 5 * 60 * 1000).length,
+          generator: generatorModel,
         });
         if (pick.status === 'ok') {
           const chosen = ranked[pick.index].text;
@@ -871,7 +874,7 @@ async function checkChatHook(client, channel) {
         const out = truncate((response.choices[0].message.content || '').trim());
         const check = quality.validateHook(out, { deathCount, recent: recentHooks, player: getPlayer(), lastCitedDeaths, requireQuestion: true, extraDeathNumbers: [hookFacts.deaths, hookFacts.streak] });
         if (!check.ok) { feedback = check.reason; logger.info(`Hook descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
-        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}. ${gameFacts}`, { game, sense: response._ai?.provider !== 'gemini' });
+        const review = await factcheck.evaluate(out, `Juego: ${gameContext}. Muertes anotadas: ${deathCount}. ${gameFacts}`, { game, sense: true });
         if (review.discard) {
           logger.info(`Hook descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
           break;
@@ -987,16 +990,8 @@ async function buscarJuegoLookup(nombre, question = '') {
   logger.info(`!dios_fua buscar_juego: "${clean.slice(0, 80)}" → ${info ? `${info.name} (${match})` : 'sin datos'}`);
   if (match === 'none') return { info: null, text: `SIN DATOS: no hay información de "${clean}". Si es un videojuego no inventes nada y dilo con humor sin hablar de datos ni de fuentes; si no es un videojuego, responde con lo que sepas.` };
   if (match === 'maybe') return { info: null, text: `SIN DATOS, quizá se refiera a ${info.name}. Sin hablar de datos ni de fuentes: no presentes ese juego como el pedido ni uses sus datos; pregunta si se refiere a ese.` };
-  const text = [
-    `Nombre: ${info.name}`,
-    `Salida: ${info.released || 'desconocida'}`,
-    `Desarrolladora: ${info.developers || 'desconocida'}`,
-    // El país solo se da si la fuente lo trae (IGDB); sin él, el filtro de atributos impide afirmarlo
-    ...(info.country ? [`País de la desarrolladora: ${info.country}`] : []),
-    ...(info.publishers ? [`Editora: ${info.publishers}`] : []),
-    `Géneros: ${info.genres || 'desconocidos'}`,
-    `Descripción (puede estar en inglés): ${info.description || 'sin descripción'}`
-  ].join('\n');
+  // Ficha en español y en limpio (fecha legible, géneros traducidos, resumen en español de la caché): el modelo nunca ve el inglés de IGDB
+  const text = await buildGameSheet(info);
   return { text, info };
 }
 
@@ -1056,17 +1051,26 @@ async function handleQuestion(client, channel, tags, args) {
     ];
     const qModeConfig = getModeConfig();
     const qMaxTokens = qModeConfig.max_tokens ?? 150;
+    // Si la pregunta nombra un juego, su ficha de IGDB se busca ANTES de llamar al modelo y se le pasa siempre (como en las menciones):
+    // no se depende de que el modelo llame a buscar_juego. Sin ficha (no hay nombre o IGDB no lo conoce) sigue el flujo con la herramienta.
+    const gameName = quality.extractGameMention(question);
+    const pre = gameName ? await buscarJuegoLookup(gameName, question) : null;
+    const prefetched = !!pre?.info;
+    if (prefetched) {
+      chatlog.noteTool('buscar_juego');
+      const last = messages[messages.length - 1];
+      last.content = `<ficha_igdb>\n${pre.text}\n</ficha_igdb>\n${last.content}`;
+    }
     let response = await aiChat('diosfua', {
       max_tokens: qMaxTokens,
       ...(quality.isGameQuestion(question) || quality.talksAboutGames(question) ? {} : { temperature: GENERAL_TEMPERATURE }),
-      tools: [BUSCAR_JUEGO_TOOL],
-      tool_choice: 'auto',
+      ...(prefetched ? {} : { tools: [BUSCAR_JUEGO_TOOL], tool_choice: 'auto' }),
       messages
     });
     // Una sola ronda de herramienta: ejecutar buscar_juego y pedir la respuesta final sin tools
     const toolCalls = response.choices[0]?.message?.tool_calls;
-    let gameText = '';
-    let gameData = null;
+    let gameText = prefetched ? `${pre.text}\n` : '';
+    let gameData = prefetched ? pre.info : null;
     let gameDown = false;
     if (toolCalls?.length) {
       messages.push(response.choices[0].message);
@@ -1107,7 +1111,7 @@ async function handleQuestion(client, channel, tags, args) {
     // Datos del juego: solo los que devolvió buscar_juego (IGDB); si afirma algo más, no se envía.
     // Solo si hablan de videojuegos: la cultura general se responde con el conocimiento del modelo.
     const gameTopic = quality.isGameQuestion(question) || quality.talksAboutGames(`${question} ${answer}`)
-      || (!!toolCalls?.length && gameText.length > 0 && !gameText.startsWith('SIN DATOS'));
+      || ((prefetched || !!toolCalls?.length) && gameText.length > 0 && !gameText.startsWith('SIN DATOS'));
     const techLeak = quality.leaksTech(answer) || ownerClaim;
     let discard = techLeak;
     let claim = '';
@@ -1119,12 +1123,15 @@ async function handleQuestion(client, channel, tags, args) {
       ? (noGameData ? quality.inventedCompany(answer, gameText) : quality.unsupportedAttributes(answer, gameText))
       : '';
     if (inventedAttr && !discard) { discard = true; claim = inventedAttr; }
+    // Ficha volcada en bruto (inglés, fechas ISO, campos copiados): no se envía; con datos de IGDB, un reintento y si no la plantilla
+    const rawLeak = !techLeak ? leaksSheetRaw(answer, { names: [gameData?.name, gameName, ...(channelConfig.games_played || [])] }) : '';
+    if (rawLeak && !discard) { discard = true; claim = rawLeak; logger.info(`!dios_fua: respuesta con la ficha en bruto (${rawLeak})`); }
     // Con datos reales de IGDB, un único reintento diciéndole qué frase no estaba respaldada
     if (discard && !techLeak && /^Nombre: /m.test(gameText)) {
-      messages.push({ role: 'user', content: 'Responde otra vez con la fecha, el estudio, los géneros y la descripción del juego; para lo demás, di con humor que no tienes ni idea.' });
+      messages.push({ role: 'user', content: 'Responde otra vez en español y con tus palabras, en una o dos frases, contestando directamente a lo que pregunta con la ficha; para lo que la ficha no diga, di con humor que no tienes ni idea.' });
       const retry = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
       const retryAnswer = retry.choices[0].message.content;
-      if (retryAnswer && !quality.leaksTech(retryAnswer) && !quality.unsupportedAttributes(retryAnswer, gameText) && !await factcheck.shouldDiscard(retryAnswer, gameText, { source: 'juego' })) { answer = retryAnswer; discard = false; }
+      if (retryAnswer && !quality.leaksTech(retryAnswer) && !leaksSheetRaw(retryAnswer, { names: [gameData?.name, gameName, ...(channelConfig.games_played || [])] }) && !quality.unsupportedAttributes(retryAnswer, gameText) && !await factcheck.shouldDiscard(retryAnswer, gameText, { source: 'juego' })) { answer = retryAnswer; discard = false; }
     }
     // Sigue fallando pero IGDB sí tiene el juego: plantilla solo con datos de IGDB en vez de la frase de reserva
     if (discard && !techLeak && gameData) {

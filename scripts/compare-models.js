@@ -81,7 +81,7 @@ function main() {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     for (const m of models) {
       console.log(`\n══ ${m} (${TARGETS[m].model})${filters ? ' como revisor' : ''} ══`);
-      const pass = ['--worker', m, ...(filters ? ['--filters'] : []), ...(argVal('--only') ? ['--only', argVal('--only')] : []), ...(argVal('--aux') ? ['--aux', argVal('--aux')] : [])];
+      const pass = ['--worker', m, ...(filters ? ['--filters'] : []), ...(argVal('--only') ? ['--only', argVal('--only')] : []), ...(argVal('--aux') ? ['--aux', argVal('--aux')] : []), ...(argVal('--tag') ? ['--tag', argVal('--tag')] : [])];
       const r = spawnSync(process.execPath, [__filename, ...pass], { stdio: 'inherit', cwd: ROOT });
       if (r.status) console.error(`  el worker de ${m} terminó con código ${r.status}`);
     }
@@ -93,14 +93,14 @@ function main() {
 async function runWorker(name) {
   const target = { label: name, ...TARGETS[name] };
   const filters = args.includes('--filters');
-  const auxName = argVal('--aux') || 'gemini-lite';
+  const auxName = argVal('--aux') || 'groq-20b';
   // En --filters el candidato es el revisor; si no, el revisor es común para todos
   const aux = filters ? target : { label: auxName, ...TARGETS[auxName] };
   const only = argVal('--only') ? argVal('--only').split(',') : null;
 
   // Una sola entrada en todas las cadenas del router: los reintentos no saltan de modelo y route() decide el destino
   // (el candidato o el revisor común). Así este script no depende de GEMINI_API_KEY ni de la seudonimización del router.
-  for (const k of ['MENTION', 'PROVOCATION', 'DIOSFUA', 'TRIVIA', 'QUEMEPERDI', 'COMMAND', 'COHOST', 'TIMER', 'HOOK', 'ALERT', 'REACTION', 'ENDSTREAM', 'REVIEW']) process.env[`AI_CHAIN_${k}`] = 'groq:openai/gpt-oss-120b';
+  for (const k of ['MENTION', 'PROVOCATION', 'DIOSFUA', 'TRIVIA', 'QUEMEPERDI', 'COMMAND', 'COHOST', 'TIMER', 'HOOK', 'ALERT', 'REACTION', 'ENDSTREAM', 'REVIEW', 'PICK']) process.env[`AI_CHAIN_${k}`] = 'groq:openai/gpt-oss-120b';
   process.env.BOT_USERNAME = process.env.BOT_USERNAME || 'dios_fua';
 
   let currentCase = null;
@@ -308,7 +308,7 @@ async function runWorker(name) {
     results.push(res);
     console.log(`[${i + 1}/${cases.length}] ${res.failures.length ? 'FALLA' : 'OK   '} ${c.id} · ${(ms / 1000).toFixed(1)} s · ${res.mainCalls}+${res.auxCalls} llamadas${c.filter ? ` · ${rejectedBy || 'pasa'}` : ''}\n    ${reply || (error ? `ERROR ${error}` : `(sin respuesta${discards.length ? `: ${discards[0]}` : ''})`)}${res.failures.length ? `\n    ✘ ${res.failures.join('; ')}` : ''}`);
   }
-  const file = path.join(OUT_DIR, `${filters ? 'revisor-' : ''}${name}.json`);
+  const file = path.join(OUT_DIR, `${filters ? 'revisor-' : ''}${name}${argVal('--tag') ? '-' + argVal('--tag') : ''}.json`);
   let merged = { results, calls };
   // Con --only se sustituyen esos casos en el resultado anterior (p. ej. repetir los que dependen de IGDB)
   if (only && fs.existsSync(file)) {

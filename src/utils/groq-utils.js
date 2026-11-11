@@ -7,6 +7,10 @@ const { cutAtSentence } = require('../ai/quality');
 // desde sep/2026. Verificar los vivos con: GET https://api.groq.com/openai/v1/models
 const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const GROQ_MODEL_FAST = process.env.GROQ_MODEL_FAST || 'openai/gpt-oss-20b';
+// Selector de candidatos (pick-best): de otra familia que el generador (gpt-oss). Si genera qwen, elige el primer gpt-oss de la cadena.
+// Tipos que no necesitan tanta gracia (alertas, resumen de media hora, hooks, fin de stream): qwen, con cupo propio, para no gastar el del 120b.
+const GROQ_MODEL_LIGHT = process.env.GROQ_MODEL_LIGHT || 'qwen/qwen3.8-27b';
+const GROQ_MODEL_PICK = process.env.GROQ_MODEL_PICK || 'qwen/qwen3.8-27b';
 // groq/compound traia busqueda web integrada y no tiene sustituto en la API.
 // !dios_fua responde ahora con el modelo normal, sin busqueda.
 const GROQ_MODEL_COMPOUND = process.env.GROQ_MODEL_COMPOUND || GROQ_MODEL;
@@ -76,4 +80,4 @@ function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   return cutAtSentence(clean, limit);
 }
 
-module.exports = { groqCreate, isModelGone, isDailyQuota, retryAfterMs, stripThinking, truncate, isReasoningModel, REASONING_HEADROOM, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_COMPOUND, GROQ_MODEL_FALLBACKS };
+module.exports = { groqCreate, isModelGone, isDailyQuota, retryAfterMs, stripThinking, truncate, isReasoningModel, REASONING_HEADROOM, TWITCH_MAX_LENGTH, GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_LIGHT, GROQ_MODEL_PICK, GROQ_MODEL_COMPOUND, GROQ_MODEL_FALLBACKS };

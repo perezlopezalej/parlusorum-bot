@@ -421,7 +421,7 @@ function getAiUsage(now = Date.now()) {
 function resetAiStreamUsage() { aiStream.clear(); }
 function resetAiUsage() { aiStream.clear(); aiMinute.clear(); aiDay.clear(); }
 
-// Nicks vistos en el chat (para seudonimizarlos en los prompts que salen a Gemini)
+// Nicks vistos en el chat (para seudonimizarlos en los prompts que se mandan a Groq)
 const CHATTER_TTL_MS = 3 * 60 * 60 * 1000;
 const CHATTER_MAX = 400;
 const chatters = new Map();
@@ -500,7 +500,7 @@ module.exports = {
   pushChatLog, takeChatLog, requeueChatLog, getChatLogSize,
   recordGroqFallback, getGroqFallbackUse, resetGroqFallbackUse,
   recordGroqTokens, getGroqTokenUse, resetGroqTokenUse,
-  blockAi, aiBlockedUntil, isAiBlocked, resetAiBlocks, aiDayKey, msUntilPacificMidnight,
+  blockAi, aiBlockedUntil, isAiBlocked, resetAiBlocks, aiDayKey,
   startAiRequest, finishAiRequest, getAiMinuteUsage, getAiDayUsage, getAiUsage, resetAiStreamUsage, resetAiUsage,
   noteChatter, getChatterNames, resetChatters,
   recordCohostDiscard, getCohostDiscards, resetCohostDiscards,

@@ -4,7 +4,6 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const router = require('../src/utils/ai-router');
 const state = require('../src/utils/state');
-const gemini = require('../src/utils/ai-gemini');
 const { pseudonymize, restoreText, restoreResult } = require('../src/utils/ai-pseudonym');
 const { isModelGone } = require('../src/utils/groq-utils');
 const { formatAiUsage } = require('../src/eventsub');
@@ -21,37 +20,55 @@ function fake(provider, handler) {
   router.setTransport(provider, async p => { calls.push(`${provider}:${p.model}`); return handler(p); });
 }
 beforeEach(() => { calls = []; state.resetAiBlocks(); state.resetAiUsage(); state.resetChatters(); state.resetGroqFallbackUse(); });
-afterEach(() => { delete process.env.GEMINI_API_KEY; for (const k of Object.keys(process.env)) if (k.startsWith('AI_CHAIN_')) delete process.env[k]; });
+afterEach(() => { for (const k of Object.keys(process.env)) if (k.startsWith('AI_CHAIN_')) delete process.env[k]; });
 
 describe('cadenas por tipo de llamada', () => {
-  test('parseChain lee proveedor:modelo y descarta eslabones no válidos', () => {
-    assert.deepEqual(chainOf('groq:openai/gpt-oss-120b, gemini:gemini-3.5-flash-lite, x:foo, groq:').map(l => l.key), ['groq:openai/gpt-oss-120b', 'gemini:gemini-3.5-flash-lite']);
+  test('parseChain lee groq:modelo y descarta eslabones no válidos (también los de Gemini)', () => {
+    assert.deepEqual(chainOf('groq:openai/gpt-oss-120b, gemini:gemini-3.5-flash-lite, x:foo, groq:').map(l => l.key), ['groq:openai/gpt-oss-120b']);
   });
 
-  test('sin GEMINI_API_KEY el cohost va solo por Groq', () => {
-    assert.ok(router.getChain('cohost').every(l => l.provider === 'groq'));
-  });
-
-  test('con clave: cohost, timer, hook, alert, reaction y endstream empiezan por Gemini', () => {
-    process.env.GEMINI_API_KEY = 'k';
-    for (const k of ['cohost', 'timer', 'hook', 'alert', 'reaction', 'endstream']) {
-      assert.equal(router.getChain(k)[0].provider, 'gemini', k);
-      assert.equal(router.getChain(k).at(-1).provider, 'groq', k);
+  test('los tipos que necesitan más gracia (cohost, reaction, !dios_fua, !quemeperdi) empiezan por el 120b', () => {
+    for (const k of ['cohost', 'reaction', 'diosfua', 'quemeperdi']) {
+      const c = router.getChain(k);
+      assert.ok(c.every(l => l.provider === 'groq'), k);
+      assert.match(c[0].model, /gpt-oss-120b/, k);
     }
   });
 
-  test('menciones, !dios_fua, trivia, !quemeperdi y comandos nunca van a Gemini', () => {
-    process.env.GEMINI_API_KEY = 'k';
-    for (const k of ['mention', 'provocation', 'diosfua', 'trivia', 'quemeperdi', 'command']) {
-      assert.ok(router.getChain(k).every(l => l.provider === 'groq'), k);
+  test('menciones y provocaciones (mucho volumen) empiezan por el 20b', () => {
+    for (const k of ['mention', 'provocation']) assert.match(router.getChain(k)[0].model, /gpt-oss-20b/, k);
+  });
+
+  test('alertas, timer IA, hooks, fin de stream, trivia y comandos empiezan por qwen (cupo propio) y el 120b queda de reserva', () => {
+    for (const k of ['alert', 'timer', 'hook', 'endstream', 'trivia', 'command']) {
+      const c = router.getChain(k);
+      assert.ok(c.every(l => l.provider === 'groq'), k);
+      assert.match(c[0].model, /qwen/, k);
+      assert.ok(c.some(l => /gpt-oss-120b/.test(l.model)), k);
     }
   });
 
-  test('las revisiones empiezan por el modelo rápido de Groq y Gemini queda de último', () => {
-    process.env.GEMINI_API_KEY = 'k';
+  test('si el generador es qwen, el selector es un gpt-oss', () => {
+    assert.ok(router.getChain('pick', { generator: 'qwen/qwen3.8-27b' }).every(l => /gpt-oss/.test(l.model)));
+  });
+
+  test('las revisiones empiezan por el modelo rápido de Groq', () => {
     const c = router.getChain('review');
     assert.match(c[0].model, /gpt-oss-20b/);
-    assert.equal(c.at(-1).provider, 'gemini');
+    assert.ok(c.every(l => l.provider === 'groq'));
+  });
+
+  test('el selector es de otra familia que el generador (gpt-oss → qwen y al revés)', () => {
+    const fam = router.modelFamily;
+    const vsGptOss = router.getChain('pick', { generator: 'openai/gpt-oss-120b' });
+    assert.ok(vsGptOss.length && vsGptOss.every(l => fam(l.model) !== 'gpt-oss'), vsGptOss.map(l => l.key).join());
+    const vsQwen = router.getChain('pick', { generator: 'qwen/qwen3.8-27b' });
+    assert.ok(vsQwen.length && vsQwen.every(l => fam(l.model) !== 'qwen'), vsQwen.map(l => l.key).join());
+  });
+
+  test('AI_CHAIN_PICK no puede meter la familia del generador', () => {
+    process.env.AI_CHAIN_PICK = 'groq:openai/gpt-oss-20b,groq:qwen/qwen3.8-27b';
+    assert.deepEqual(router.getChain('pick', { generator: 'openai/gpt-oss-120b' }).map(l => l.model), ['qwen/qwen3.8-27b']);
   });
 
   test('AI_CHAIN_<TIPO> manda sobre el defecto; un tipo desconocido lanza', () => {
@@ -62,12 +79,10 @@ describe('cadenas por tipo de llamada', () => {
 });
 
 describe('salto de eslabón y bloqueos', () => {
-  const chain = chainOf('groq:a,groq:b,gemini:g');
-  beforeEach(() => { process.env.GEMINI_API_KEY = 'k'; });
+  const chain = chainOf('groq:a,groq:b,groq:c');
 
   test('un 429 salta al siguiente sin esperar y bloquea el agotado', async () => {
     fake('groq', p => { if (p.model === 'a') throw quota(); return ok(); });
-    fake('gemini', () => ok());
     const t0 = Date.now();
     const res = await router.runChain(chain, 'mention', { messages: [] });
     assert.deepEqual(calls, ['groq:a', 'groq:b']);
@@ -109,18 +124,9 @@ describe('salto de eslabón y bloqueos', () => {
   });
 
   test('si todos fallan lanza el último error', async () => {
-    fake('groq', () => { throw quota('sin cupo'); });
-    fake('gemini', () => { throw server(503); });
+    fake('groq', p => { throw p.model === 'c' ? server(503) : quota('sin cupo'); });
     await assert.rejects(router.runChain(chain, 'mention', { messages: [] }), /503/);
-    assert.deepEqual(calls, ['groq:a', 'groq:b', 'gemini:g']);
-  });
-
-  test('429 diario de Gemini bloquea hasta la medianoche del Pacífico', () => {
-    const l = chainOf('gemini:g')[0];
-    const now = Date.UTC(2026, 10, 3, 20, 0, 0);
-    const ms = router.blockDuration(l, quota('Quota exceeded: RequestsPerDay limit 500'), now);
-    assert.equal(ms, state.msUntilPacificMidnight(now) + 60000);
-    assert.ok(ms > 60 * 60 * 1000);
+    assert.deepEqual(calls, ['groq:a', 'groq:b', 'groq:c']);
   });
 
   test('429 por minuto bloquea 1 min; retry-after manda; el tope es 30 min', () => {
@@ -179,95 +185,43 @@ describe('contadores y presupuesto', () => {
     assert.deepEqual(router.orderChain(chain, 300).map(l => l.model), ['c', 'a', 'b']);
   });
 
-  test('Gemini: salta a Groq al llegar a ~450 peticiones del día del Pacífico', () => {
-    const l = chainOf('gemini:g')[0];
-    const now = Date.UTC(2026, 10, 3, 18, 0, 0);
-    for (let i = 0; i < 449; i++) state.startAiRequest('gemini', 'g', 0, now - 120000);
-    assert.equal(router.overBudget(l, 0, now), false);
-    state.startAiRequest('gemini', 'g', 0, now - 120000);
-    assert.equal(router.overBudget(l, 0, now), true);
-  });
-
-  test('el día de Gemini cambia a medianoche del Pacífico (09:00 en España), el de Groq a las 00:00 UTC', () => {
-    const before = Date.UTC(2026, 10, 3, 7, 59); // 23:59 del día 2 en el Pacífico
-    const after = Date.UTC(2026, 10, 3, 8, 1);
-    assert.notEqual(state.aiDayKey('gemini', before), state.aiDayKey('gemini', after));
-    assert.equal(state.aiDayKey('groq', before), state.aiDayKey('groq', after));
-  });
-
-  test('el cambio de horario del 1-11-2026 no rompe la clave del día', () => {
-    assert.equal(state.aiDayKey('gemini', Date.UTC(2026, 10, 1, 9, 30)), '2026-11-01');
-    assert.equal(state.aiDayKey('gemini', Date.UTC(2026, 10, 1, 6, 30)), '2026-10-31');
+  test('el día de uso cambia a las 00:00 UTC', () => {
+    assert.notEqual(state.aiDayKey('groq', Date.UTC(2026, 10, 3, 23, 59)), state.aiDayKey('groq', Date.UTC(2026, 10, 4, 0, 1)));
+    assert.equal(state.aiDayKey('groq', Date.UTC(2026, 10, 3, 0, 1)), '2026-11-03');
   });
 
   test('startAiRequest/finishAiRequest suman peticiones y tokens por clave', () => {
-    const h = state.startAiRequest('gemini', 'g', 100);
+    const h = state.startAiRequest('groq', 'g', 100);
     state.finishAiRequest(h, { prompt_tokens: 40, completion_tokens: 10 });
-    const u = state.getAiUsage()['gemini:g'];
+    const u = state.getAiUsage()['groq:g'];
     assert.equal(u.stream.requests, 1);
     assert.equal(u.stream.tokens, 50);
     assert.ok(u.day.requests >= 1);
-    assert.equal(state.getAiMinuteUsage('gemini:g').tokens, 50);
+    assert.equal(state.getAiMinuteUsage('groq:g').tokens, 50);
   });
 
-  test('formatAiUsage muestra el % del RPD solo para Gemini', () => {
-    const txt = formatAiUsage({ 'gemini:g': { stream: { requests: 50 }, day: { requests: 100 } }, 'groq:a': { stream: { requests: 3 }, day: { requests: 4 } } }, 500);
-    assert.match(txt, /gemini:g: 50 este stream, 100 hoy \(20% de 500\)/);
+  test('formatAiUsage muestra las peticiones por modelo', () => {
+    const txt = formatAiUsage({ 'groq:a': { stream: { requests: 3 }, day: { requests: 4 } } });
     assert.match(txt, /groq:a: 3 este stream, 4 hoy$/);
   });
 });
 
-describe('adaptador de Gemini', () => {
-  test('quita las penalties, fuerza reasoning_effort low (nunca none) y suma margen', () => {
-    const b = gemini.buildBody({ messages: [{ role: 'user', content: 'x' }], max_tokens: 90, frequency_penalty: 0.8, presence_penalty: 0.6, reasoning_effort: 'none', temperature: 0.4 }, 'gemini-3.5-flash-lite');
-    assert.equal('frequency_penalty' in b, false);
-    assert.equal('presence_penalty' in b, false);
-    assert.equal(b.reasoning_effort, 'low');
-    assert.equal(b.max_tokens, 154);
-    assert.equal(b.temperature, 0.4);
-  });
-
-  test('Gemma: sin reasoning_effort y +700 de margen', () => {
-    const b = gemini.buildBody({ messages: [], max_tokens: 90 }, 'gemma-4-31b-it');
-    assert.equal('reasoning_effort' in b, false);
-    assert.equal(b.max_tokens, 790);
-  });
-
-  test('limpia campos de Groq de los mensajes y deja el assistant sin texto en ""', () => {
-    const b = gemini.buildBody({ messages: [{ role: 'assistant', content: null, reasoning: 'x', executed_tools: [], tool_calls: [{ id: '1' }] }] }, 'm');
-    assert.deepEqual(b.messages[0], { role: 'assistant', content: '', tool_calls: [{ id: '1' }] });
-  });
-
-  test('stripThought quita <thought> completo o sin abrir', () => {
-    assert.equal(gemini.stripThought({ choices: [{ message: { content: '<thought>a\nb</thought>Hola' } }] }).choices[0].message.content, 'Hola');
-    assert.equal(gemini.stripThought({ choices: [{ message: { content: 'razono…</thought>Hola' } }] }).choices[0].message.content, 'Hola');
-  });
-
-  test('create: errores HTTP llevan status y retry-after; el timeout lleva ETIMEDOUT', async () => {
-    const res = (status, body, headers = {}) => ({ ok: status < 400, status, text: async () => JSON.stringify(body), headers: { get: k => headers[k] ?? null } });
-    await assert.rejects(gemini.create({}, { fetchImpl: async () => res(429, { error: { message: 'quota' } }, { 'retry-after': '7' }), apiKey: 'k' }), e => e.status === 429 && e.headers['retry-after'] === '7' && /quota/.test(e.message));
-    await assert.rejects(gemini.create({}, { fetchImpl: async () => { throw Object.assign(new Error('x'), { name: 'TimeoutError' }); }, apiKey: 'k' }), e => e.code === 'ETIMEDOUT');
-    const r = await gemini.create({}, { fetchImpl: async () => res(200, { choices: [{ message: { content: '<thought>x</thought>ok' } }] }), apiKey: 'k' });
-    assert.equal(r.choices[0].message.content, 'ok');
-  });
-
-  test('con Gemini en la cadena, los nicks salen seudonimizados y vuelven restaurados', async () => {
-    process.env.GEMINI_API_KEY = 'k';
+describe('seudonimización hacia Groq', () => {
+  test('los nicks salen seudonimizados y vuelven restaurados', async () => {
     state.noteChatter('Mujica90_');
     let sent;
-    router.setTransport('gemini', async p => { sent = JSON.stringify(p.messages); return { choices: [{ message: { content: 'Qué tal user1, bien jugado' } }] }; });
-    const r = await router.runChain(chainOf('gemini:g'), 'cohost', { messages: [{ role: 'user', content: 'Mujica90_: hola' }] });
+    router.setTransport('groq', async p => { sent = JSON.stringify(p.messages); return { choices: [{ message: { content: 'Qué tal user1, bien jugado' } }] }; });
+    const r = await router.runChain(chainOf('groq:a'), 'cohost', { messages: [{ role: 'user', content: 'Mujica90_: hola' }] });
     assert.doesNotMatch(sent, /Mujica90_/);
     assert.match(sent, /user1/);
     assert.equal(r.choices[0].message.content, 'Qué tal Mujica90_, bien jugado');
   });
 
-  test('con Groq los nicks no se tocan', async () => {
-    state.noteChatter('Mujica90_');
+  test('los nicks pasados en opts.names también se seudonimizan', async () => {
     let sent;
     router.setTransport('groq', async p => { sent = JSON.stringify(p.messages); return ok(); });
-    await router.runChain(chainOf('groq:a'), 'mention', { messages: [{ role: 'user', content: 'Mujica90_: hola' }] });
-    assert.match(sent, /Mujica90_/);
+    await router.runChain(chainOf('groq:a'), 'mention', { messages: [{ role: 'user', content: 'Hola Zorrito77' }] }, { names: ['Zorrito77'] });
+    assert.doesNotMatch(sent, /Zorrito77/);
   });
 });
 

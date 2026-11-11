@@ -40,7 +40,6 @@ const isSelector = p => /editor de un chat/.test(p.messages[0].content);
 function stubModels(fn) {
   const t = async p => { calls.push({ selector: isSelector(p), messages: p.messages }); return fn(p, isSelector(p)); };
   router.setTransport('groq', t);
-  router.setTransport('gemini', t);
 }
 const generated = () => calls.filter(c => !c.selector);
 const selectorCalls = () => calls.filter(c => c.selector);
@@ -207,9 +206,24 @@ describe('selector con IA', () => {
     assert.match(p, /2\) dos/);
     assert.doesNotMatch(p, /parlus1/);
   });
+  test('pickBest: pide el selector a otra familia que el generador y baraja los candidatos', async () => {
+    const models = []; const firsts = new Set();
+    router.setTransport('groq', async p => { models.push(p.model); firsts.add(/1\) (\S+)/.exec(p.messages[1].content)[1]); return text('{"mejor": 1}'); });
+    const rnd = Math.random;
+    try {
+      for (const v of [0, 0.99]) { Math.random = () => v; await pickBest(['aaa bbb', 'ccc ddd', 'eee fff'], { generator: 'openai/gpt-oss-120b' }); }
+    } finally { Math.random = rnd; }
+    assert.ok(models.every(m => /qwen/.test(m)), models.join());
+    assert.ok(firsts.size > 1, 'el primer candidato mostrado cambia');
+    models.length = 0;
+    await pickBest(['aaa bbb'], { generator: 'qwen/qwen3.8-27b' });
+    assert.ok(models.every(m => /gpt-oss/.test(m)), models.join());
+  });
   test('pickBest: elegido, ninguno y error', async () => {
     stubModels(() => text('{"mejor": 2}'));
-    assert.deepEqual(await pickBest(['a b c d', 'e f g h']), { status: 'ok', index: 1 });
+    assert.deepEqual(await pickBest(['a b c d', 'e f g h'], { order: [0, 1] }), { status: 'ok', index: 1 });
+    // con el orden barajado, el índice devuelto es el de la lista original
+    assert.deepEqual(await pickBest(['a b c d', 'e f g h'], { order: [1, 0] }), { status: 'ok', index: 0 });
     stubModels(() => text('{"mejor": 0}'));
     assert.deepEqual(await pickBest(['a b c d', 'e f g h']), { status: 'none' });
     stubModels(() => { throw new Error('sin cupo'); });
@@ -220,9 +234,11 @@ describe('selector con IA', () => {
   const A = 'El jefe ya sabe el camino a casa de Manu de memoria.';
   const B = 'Hacer caso al chat con ese historial es jugársela.';
   const C = 'El FUA se levanta antes que el propio jefe, y encima aplaude.';
+  // Los candidatos llegan al selector en orden aleatorio: el stub elige por el texto, no por la posición
+const choose = (p, wanted) => text(JSON.stringify({ mejor: p.messages[1].content.split(String.fromCharCode(10)).filter(l => /^[0-9]+[)] /.test(l)).findIndex(l => l.includes(wanted)) + 1 }));
 
   test('cohost: envía el candidato que elige el selector y le pasa chat, hora y actividad', async () => {
-    stubModels((p, sel) => (sel ? text('{"mejor": 2}') : json(A, B, C)));
+    stubModels((p, sel) => (sel ? choose(p, B) : json(A, B, C)));
     const out = await ai.runCohost(client, '#parlusorum', null);
     assert.equal(out, 'sent');
     assert.equal(sent[0], B);
@@ -230,8 +246,9 @@ describe('selector con IA', () => {
     const prompt = selectorCalls()[0].messages[1].content;
     assert.match(prompt, /<ahora>/);
     assert.match(prompt, /Mensajes en el chat en los últimos 5 minutos: [1-9]\d*/);
-    assert.match(prompt, /gangar79: Jajaja otra vez ese jefe/);
-    assert.match(prompt, /1\) .*\n2\) .*\n3\) /);
+    assert.match(prompt, /user\d+: Jajaja otra vez ese jefe/); // los nicks salen seudonimizados
+    assert.doesNotMatch(prompt, /gangar79/);
+    assert.match(prompt, /1\) .*\n2\) /); // 2 candidatos por defecto
   });
   test('cohost: si el selector dice que ninguno vale, reintenta una vez con la corrección y se calla', async () => {
     stubModels((p, sel) => (sel ? text('{"mejor": 0}') : json(A, B, C)));
@@ -249,7 +266,7 @@ describe('selector con IA', () => {
   });
   test('cohost: las marcas del stream se anotan (día de la semana, palabras largas)', async () => {
     const msg = 'Qué martes más largo, y Manu sigue con su sufrimiento diario.';
-    stubModels((p, sel) => (sel ? text('{"mejor": 1}') : json(msg, B, C)));
+    stubModels((p, sel) => (sel ? choose(p, 'martes') : json(msg, B, C)));
     assert.equal(await ai.runCohost(client, '#parlusorum', null), 'sent');
     const marks = state.getUsedStructures();
     assert.ok(marks.has('dia-semana'));

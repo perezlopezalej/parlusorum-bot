@@ -61,6 +61,29 @@ function extractGameQuery(text) {
   }
   return null;
 }
+// Nombre de juego en una pregunta a !dios_fua, donde sea que esté: las frases de extractGameQuery y otras que lo introducen
+// ("quién desarrolló el Phantom Blade 0?", "cuándo sale Hades 2"). El nombre acaba en puntuación, en un verbo o al final.
+// Solo es una pista: el código la comprueba en IGDB y, si no hay coincidencia segura, no se usa.
+const NAME_END = '(.{2,60}?)(?=[ ]*[?!.,;]|[ ]+(?:es|fue|sale|salio|salió|tiene|esta|está|para)[ ]|[ ]*$)';
+const W = '[a-zñáéíóú]*';
+const GAME_MENTION_CUES = [
+  new RegExp('(?:qui[eé]n|qu[eé] (?:estudio|empresa|compa[nñ][ií]a|desarrolladora|pa[ií]s))[ ]+(?:desarroll' + W + '|public' + W + '|hizo|hicieron|hace|ha hecho|cre[oó]|dise[nñ]' + W + '|sac[oó]|lanz' + W + ')[ ]+(?:a[ ]+)?(?:el |la |los |las |al )?' + NAME_END, 'i'),
+  new RegExp('(?:cu[aá]ndo|en qu[eé] a[nñ]o|qu[eé] a[nñ]o)[ ]+(?:sale|sali[oó]|saldr[aá]|se lanz' + W + '|lanzaron|fue lanzad[oa])[ ]+(?:el |la |los |las )?' + NAME_END, 'i'),
+  new RegExp('(?:de qu[eé] (?:g[eé]nero|pa[ií]s)|qu[eé] g[eé]nero)[ ]+(?:es|son)[ ]+(?:el |la |los |las )?(?:(?:estudio|desarrolladora|juego|compa[nñ][ií]a|empresa) (?:de |del ))?' + NAME_END, 'i'),
+  new RegExp('(?:qu[eé] opinas|qu[eé] piensas|qu[eé] te parece|qu[eé] tal es|has jugado (?:a|al)|conoces|merece la pena|vale la pena|me recomiendas|recomiendas)[ ]+(?:de |del |sobre |jugar (?:a |al ))?(?:el juego |el |la )?' + NAME_END, 'i'),
+];
+const NOT_A_NAME_START_RE = new RegExp('^(?:tu|mi|su|vuestr' + W + '|nuestr' + W + '|manu|pao|parlusorum|el chat|el streamer)( |$)', 'i');
+function extractGameMention(text) {
+  const t = String(text || '').replace(/ +/g, ' ').trim();
+  for (const re of GAME_MENTION_CUES) {
+    const m = re.exec(t);
+    if (!m) continue;
+    const name = m[1].replace(/ (?:por favor|porfa|please|gracias).*$/i, '').replace(/[ .,;:¿?¡!]+$/g, '').trim();
+    if (name.length >= 2 && name.split(' ').length <= 8 && !NOT_A_GAME_RE.test(name) && !NOT_A_NAME_START_RE.test(name)) return name;
+  }
+  const q = extractGameQuery(t);
+  return q && !NOT_A_NAME_START_RE.test(q.name) ? q.name : null;
+}
 // Preguntas de identidad (se responden con plantillas fijas, sin IA): 'creator' (quién te creó), 'who' (quién eres), 'owner' (quién lleva el canal)
 // "quién desarrolló el Phantom Blade 0" es una pregunta de juego: la de identidad lleva "te" o habla de este bot
 const ID_CREATOR_RE = /\bquien te (?:ha |a )?(?:creado|creo|programado|programo|hecho|hizo|desarrollado|desarrollo|inventado|invento|construido|construyo)\b|\bquien (?:ha |a )?(?:creado|creo|programado|programo|hecho|hizo|desarrollado|desarrollo) (?:(?:a|al) )?(?:este |ese |el )?bot\b|\bquien (?:es|fue) tu (?:creador|programador|desarrollador)\b|\bquien te (?:ha )?(?:hecho|creado|programado)\b/;
@@ -961,6 +984,6 @@ module.exports = {
   validateCohost, validateHook, validateTimerIA, validateMention, gameTalkProblem, genderedParlusorum, negativeSummary, summaryPersonalLife, positiveSummaryFallback,
   mentionsOtherGame, claimsEnemyKills, validateQueMePerdi, repeatsYear,
   dropPartialEmote, fitWithEmotes, junkProblem, malformedNumber, citesDeathCount, numberWordsEs, mentionsGenre, forcedComparison, selfHelp, openingKey, sameOpening, moveEmotesToEnd,
-  identityQuestion, extractGameQuery, madridDay, wrongWeekday, mentionsEthnicTerms, inventedQuote, unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
+  identityQuestion, extractGameQuery, extractGameMention, madridDay, wrongWeekday, mentionsEthnicTerms, inventedQuote, unsupportedAttributes, inventedCompany, fixMentions, insertUsername, hasPersonalDistress, structureKey, isCurrentGameQuestion, countDeaths, countBits, achievesDeaths,
   mentionsGame, talksAboutGames, leaksTech, mentionsMechanics, citesGameScore, disparagesGame, isGameQuestion, isDeathQuestion, SPORTS_RE, lastSentenceEnd, cutAtSentence, dropTrailingFragment,
 };

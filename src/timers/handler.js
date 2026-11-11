@@ -105,9 +105,10 @@ async function runTimerIA(client) {
         facts: `Caídas anotadas: ${deathCount}. Juega ${getPlayer() === 'pao' ? 'Pao' : 'Manu'}. ${summary}`,
         chat: sample.join('\n'),
         activity: getChatWindow(5 * 60 * 1000, at).length,
+        generator: response._ai?.model,
       });
       if (pick.status === 'none') { feedback = 'selector'; logger.info(`Timer IA descartado (el selector no lo ve bueno): ${out.slice(0, 80)}`); continue; }
-      const review = await factcheck.evaluate(out, `Juego: ${game}. Muertes anotadas: ${deathCount}. ${summary} ${gameFacts}`, { game, sense: pick.status === 'error' && response._ai?.provider !== 'gemini' });
+      const review = await factcheck.evaluate(out, `Juego: ${game}. Muertes anotadas: ${deathCount}. ${summary} ${gameFacts}`, { game, sense: pick.status === 'error' });
       if (review.discard) {
         logger.info(`Timer IA descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
         break;

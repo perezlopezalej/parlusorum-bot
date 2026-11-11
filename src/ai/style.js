@@ -78,28 +78,30 @@ function buildProvocationSystem({ examples = pickStyleExamples('provocacion', 5)
   );
 }
 
-function buildCohostSystem({ now = new Date(), game = '', minutes = null, deathLine = '', player = 'manu', mood = '', form, emoteLine = '', nameLine = '', loreBlock = '', modeLine = '', examples = pickStyleExamples('cohost', 4), event = false, weekday = true }) {
+function buildCohostSystem({ now = new Date(), game = '', minutes = null, deathLine = '', player = 'manu', mood = '', form, emoteLine = '', nameLine = '', loreBlock = '', modeLine = '', examples = pickStyleExamples('cohost', 4), event = false, weekday = true, candidates = 3 }) {
   const stream = [game ? `Juegan a «${game}».` : '', minutes != null ? `Llevan ${quality.approxDuration(minutes)} de directo.` : '', deathLine, playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ');
   return join(
     IDENTITY,
+    block('forma', 'Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. Al chat le atribuyes solo lo que aparece en <chat> o <resumen_chat>.'),
+    renderExamples(examples),
     block('stream', stream),
     block('ambiente', mood ? `El chat está en modo ${mood}.` : ''),
     loreBlock,
     block('modo', modeLine),
-    block('forma', `${form.text} Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. Al chat le atribuyes solo lo que aparece en <chat> o <resumen_chat>. ${nameLine} ${emoteLine}`.replace(/\s+/g, ' ')),
-    renderExamples(examples),
-    block('tarea', `Escribe 3 comentarios distintos entre sí, todos con esa forma, sobre ${event ? 'el suceso' : 'el tema indicado'}, con humor y la voz de Dios Fua. Devuelve solo este JSON: {"candidatos":["…","…","…"]}.${event ? '' : ' Si no hay nada que decir sin inventar, devuelve {"candidatos":[]}.'}`)
+    block('ajustes', `${form.text} ${nameLine} ${emoteLine}`.replace(/\s+/g, ' ')),
+    block('tarea', `Escribe ${candidates === 2 ? '2 comentarios distintos' : '3 comentarios distintos'} entre sí, todos con esa forma, sobre ${event ? 'el suceso' : 'el tema indicado'}, con humor y la voz de Dios Fua. Devuelve solo este JSON: {"candidatos":[${candidates === 2 ? '"…","…"' : '"…","…","…"'}]}.${event ? '' : ' Si no hay nada que decir sin inventar, devuelve {"candidatos":[]}.'}`)
   );
 }
 
 function buildMentionSystem({ context = '', role = '', tone = '', emoteLine = '', modeLine = '', examples = pickStyleExamples('mencion', 4) }) {
   return join(
     IDENTITY,
+    block('forma', `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. Las expresiones coloquiales («por la cara», «a lo loco») se entienden por su sentido de uso, y si no la pillas, pregunta con humor qué quiere decir. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor; el toque del FUA va al final, aparte de la explicación.`),
+    renderExamples(examples),
     block('contexto', context),
     block('quien_escribe', [role, tone].filter(Boolean).join(' ')),
     block('modo', modeLine),
-    block('forma', `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. Las expresiones coloquiales («por la cara», «a lo loco») se entienden por su sentido de uso, y si no la pillas, pregunta con humor qué quiere decir. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor; el toque del FUA va al final, aparte de la explicación. ${emoteLine}`.replace(/\s+/g, ' ')),
-    renderExamples(examples),
+    block('ajustes', emoteLine),
     block('tarea', 'Responde al mensaje del usuario con la voz de Dios Fua.')
   );
 }
@@ -107,11 +109,11 @@ function buildMentionSystem({ context = '', role = '', tone = '', emoteLine = ''
 function buildQuestionSystem({ context = '', role = '', tone = '', modeLine = '', examples = pickStyleExamples('dios_fua', 4) }) {
   return join(
     IDENTITY,
+    block('forma', 'Una o dos frases cortas en español de España. Si el mensaje nombra un videojuego (para pedir datos o tu opinión) y trae una <ficha_igdb>, cuentas solo lo que diga la ficha; si no la trae, lo primero es llamar a la herramienta buscar_juego, y después cuentas solo lo que devuelva (género, ambientación, descripción, fecha, estudio), y con tus palabras y en español (fechas como «octubre de 2026», sin copiar los campos de la ficha ni frases en inglés); si los datos no dicen algo, reconócelo con humor («de eso no tengo ni idea»). En cultura general, explica primero con claridad lo que sabes y, si dudas, dilo con humor; el toque del FUA va en una frase final aparte. Si la pregunta es concreta (un país, una fecha, un estudio, «¿X o Y?»), lo primero es contestarla directamente con el dato de la ficha. Todo en una sola línea de texto, con tu personalidad, como uno más del chat.'),
+    renderExamples(examples),
     block('contexto', context),
     block('quien_escribe', [role, tone].filter(Boolean).join(' ')),
     block('modo', modeLine),
-    block('forma', 'Una o dos frases cortas en español de España. Si el mensaje nombra un videojuego (para pedir datos o tu opinión), lo primero es llamar a la herramienta buscar_juego, y después cuentas solo lo que devuelva (género, ambientación, descripción, fecha, estudio); si los datos no dicen algo, reconócelo con humor («de eso no tengo ni idea»). En cultura general, explica primero con claridad lo que sabes y, si dudas, dilo con humor; el toque del FUA va en una frase final aparte. Todo en una sola línea de texto, con tu personalidad, como uno más del chat.'),
-    renderExamples(examples),
     block('tarea', 'Responde a la pregunta del usuario; si nombra un videojuego, consulta antes buscar_juego.')
   );
 }
@@ -120,9 +122,10 @@ function buildQuestionSystem({ context = '', role = '', tone = '', modeLine = ''
 function buildAlertSystem({ type, event = '', game = '', maxChars = 250, nameRule = 'Pon @ delante del nombre de quien corresponda.', extra = '', examples = pickStyleExamples(type, 3) }) {
   return join(
     IDENTITY,
-    block('evento', [event, game ? `Estaban en «${game}».` : ''].filter(Boolean).join(' ')),
-    block('forma', `Una o dos frases de menos de ${maxChars} caracteres en español de España. ${nameRule} ${extra}`.replace(/\s+/g, ' ').trim()),
+    block('forma', 'Una o dos frases cortas en español de España.'),
     renderExamples(examples),
+    block('evento', [event, game ? `Estaban en «${game}».` : ''].filter(Boolean).join(' ')),
+    block('ajustes', `Menos de ${maxChars} caracteres. ${nameRule} ${extra}`.replace(/\s+/g, ' ').trim()),
     block('tarea', ALERT_TASKS[type] || 'Cuenta el evento con la voz de Dios Fua.')
   );
 }
@@ -162,9 +165,9 @@ function dayLine(now = new Date(), { weekday = true } = {}) {
 function buildHookSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('hook', 4), weekday = true } = {}) {
   return join(
     IDENTITY,
-    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ')),
     block('forma', 'Una pregunta al chat de menos de 140 caracteres que termina en «?», sobre lo que cuenta <suceso>, con una sola idea y palabras sencillas.'),
     renderExamples(examples),
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ')),
     block('tarea', 'Escribe una pregunta al chat que rompa el silencio hablando de lo que ha pasado en el directo.')
   );
 }
@@ -173,9 +176,9 @@ function buildHookSystem({ game = '', player = 'manu', now = new Date(), example
 function buildTimerSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('timer', 3), weekday = true } = {}) {
   return join(
     IDENTITY,
-    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ')),
     block('forma', 'Una sola frase natural de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen> y <chat>. Del chat cuentas de qué se ha hablado en general, con tus palabras y como mucho una idea («el chat ayudando con el puzle»), sin nombres de usuario ni palabras sueltas copiadas; solo atribuyes al chat lo que se ve en <chat>. Sin cifras entre paréntesis ni formato de informe, y sin citar la hora ni el día.'),
     renderExamples(examples),
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now, { weekday })].filter(Boolean).join(' ')),
     block('tarea', 'Cuenta la última media hora del directo en una frase.')
   );
 }
@@ -194,9 +197,9 @@ function buildShoutoutSystem({ examples = pickStyleExamples('shoutout', 3) } = {
 function buildQueMePerdiSystem({ game = '', player = 'manu', now = new Date(), examples = pickStyleExamples('quemeperdi', 3) } = {}) {
   return join(
     IDENTITY,
-    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
     block('forma', 'Exactamente 2 frases que cuentan, con tus propias palabras, lo que ha pasado hasta ahora usando solo los datos de <datos>, <stream_story> y <chat>. Las muertes son caídas del streamer.'),
     renderExamples(examples),
+    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
     block('tarea', 'Un espectador llega tarde y pregunta qué se ha perdido: cuéntaselo.')
   );
 }
