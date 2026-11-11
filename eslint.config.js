@@ -17,7 +17,7 @@ module.exports = [
       'prefer-const': 'warn',
       eqeqeq: ['warn', 'always', { null: 'ignore' }],
       'no-empty': ['error', { allowEmptyCatch: true }],
-      // Los regex de quality.js llevan escapes defensivos a propósito
+      // Los regex de src/ai/quality/ llevan escapes defensivos a propósito
       'no-useless-escape': 'off',
     },
   },
