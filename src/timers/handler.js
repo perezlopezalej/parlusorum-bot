@@ -1,6 +1,6 @@
 const { isLiveViaEventSub, getStreamUptime } = require('../eventsub');
 const { getCurrentGame } = require('../twitch/api');
-const { isSilenced, getDeathCount, getStreamStartedAt, getStreamNarrative, markStructure, getUsedStructures, getBotHistory, addBotMessage, getPlayer, markNamed, getNamedUsers } = require('../utils/state');
+const { recordFilterDiscard, recordFilterSent, isSilenced, isReactive, getDeathCount, getStreamStartedAt, getStreamNarrative, markStructure, getUsedStructures, getBotHistory, addBotMessage, getPlayer, markNamed, getNamedUsers } = require('../utils/state');
 const { windowFacts, chatSample } = require('../utils/narrative');
 const { pickBest } = require('../ai/pick-best');
 const { canMakeRequest } = require('../utils/ratelimit');
@@ -35,7 +35,7 @@ function enqueueTimerMessage(send) {
 function drainTimerQueue() {
   const send = timerQueue.shift();
   if (!send) { timerDrainRef = null; return; }
-  try { if (isLiveViaEventSub() && !isSilenced()) send(); } catch (err) { logger.warn(`Timer: ${err.message}`); }
+  try { if (isLiveViaEventSub() && !isSilenced() && !isReactive()) send(); } catch (err) { logger.warn(`Timer: ${err.message}`); }
   timerDrainRef = setTimeout(drainTimerQueue, MIN_TIMER_GAP_MS);
   timerDrainRef.unref?.();
 }
@@ -50,7 +50,7 @@ let streamDurationInterval = null;
 
 // Un comentario IA con el resumen de la última media hora. Devuelve el texto enviado ('' si no se envió nada).
 async function runTimerIA(client) {
-  if (!isLiveViaEventSub() || isSilenced() || !canMakeRequest()) return '';
+  if (!isLiveViaEventSub() || isSilenced() || isReactive() || !canMakeRequest()) return '';
 
   const gameInfo = await getCurrentGame().catch(() => null);
   const game = gameInfo?.game;
@@ -97,7 +97,7 @@ async function runTimerIA(client) {
       const allowEmote = quality.emoteAllowed(getBotHistory().map(e => e.msg), emotes);
       const out = quality.applyEmotePolicy(truncate((response.choices[0].message.content || '').trim()), allowEmote, emotes);
       const check = quality.validateTimerIA(out, { deathCount, extraDeathNumbers: [facts.deaths, facts.streak], recent, currentGame: game, channelGames: channelConfig.games_played || [], usedStructures: getUsedStructures(), lastCitedDeaths, player: getPlayer(), named: getNamedUsers(), now: at, nameWindowMs: AI_TIMER_NAME_WINDOW_MS });
-      if (!check.ok) { feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
+      if (!check.ok) { recordFilterDiscard('timer_ia', String(check.reason).slice(0, 30)); feedback = check.reason; logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`); continue; }
       // Un modelo pequeño comprueba ortografía, lógica y que cuadre con el chat y el juego; si no puede, la revisión de siempre
       const pick = await pickBest([out], {
         dayLine: dayLine(new Date(at)),
@@ -107,13 +107,14 @@ async function runTimerIA(client) {
         activity: getChatWindow(5 * 60 * 1000, at).length,
         generator: response._ai?.model,
       });
-      if (pick.status === 'none') { feedback = 'selector'; logger.info(`Timer IA descartado (el selector no lo ve bueno): ${out.slice(0, 80)}`); continue; }
+      if (pick.status === 'none') { recordFilterDiscard('timer_ia', 'selector'); feedback = 'selector'; logger.info(`Timer IA descartado (el selector no lo ve bueno): ${out.slice(0, 80)}`); continue; }
       const review = await factcheck.evaluate(out, `Juego: ${game}. Muertes anotadas: ${deathCount}. ${summary} ${gameFacts}`, { game, sense: pick.status === 'error' });
       if (review.discard) {
+        recordFilterDiscard('timer_ia', 'datos');
         logger.info(`Timer IA descartado (datos del juego sin respaldo): ${out.slice(0, 80)}`);
         break;
       }
-      if (review.nonsense) { feedback = 'la frase no tiene sentido o está mal escrita'; logger.info(`Timer IA descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
+      if (review.nonsense) { recordFilterDiscard('timer_ia', 'sentido'); feedback = 'la frase no tiene sentido o está mal escrita'; logger.info(`Timer IA descartado (sin sentido o mal escrito): ${out.slice(0, 80)}`); continue; }
       msg = out;
     }
     if (msg) {
@@ -122,6 +123,7 @@ async function runTimerIA(client) {
       addBotMessage(msg);
       recentTimerIA.push(msg);
       if (recentTimerIA.length > MAX_RECENT_TIMER_IA) recentTimerIA.shift();
+      recordFilterSent('timer_ia');
       enqueueTimerMessage(withOrigin('timer_ia', () => client.say(`#${process.env.CHANNEL}`, msg)));
     }
     return msg;
@@ -140,7 +142,7 @@ function start(client, config) {
   config.timers.forEach((timer, index) => {
     const ref = setInterval(withOrigin('timer', () => {
       // Usar EventSub para saber si está en directo (fiable)
-      if (!isLiveViaEventSub() || isSilenced()) return;
+      if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
 
       const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
       const msg = timer.message + suffix;
@@ -153,7 +155,7 @@ function start(client, config) {
 
   // Timer de duración del stream cada 40 min — usa EventSub (fiable)
   streamDurationInterval = setInterval(withOrigin('timer', () => {
-    if (!isLiveViaEventSub() || isSilenced()) return;
+    if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
 
     const uptime = getStreamUptime();
     const startedAt = getStreamStartedAt();

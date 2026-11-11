@@ -9,7 +9,17 @@ function isTriviaActive() { return triviaActive; }
 // --- Silencio ---
 let silenceMode = false;
 function setSilenceMode(active) { silenceMode = active; }
-function isSilenced() { return silenceMode; }
+// Silencio temporal (!fua_callate): se levanta solo al llegar a muteUntil
+let muteUntil = 0;
+function setMuteUntil(ts) { muteUntil = Number.isFinite(ts) && ts > 0 ? ts : 0; }
+function getMuteUntil(now = Date.now()) { return muteUntil > now ? muteUntil : 0; }
+function isSilenced() { return silenceMode || Date.now() < muteUntil; }
+
+// --- Modo del bot: 'normal' o 'reactivo' (solo menciones y comandos) ---
+let botMode = 'normal';
+function setBotMode(mode) { botMode = mode === 'reactivo' ? 'reactivo' : 'normal'; }
+function getBotMode() { return botMode; }
+function isReactive() { return botMode === 'reactivo'; }
 
 // --- BRB ---
 let brbMode = false;
@@ -40,6 +50,11 @@ function getBrbDuration() {
   if (!brbStart) return 0;
   return Math.floor((Date.now() - brbStart) / 60000);
 }
+
+// --- Plantillas fijas: índice de la última variante usada por clave (para no repetirla) ---
+const templateLast = new Map();
+function getTemplateLast(key) { return templateLast.get(key); }
+function setTemplateLast(key, i) { templateLast.set(key, i); }
 
 // --- Raid ---
 let raidActiveUntil = 0;
@@ -370,6 +385,48 @@ const tokensOf = map => Object.fromEntries([...map].map(([m, v]) => [m, { ...v, 
 function getGroqTokenUse() { return { stream: tokensOf(groqTokensStream), day: tokensOf(groqTokensDay), dayKey: groqTokensDayKey }; }
 function resetGroqTokenUse() { groqTokensStream.clear(); }
 
+// --- Cupo real de Groq según las cabeceras x-ratelimit-* (clave "groq:modelo") ---
+// Vale hasta su reposición: pasado resetTokensMs (o resetRequestsMs) ese dato ya no se usa.
+const groqLimits = new Map();
+function noteGroqLimits(key, info, now = Date.now()) {
+  if (!info) return;
+  groqLimits.set(key, { ...info, at: now });
+}
+// { remainingTokens?, remainingRequests? } vigentes ahora, o null
+function getGroqLimits(key, now = Date.now()) {
+  const l = groqLimits.get(key);
+  if (!l) return null;
+  const out = {};
+  if (l.remainingTokens !== undefined && now - l.at < (l.resetTokensMs ?? 60000)) out.remainingTokens = l.remainingTokens;
+  if (l.remainingRequests !== undefined && now - l.at < (l.resetRequestsMs ?? 60000)) out.remainingRequests = l.remainingRequests;
+  return Object.keys(out).length ? out : null;
+}
+function resetGroqLimits() { groqLimits.clear(); }
+
+// --- Descarte por filtro (cohost, timer IA, filtro de salida) frente a lo enviado, por origen, para el resumen de fin de stream ---
+// No cuentan como filtro: los motivos que no son calidad (silencio, cupo, errores del proveedor...)
+const NON_FILTER_REASONS = new Set(['silencio', 'reactivo', 'brb', 'trivia', 'ratelimit', 'racha_cupo', 'skip', 'sin_cupo', 'groq429', 'error']);
+const filterDiscards = new Map(); // origen → Map(motivo → n)
+const filterSent = new Map();     // origen → n enviados
+function recordFilterDiscard(origin, reason) {
+  if (!reason || NON_FILTER_REASONS.has(reason)) return;
+  const m = filterDiscards.get(origin) || new Map();
+  m.set(reason, (m.get(reason) || 0) + 1);
+  filterDiscards.set(origin, m);
+}
+function recordFilterSent(origin) { const o = origin || 'otro'; filterSent.set(o, (filterSent.get(o) || 0) + 1); }
+function getFilterStats() {
+  const origins = new Set([...filterDiscards.keys(), ...filterSent.keys()]);
+  const out = {};
+  for (const o of origins) {
+    const reasons = Object.fromEntries(filterDiscards.get(o) || []);
+    const discarded = Object.values(reasons).reduce((a, b) => a + b, 0);
+    out[o] = { sent: filterSent.get(o) || 0, discarded, reasons };
+  }
+  return out;
+}
+function resetFilterStats() { filterDiscards.clear(); filterSent.clear(); }
+
 // --- Router de IA: bloqueos, uso por minuto y por día, y nicks conocidos ---
 // Clave de modelo: "proveedor:modelo". Todo en memoria: un reinicio lo pone a cero.
 const aiBlocks = new Map();
@@ -478,7 +535,10 @@ function resetFreeCohostPause() { cohostPausedUntil = 0; }
 
 // --- Descartes del cohost en el stream (motivo → nº), para el resumen de fin de stream ---
 const cohostDiscards = new Map();
-function recordCohostDiscard(reason) { cohostDiscards.set(reason, (cohostDiscards.get(reason) || 0) + 1); }
+function recordCohostDiscard(reason) {
+  cohostDiscards.set(reason, (cohostDiscards.get(reason) || 0) + 1);
+  recordFilterDiscard('cohost', String(reason || '').replace(/^quality:/, ''));
+}
 function getCohostDiscards() { return Object.fromEntries(cohostDiscards); }
 function resetCohostDiscards() { cohostDiscards.clear(); }
 
@@ -487,7 +547,7 @@ const cohostAttempts = { event: 0, free: 0 };
 const cohostSent = { event: 0, free: 0 };
 let groq429Count = 0;
 function recordCohostAttempt(kind) { cohostAttempts[kind === 'free' ? 'free' : 'event']++; }
-function recordCohostSent(kind) { cohostSent[kind === 'free' ? 'free' : 'event']++; }
+function recordCohostSent(kind) { cohostSent[kind === 'free' ? 'free' : 'event']++; recordFilterSent('cohost'); }
 function recordGroq429() { groq429Count++; }
 function getCohostStats() {
   return { attempts: { ...cohostAttempts }, sent: { ...cohostSent }, discards: getCohostDiscards(), groq429: groq429Count };
@@ -542,7 +602,10 @@ module.exports = {
   recordCohostAttempt, recordCohostSent, recordGroq429, getCohostStats, resetCohostStats,
   addLoreSample, getLoreSample, getLoreSampleIds, resetLoreSample,
   setTriviaActive, isTriviaActive,
-  setSilenceMode, isSilenced,
+  getTemplateLast, setTemplateLast,
+  noteGroqLimits, getGroqLimits, resetGroqLimits,
+  recordFilterDiscard, recordFilterSent, getFilterStats, resetFilterStats,
+  setSilenceMode, isSilenced, setMuteUntil, getMuteUntil, setBotMode, getBotMode, isReactive,
   setBrbMode, isBrb, getBrbDuration, getBrbStart,
   setRaidActive, isRaidActive, getRaidUsername,
   markGiftBatch, isGiftBatch,

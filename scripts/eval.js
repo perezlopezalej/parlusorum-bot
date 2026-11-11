@@ -134,7 +134,7 @@ async function runFilterCase(c) {
     cohost: t => quality.validateCohost(t, ctx),
     timer_ia: t => quality.validateTimerIA(t, ctx),
     hook: t => quality.validateHook(t, ctx),
-    mention: t => quality.validateMention(t, { question: c.question || '', player: ctx.player }),
+    mention: t => quality.validateMention(t, { question: c.question || '', player: ctx.player, names: c.names || [] }),
     // Entrada del usuario: rejected = el filtro anti-inyección la bloquea antes de llegar a la IA (sin gasto de cupo)
     inject: t => (require('../src/utils/filter').containsBlockedContent(t) ? { ok: false, reason: 'inyección/ofensivo' } : { ok: true }),
     // Petición de silencio al bot (rejected = reconocida como tal) y resumen de fin de stream (reglas de src/memory/handler.js)

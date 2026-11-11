@@ -2,7 +2,7 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const identityReplies = require('../../config/identity-replies.json');
 const { getCurrentGame, getGameInfo, lookupGameInfo, getStreamInfo, createStreamMarker, getChannelInfo } = require('../twitch/api');
-const { getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, noteMentionFua, getMentionFuaHistory, claimStartAnnouncement, resetStartAnnouncement, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
+const { getChatterNames, getPlayer, isFreeCohostPaused, pauseFreeCohost, isTriviaActive, isSilenced, isReactive, setTriviaActive, isRaidActive, getRaidUsername, setPersonalityMode, getPersonalityMode, getModeVariant, getModeSetAt, isBrb, addNarrativeEvent, getStreamNarrative, setGameContextFailed, getGameContextFailed, setLastCapsRageTime, getLastCapsRageTime, getBotHistory, addBotMessage, recordCohostAttempt, recordCohostSent, getStreamIsLive, addLoreSample, noteChatter, resetLoreSample, getLastCohostContextHash, setLastCohostContextHash, getDeathCount, getBossCount, markStructure, getUsedStructures, getStreamStartedAt, recordCohost, recordCohostDiscard, getLastCohostTime, getCohostTimes, claimHookPause, markNamed, getNamedUsers, noteMentionFua, getMentionFuaHistory, claimStartAnnouncement, resetStartAnnouncement, onNarrativeEvent, addCohostText, getCohostTexts } = require('../utils/state');
 const { windowFacts, mergeBossMoments, bossInBatch, BOSS_SETTLE_MS } = require('../utils/narrative');
 const { buildStoryBlock, condenseChat, decideMode, resolveModeConfig, MODE_WINDOWS, classifyCohostMoment, eventCohostAllowed, eventExpired, freeCohostDue, pruneHourly, EVENT_COHOST_MAX_PER_HOUR, EVENT_QUEUE_TTL_MS, FREE_COHOST_INTERVAL_MS, FREE_COHOST_ACTIVITY_WINDOW_MS, FREE_COHOST_MIN_MESSAGES, FREE_COHOST_MAX_PER_HOUR, streakAllowed, STREAK_COHOST_GAP_MS, hourlyCapReached, pickFreeTopic } = require('../utils/narrative');
 const factcheck = require('./factcheck');
@@ -24,6 +24,7 @@ const chatlog = require('../utils/chatlog');
 const { saveHighlight } = require('../utils/storage');
 const { truncate, TWITCH_MAX_LENGTH } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
+const { template } = require('../utils/plantillas');
 const { getViewersWithAppToken } = require('../eventsub');
 const { throttleSay } = require('../alerts/handler');
 // Cohost: los eventos (jefe, muerte, sub...) se comentan siempre y esperan en cola hasta EVENT_TTL_MS; los comentarios libres
@@ -322,12 +323,6 @@ function buildToneText(question) {
 
 const emoteLineFor = (allowEmote, emotes) => (allowEmote ? `Puedes cerrar con un emote de esta lista: ${emotes.join(', ')}.` : 'Escribe solo texto.');
 
-const NARRATOR_BASE = (game = '') => {
-  const botName = process.env.BOT_USERNAME || 'dios_fua';
-  const emotes = (channelConfig.channel_emotes || []).join(', ');
-  return `Eres ${botName}, narrador en directo del canal de ${channelConfig.streamer}. Estilo: voz de Dios Fua — enérgico, con guasa y cariño, en primera persona. ${game} Emotes si encajan: ${emotes}. SIEMPRE en español. 1-2 frases. Sin presentarte.`;
-};
-
 function getUserType(username, tags) {
   const lower = username.toLowerCase();
   if (CREATOR_USERNAME && lower === CREATOR_USERNAME) return 'creator';
@@ -404,7 +399,7 @@ async function runCohost(client, channel, moment = null) {
   const kind = moment ? 'event' : 'free';
   const kindKey = moment ? moment.kind : 'free';
   if (!getEventSubLiveStatus()) return 'dropped';
-  const blocked = isSilenced() ? 'silencio' : isBrb() ? 'brb' : isTriviaActive() ? 'trivia' : null;
+  const blocked = isSilenced() ? 'silencio' : isReactive() ? 'reactivo' : isBrb() ? 'brb' : isTriviaActive() ? 'trivia' : null;
   if (blocked) {
     if (moment) { recordCohostAttempt(kind); recordCohostDiscard(blocked); }
     return 'dropped';
@@ -574,7 +569,7 @@ async function runCohost(client, channel, moment = null) {
     return 'sent';
   } catch (err) {
     logger.error(`Co-host: ${err.message}`);
-    recordCohostDiscard(err.status === 429 ? 'groq429' : 'error');
+    recordCohostDiscard(err.code === 'NO_QUOTA' ? 'sin_cupo' : err.status === 429 ? 'groq429' : 'error');
     return 'dropped';
   } finally { cohostRunning = false; }
 }
@@ -751,6 +746,7 @@ async function onWarmupMode(client, channel, game) {
 function postStreamEnd(client, channel, aiSummary) {
   streamWasLive = false;
   streamEndPostedByEventSub = true;
+  if (isReactive()) return; // modo reactivo: sin resumen espontáneo de fin de stream
   const msg = aiSummary
     ? `🎬 ¡Fin del stream! ${aiSummary} ¡Hasta la próxima! FUA! 💜🔥`
     : pickRandom(streamEndMessages);
@@ -854,7 +850,7 @@ async function gameHooksAllowed(game) {
 }
 
 async function checkChatHook(client, channel) {
-  if (isSilenced() || isTriviaActive()) return;
+  if (isSilenced() || isReactive() || isTriviaActive()) return;
   if (!getEventSubLiveStatus()) return;
   const now = Date.now();
   if (isFreeCohostPaused(now)) return; // alguien pidió silencio: tampoco el hook anti-silencio (los timers fijos siguen)
@@ -1263,43 +1259,12 @@ async function checkForHighlight(client, channel, message, userId) {
     const markerCreated = markerResult !== null;
     if (markerCreated) logger.info(`Stream marker creado automaticamente`);
 
-    if (canMakeRequest()) {
-      try {
-        const gameInfo = await getCurrentGame().catch(() => null);
-        const game = gameInfo?.game ? ` Juego: "${gameInfo.game}".` : '';
-        const response = await aiChat('reaction', {
-          max_tokens: 70,
-          messages: [
-            { role: 'system', content: NARRATOR_BASE(game) },
-            { role: 'user', content: `El chat acaba de explotar con hype` }
-          ]
-        });
-        const aiDesc = response.choices[0].message.content;
-        const prefix = markerCreated ? '🏁' : '🔥';
-        client.say(channel, truncate(`${prefix} ${aiDesc}`));
-        if (markerCreated) {
-          saveHighlight(triggerMessages, markerResult.id, aiDesc)
-            .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
-            .catch(() => {});
-        }
-      } catch {
-        if (markerCreated) {
-          saveHighlight(triggerMessages, markerResult.id, 'Momento epico detectado por el chat')
-            .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
-            .catch(() => {});
-          client.say(channel, `🏁 ¡Momento marcado para el VOD! ¡FUA! 🔥`);
-        } else {
-          client.say(channel, `🔥 ¡QUÉ MOMENTO, FUA! 💜`);
-        }
-      }
-    } else if (markerCreated) {
+    if (markerCreated) {
       saveHighlight(triggerMessages, markerResult.id, 'Momento epico detectado por el chat')
         .then(r => { if (r?.error) logger.warn(`Highlight no persistido: ${r.error.message}`); })
         .catch(() => {});
-      client.say(channel, `🏁 ¡Momento marcado para el VOD! ¡FUA! 🔥`);
-    } else {
-      client.say(channel, `🔥 ¡QUÉ MOMENTO, FUA! 💜`);
     }
+    client.say(channel, truncate(template(markerCreated ? 'highlight_marker' : 'highlight')));
   }
 }
 
@@ -1338,7 +1303,7 @@ function extractEmoteTokens(tags, message) {
 }
 
 async function checkEmoteSpam(client, channel, tags, message) {
-  if (!getEventSubLiveStatus() || isSilenced()) return;
+  if (!getEventSubLiveStatus() || isSilenced() || isReactive()) return;
   const now = Date.now();
   if (now - lastEmoteCommentTime < EMOTE_COMMENT_COOLDOWN) return;
 
@@ -1359,19 +1324,10 @@ async function checkEmoteSpam(client, channel, tags, message) {
     recentEmoteUse.set(token, fresh);
 
     const uniqueUsers = new Set(fresh.map(e => e.user)).size;
-    if (uniqueUsers >= EMOTE_SPAM_THRESHOLD && canMakeRequest()) {
+    if (uniqueUsers >= EMOTE_SPAM_THRESHOLD) {
       lastEmoteCommentTime = now;
       recentEmoteUse.delete(token);
-      try {
-        const response = await aiChat('reaction', {
-          max_tokens: 60,
-          messages: [
-            { role: 'system', content: NARRATOR_BASE('') },
-            { role: 'user', content: `El chat spamea "${token}"` }
-          ]
-        });
-        client.say(channel, truncate(response.choices[0].message.content));
-      } catch {}
+      client.say(channel, truncate(template('emote_spam', { token })));
       return;
     }
   }
@@ -1404,7 +1360,7 @@ function isCapsMessage(msg) {
 }
 
 async function checkCapsRage(client, channel, tags, message) {
-  if (!getEventSubLiveStatus() || isSilenced()) return;
+  if (!getEventSubLiveStatus() || isSilenced() || isReactive()) return;
   if (!isCapsMessage(message)) return;
   const now = Date.now();
   if (now - lastCapsCommentTime < CAPS_COMMENT_COOLDOWN) return;
@@ -1414,23 +1370,12 @@ async function checkCapsRage(client, channel, tags, message) {
   while (capsMessages.length > 0 && capsMessages[0].ts < now - CAPS_WINDOW_MS) capsMessages.shift();
 
   const uniqueUsers = new Set(capsMessages.map(e => e.user)).size;
-  if (uniqueUsers >= CAPS_THRESHOLD && canMakeRequest()) {
+  if (uniqueUsers >= CAPS_THRESHOLD) {
     lastCapsCommentTime = now;
     setLastCapsRageTime(now);
     capsMessages.length = 0;
     addNarrativeEvent('rage', 'CAPS rage del chat — energía colectiva desbordada');
-    try {
-      const gameInfo = await getCurrentGame().catch(() => null);
-      const game = gameInfo?.game ? ` Juego: "${gameInfo.game}".` : '';
-      const response = await aiChat('reaction', {
-        max_tokens: 60,
-        messages: [
-          { role: 'system', content: NARRATOR_BASE(game) },
-          { role: 'user', content: `El chat entra en modo CAPS RAGE` }
-        ]
-      });
-      client.say(channel, truncate(response.choices[0].message.content));
-    } catch {}
+    client.say(channel, truncate(template('caps_rage')));
   }
 }
 
@@ -1496,6 +1441,8 @@ async function checkPatternMatch(client, channel, tags, message) {
   const kind = classifyMessage(message, tags, { botNames: [process.env.BOT_USERNAME] });
   if (!kind) return false;
   if (kind === 'shutup') return handleShutUp(client, channel, tags);
+  // Modo reactivo: solo menciones directas; ni preguntas naturales ni provocaciones
+  if (isReactive() && kind !== 'direct') return false;
 
   const now = Date.now();
   const startedAt = now;
@@ -1601,7 +1548,7 @@ async function checkPatternMatch(client, channel, tags, message) {
         }, 2, { maxDelayMs: MENTION_MAX_RETRY_DELAY_MS });
         const choice = response.choices[0];
         const raw = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
-        const check = quality.validateMention(raw, { question, player: getPlayer() });
+        const check = quality.validateMention(raw, { question, player: getPlayer(), names: [username, ...getChatterNames()] });
         if (!check.ok) { fixKey = check.rule; continue; }
         const mentionGame = await getCurrentGame().catch(() => null);
         // Solo se vigila lo que habla de videojuegos; "resistencia" o "zona" en una pregunta de cultura general no cuentan
@@ -1678,7 +1625,7 @@ async function generateProvocationReply(username, question, maxChars) {
     const choice = response.choices[0];
     const text = choice.finish_reason === 'length' ? quality.dropTrailingFragment(choice.message.content) : (choice.message.content || '').trim();
     // Revisión de sentido (sin datos de juego): si no se entiende, va la de reserva
-    if (quality.validateMention(text).ok && text.length <= maxChars && !(await factcheck.evaluate(text, '', { sense: true, checkData: false })).nonsense) return text;
+    if (quality.validateMention(text, { names: [username, ...getChatterNames()] }).ok && text.length <= maxChars && !(await factcheck.evaluate(text, '', { sense: true, checkData: false })).nonsense) return text;
   } catch (err) {
     logger.warn(`Réplica a provocación: ${err.message}`);
   }
@@ -1730,5 +1677,5 @@ module.exports = {
   restoreCooldowns, clearUserFactsCache, getCachedUserFacts, getActiveUserIds, forgetUserInMemory,
   // solo tests
   addToUserConversation, getUserConversation,
-  getChatWindow, NARRATOR_BASE,
+  getChatWindow,
 };

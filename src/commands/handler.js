@@ -1,17 +1,17 @@
-const { canMakeRequest } = require('../utils/ratelimit');
 const { getChannelStats, incrementChannelStat, persistCooldown, saveSessionDeaths, saveSessionBosses, getSessionsDeathsByGame, getSessionsBossesByGame, getCurrentSessionId } = require('../utils/supabase');
 const { loadUsers } = require('../utils/storage');
 const { MAX_DEATHS_ADD, gameTotalReply, parseMuertesArgs, parseBossArgs, applyBossDelta, sumGameDeaths, formatSince, findUserByName } = require('./stats');
 const { getCurrentGame, getStreamInfo, getFollowerCount, createClip, getGameInfo, createStreamMarker } = require('../twitch/api');
-const { setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent, getPlayer, setPlayer } = require('../utils/state');
+const { setMuteUntil, getMuteUntil, setBotMode, getBotMode, setSilenceMode, isSilenced, setBrbMode, isBrb, getBrbDuration, getDeathCount, incrementDeathCount, resetDeathCount, getBossCount, setBossCount, resetBossCount, resetTriviaStats, addNarrativeEvent, getPlayer, setPlayer } = require('../utils/state');
 const { handleShoutout } = require('../ai/handler');
 const { getLoreOverview, approveLore, deleteLore } = require('../lore/handler');
 const { buildCommandList, getHelpText } = require('./help');
 const { formatJuegoLine } = require('./juego');
 const { sanitizeForAI } = require('../utils/filter');
 const { persistBotState } = require('../utils/bot-state');
+const { parseMinutes, parseMode, clockMadrid, MAX_MUTE_MIN } = require('../utils/bot-control');
 const { truncate } = require('../utils/groq-utils');
-const { aiChat } = require('../utils/ai-router');
+const { template } = require('../utils/plantillas');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
@@ -65,6 +65,12 @@ async function handle(client, channel, tags, command, args, config) {
     case 'silencio':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return handleSilencio(client, channel, username);
+    case 'fua_callate':
+      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
+      return handleCallate(client, channel, username, args);
+    case 'fua_modo':
+      if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
+      return handleModo(client, channel, username, args);
     case 'juega':
       if (!isMod) { client.say(channel, `@${username} solo mods.`); return; }
       return handleJuega(client, channel, username, args);
@@ -106,15 +112,7 @@ function handleJuega(client, channel, username, args) {
   client.say(channel, `🎮 Ahora ${verb()} ${label()}. ¡FUA!`);
 }
 
-const lurkMessages = [
-  '👀 @{username} entra en modo lurker. ¡El FUA te acompaña en las sombras! 🌙',
-  '🕵️ @{username} activa el modo espía. ¡Te vemos aunque no hables! 👀',
-  '🌙 @{username} se funde con la oscuridad del lurk. ¡Gracias por quedarte! 💜',
-  '🐱 @{username} en modo fantasma. ¡El canal te da las gracias por estar aquí! 🔥',
-  '😴 @{username} se va al lurk. ¡El FUA cuida de los lurkers! 💪',
-];
-
-async function handleLurk(client, channel, tags) {
+function handleLurk(client, channel, tags) {
   const username = tags['display-name'];
   const userId = tags['user-id'] || tags['username'] || username;
   const key = `lurk-${userId}`;
@@ -125,31 +123,7 @@ async function handleLurk(client, channel, tags) {
   }
   cooldowns.set(key, now + 60000);
   persistCooldown(key, now + 60000);
-
-  if (!canMakeRequest()) {
-    const msg = lurkMessages[Math.floor(Math.random() * lurkMessages.length)];
-    client.say(channel, msg.replace('{username}', username));
-    return;
-  }
-
-  try {
-    const gameInfo = await getCurrentGame().catch(() => null);
-    const game = gameInfo?.game ? ` Están streameando "${gameInfo.game}".` : '';
-    const response = await aiChat('command', {
-      max_tokens: 60,
-      messages: [
-        {
-          role: 'system',
-          content: `Eres dios_fua, bot del canal de ${channelConfig.streamer}. Canal: ${channelConfig.vibe}. Emotes (máx 1-2): ${(channelConfig.channel_emotes || []).join(', ')}.${game} @${username} activa el modo lurker. Genera UNA despedida única, graciosa y cálida para @${username}. Sin presentarte. SIEMPRE en español. Max 1 frase corta.`
-        },
-        { role: 'user', content: `Despide a @${username} en modo lurk` }
-      ]
-    });
-    client.say(channel, truncate(response.choices[0].message.content));
-  } catch {
-    const msg = lurkMessages[Math.floor(Math.random() * lurkMessages.length)];
-    client.say(channel, msg.replace('{username}', username));
-  }
+  client.say(channel, truncate(template('lurk', { username })));
 }
 
 const botStartTime = Date.now();
@@ -326,6 +300,34 @@ function handleSilencio(client, channel, username) {
   setSilenceMode(newState);
   persistBotState();
   client.say(channel, newState ? `🔇 Modo silencio activado por @${username}.` : `🔊 ¡De vuelta! ¡FUA! 💪`);
+}
+
+// !fua_callate <minutos>: silencio temporal que se levanta solo; 0 lo cancela
+function handleCallate(client, channel, username, args) {
+  const msgs = allMsgs.control;
+  const minutes = parseMinutes(args[1]);
+  if (minutes === null) { client.say(channel, truncate(msgs.callate_usage.replace('{username}', username).replace('{max}', MAX_MUTE_MIN))); return; }
+  if (minutes === 0) {
+    setMuteUntil(0);
+    persistBotState();
+    client.say(channel, truncate(msgs.callate_off));
+    return;
+  }
+  const until = Date.now() + minutes * 60 * 1000;
+  // El aviso sale antes de callar (origen 'comando': el silencio lo deja pasar)
+  client.say(channel, truncate(msgs.callate_on.replace('{minutes}', minutes).replace('{username}', username).replace('{time}', clockMadrid(until))));
+  setMuteUntil(until);
+  persistBotState();
+}
+
+// !fua_modo reactivo|normal: en reactivo solo responde a menciones y comandos
+function handleModo(client, channel, username, args) {
+  const msgs = allMsgs.control;
+  const mode = parseMode(args[1]);
+  if (!mode) { client.say(channel, truncate(msgs.modo_usage.replace('{username}', username).replace('{current}', getBotMode()))); return; }
+  setBotMode(mode);
+  persistBotState();
+  client.say(channel, truncate((mode === 'reactivo' ? msgs.modo_reactivo : msgs.modo_normal).replace('{username}', username)));
 }
 
 async function handleClip(client, channel) {

@@ -1,0 +1,74 @@
+{
+  "_nota": "Mensajes fijos que rotan sin repetir el anterior (sin IA). Editables. Marcadores: {username} {game} {token} {title} {options} {winner} {winners} {pct} {votes}. Máx. ~300 caracteres por variante.",
+  "lurk": [
+    "👀 @{username} entra en modo lurker. ¡El FUA te acompaña en las sombras! 🌙",
+    "🕵️ @{username} activa el modo espía. ¡Te vemos aunque no hables! 👀",
+    "🌙 @{username} se funde con la oscuridad del lurk. ¡Gracias por quedarte! 💜",
+    "🐱 @{username} en modo fantasma. ¡El canal te da las gracias por estar aquí! 🔥",
+    "😴 @{username} se va al lurk. ¡El FUA cuida de los lurkers! 💪",
+    "🛋️ @{username} se pone cómodo en el lurk. ¡Aquí te esperamos! 💜",
+    "🫥 @{username} desaparece entre las sombras, pero el FUA sigue contigo. 👀",
+    "🍿 @{username} se pasa al lurk con palomitas. ¡Gracias por el apoyo silencioso! 🔥",
+    "🦉 @{username} vigila el directo desde la oscuridad. ¡FUA! 🌙"
+  ],
+  "highlight_marker": [
+    "🏁 ¡Momento marcado para el VOD! ¡FUA! 🔥",
+    "🏁 ¡Qué locura, chat! Ya lo tenemos marcado para el VOD. 💜",
+    "🏁 El chat explota y el momento queda guardado. ¡FUA! 🔥",
+    "🏁 ¡Eso ha sido épico! Marcado para recordarlo luego. 💪",
+    "🏁 ¡Chat desatado! Marcador puesto en el VOD. ¡FUA!"
+  ],
+  "highlight": [
+    "🔥 ¡QUÉ MOMENTO, FUA! 💜",
+    "🔥 ¡El chat se ha vuelto loco! ¡FUA! 💪",
+    "🔥 ¡Menudo momentazo, chat! 💜",
+    "🔥 ¡Esto sí que es hype! ¡FUA! 🎉",
+    "🔥 ¡Explota el chat! ¡Qué locura! 💥"
+  ],
+  "emote_spam": [
+    "¡Cuánto {token} en el chat! 😂",
+    "El chat va a tope de {token}. ¡FUA! 🔥",
+    "{token} por todas partes, ¡qué energía! 💜",
+    "Ha llegado la lluvia de {token}. ¡Seguid así! 😄",
+    "¡Todos a una con el {token}! 💪"
+  ],
+  "caps_rage": [
+    "¡Uy, el chat se ha puesto en mayúsculas! 🔥",
+    "¡ESO ES ENERGÍA, CHAT! ¡FUA! 💪",
+    "Teclados al límite, ¡qué pasión! 😂",
+    "El chat grita y el FUA lo escucha. 🔊",
+    "¡Se ha activado el modo mayúsculas! 🎉"
+  ],
+  "prediction_begin": [
+    "🔮 ¡PREDICCIÓN! \"{title}\" — {options} — ¡Apuesta tus puntos! 🎯",
+    "🔮 Nueva predicción: \"{title}\". Opciones: {options}. ¡A apostar! 💜",
+    "🎯 ¡Se abre la predicción! \"{title}\" — {options}. ¿Con quién vais? 🔥",
+    "🔮 El FUA lo ve difícil: \"{title}\" — {options}. ¡Elegid y apostad! 💪"
+  ],
+  "prediction_lock": [
+    "🔒 ¡Predicción cerrada! Ya no se pueden hacer apuestas en \"{title}\". ¡A esperar el resultado! 👀",
+    "🔒 Apuestas cerradas en \"{title}\". ¡Ahora toca esperar! 🤞",
+    "🔒 Ya no entra nadie más en \"{title}\". ¡Que gane el mejor! 💜"
+  ],
+  "prediction_end": [
+    "🏆 ¡Ganó \"{winner}\"! {winners} 🎉",
+    "🏆 Resultado de la predicción: \"{winner}\". {winners} 💜",
+    "🎉 ¡Y el ganador es \"{winner}\"! {winners} 🔥"
+  ],
+  "poll_begin": [
+    "📊 ¡ENCUESTA! \"{title}\" — {options} — ¡Vota en el chat!",
+    "📊 Nueva encuesta: \"{title}\". Opciones: {options}. ¡Vuestro voto cuenta! 💜",
+    "🗳️ ¡Se abre la votación! \"{title}\" — {options}. ¡A votar! 🔥",
+    "📊 El canal pregunta: \"{title}\" — {options}. ¡Elegid! 💪"
+  ],
+  "poll_end": [
+    "📊 Encuesta terminada: ganó \"{winner}\" con {pct}% de los votos. ¡FUA! 💜",
+    "📊 Ya hay resultado: \"{winner}\" se lleva el {pct}%. 🎉",
+    "🗳️ El chat ha hablado: \"{winner}\" gana con {pct}% de {votes} votos. 🔥"
+  ],
+  "poll_end_close": [
+    "📊 Encuesta terminada: ganó \"{winner}\" con {pct}% de los votos (¡muy reñido!) 😮",
+    "📊 ¡Por los pelos! \"{winner}\" gana con {pct}%. ¡Qué reñido! 🔥",
+    "🗳️ Final apretadísimo: \"{winner}\" se lleva la encuesta con {pct}%. 😱"
+  ]
+}

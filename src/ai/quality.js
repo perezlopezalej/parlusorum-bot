@@ -425,7 +425,7 @@ function talksPersonalLife(text) { return personalMatch(text); }
 function repeatsProfanity(text) { return PROFANITY_RE.test(String(text || '')); }
 
 // Motivo de rechazo por redacción o tema vetado (null si pasa). opts.personal=false deja pasar la vida personal (menciones)
-function styleProblem(text, { personal = true, minWords = 3, player = 'manu', now = new Date() } = {}) {
+function styleProblem(text, { personal = true, minWords = 3, player = 'manu', now = new Date(), names = [] } = {}) {
   const t = String(text || '');
   const junk = junkProblem(t, { minWords });
   if (junk) return junk;
@@ -433,7 +433,7 @@ function styleProblem(text, { personal = true, minWords = 3, player = 'manu', no
   if (ETHNIC_RE.test(t)) return { rule: 'etnia', reason: 'usa una expresión con etnias o pueblos; haz la broma sobre la partida o el FUA' };
   if (hasElongation(t)) return { rule: 'ruido', reason: 'copia letras alargadas o ruido del chat ("parrrrr"); escribe palabras normales' };
   if (wrongDayPart(t, now)) return { rule: 'hora', reason: 'habla de una parte del día que no es la de ahora (noche, mañana); habla del momento sin inventar la hora' };
-  const caps = oddCaps(t);
+  const caps = oddCaps(t, names);
   if (caps) return { rule: 'mayusculas', reason: `escribe «${caps}» con mayúsculas raras; las palabras normales van en minúscula y solo el FUA o los nombres propios en mayúscula` };
   const spelling = spellingProblem(t);
   if (spelling) return { rule: 'ortografia', reason: `ortografía: ${spelling}` };
@@ -467,13 +467,33 @@ function cleanChatNoise(text) {
 const CAPS_OK = new Set(['FUA', 'IA', 'DLC', 'RPG', 'GG', 'ADE', 'GIF', 'OK', 'LOL', 'XP', 'NPC', 'HP', 'PS5', 'PS4', 'FPS', 'MMO', 'USA', 'EEUU', 'UE']);
 const CAMEL_OK = new Set(['PogChamp', 'TwitchCon', 'YouTube', 'PlayStation', 'GitHub', 'LinkedIn', 'DualSense', 'SoulsLike', 'FromSoftware']);
 const COMMON_NOUNS_CAP_RE = /\b(?:el|la|los|las|un|una|unos|unas|del|al|este|esta|ese|esa|estos|esas)\s+(?:Jefe|Jefes|Boss|Bosses|Suelo|Chat|Directo|Stream|Juego|Mando|Mapa|Dron|Canal|Streamer|Streamers|Muerte|Muertes|Ca[ií]da|Ca[ií]das|Combate|Enemigo|Enemigos|Pantalla|Partida)\b/u;
-function oddCaps(text) {
+// Nombres propios que nunca son "mayúsculas raras": los del canal (config/channel.json), el lore y los nicks que se pasen
+// (quien escribe y los que hablan en el chat). Se comparan sin @ y en minúscula.
+const channelCfg = require('../../config/channel.json');
+const loreCfg = require('../../config/lore.json');
+function properNames(extra = []) {
+  const set = new Set();
+  const add = v => { const s = String(v || '').trim().toLowerCase().replace(/^@/, ''); if (s && !/\s/.test(s)) set.add(s); };
+  [channelCfg.streamer, channelCfg.streamer_username, channelCfg.creator_username, process.env.BOT_USERNAME, 'dios_fua', 'P1X3LUS',
+    ...(channelCfg.streamers || []), ...(channelCfg.moderators || []), ...(channelCfg.bot_whitelist || []), ...(channelCfg.proper_names || []),
+    ...Object.keys(loreCfg.people || {}), ...Object.keys(loreCfg.nicknames || {}), ...Object.values(loreCfg.nicknames || {}),
+    ...extra].forEach(add);
+  return set;
+}
+
+function oddCaps(text, names = []) {
   const t = plainWords(text);
-  for (const m of t.matchAll(/(?<!\p{L})\p{Lu}\p{Ll}+(?:\p{Lu}\p{Ll}+)+(?!\p{L})/gu)) if (!CAMEL_OK.has(m[0])) return m[0];
+  const known = properNames(names);
+  // Se mira palabra a palabra: "EvalUser12", "@EvalUser" o "ParLusorum" son nombres, no mayúsculas raras
+  for (const word of t.match(/[\p{L}\p{N}_]+/gu) || []) {
+    if (known.has(word.toLowerCase())) continue;
+    const m = /(?<!\p{L})\p{Lu}\p{Ll}+(?:\p{Lu}\p{Ll}+)+(?!\p{L})/u.exec(word);
+    if (m && !CAMEL_OK.has(m[0])) return m[0];
+  }
   const hit = COMMON_NOUNS_CAP_RE.exec(t);
   if (hit) return hit[0];
   for (const sentence of t.split(/(?<=[.!?…])\s+/)) {
-    const caps = [...sentence.matchAll(/\b\p{Lu}{3,}\b/gu)].map(m => m[0]).filter(w => !CAPS_OK.has(w) && !/^FU+A+$/.test(w));
+    const caps = [...sentence.matchAll(/\b\p{Lu}{3,}\b/gu)].map(m => m[0]).filter(w => !CAPS_OK.has(w) && !/^FU+A+$/.test(w) && !known.has(w.toLowerCase()));
     const allCaps = [...sentence.matchAll(/\b\p{Lu}{2,}\b/gu)].length;
     if (caps.length && allCaps < 2) return caps[0]; // una frase entera en mayúsculas es un grito, no un error
   }
@@ -897,13 +917,14 @@ function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
 
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 // ctx.question: lo que escribió el usuario (los consejos y las mecánicas solo valen si él los sacó)
-function validateMention(text, { question = '', player = 'manu' } = {}) {
+// ctx.names: nicks que pueden aparecer (quien escribe y el chat); no cuentan como mayúsculas raras
+function validateMention(text, { question = '', player = 'manu', names = [] } = {}) {
   if (!text || text.length < 3) return { ok: false, rule: 'vacio', reason: 'vacío' };
   if (leaksTech(text)) return { ok: false, rule: 'tech', reason: 'menciona datos, herramientas o IGDB; habla con personalidad, sin nada técnico' };
   if (genderedParlusorum(text)) return { ok: false, rule: 'genero', reason: 'pone género a ParLusorum (la usan Manu y Pao); sin tía/tío/amigo/amiga' };
   if (hasLatam(text)) return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
-  const style = styleProblem(text, { personal: false, minWords: 2, player });
+  const style = styleProblem(text, { personal: false, minWords: 2, player, names });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
   if (TIPS_RE.test(text) && !TIPS_RE.test(question)) return { ok: false, rule: 'consejos', reason: 'ofrece consejos o tips que nadie ha pedido' };
   if (REDIRECT_RE.test(text) && !MECHANICS_RE.test(question)) return { ok: false, rule: 'redirect', reason: 'dice que no habla de mecánicas cuando nadie las ha mencionado; responde a lo que dice el usuario' };

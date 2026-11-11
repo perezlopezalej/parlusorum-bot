@@ -185,5 +185,13 @@
     "De lo demás no me fío, que luego me regañan por bulos, pero con FUA todo entra 💪",
     "Más no te cuento sin mentir, así que dale FUA y juzga tú mismo 😎",
     "El resto te lo dejo a ti: yo solo certifico lo que sé y lo demás es puro FUA 🔥"
-  ]
+  ],
+  "control": {
+    "callate_on": "🤫 Me callo {minutes} min por orden de @{username}. Vuelvo a las {time}.",
+    "callate_off": "🔊 ¡De vuelta! ¡FUA! 💪",
+    "callate_usage": "@{username} uso: !fua_callate <minutos> (1-{max}); !fua_callate 0 me deja hablar otra vez.",
+    "modo_reactivo": "🎧 Modo reactivo: solo contesto a menciones y comandos. Lo quita @{username} con !fua_modo normal.",
+    "modo_normal": "💬 Modo normal: vuelvo a comentar el directo. ¡FUA!",
+    "modo_usage": "@{username} uso: !fua_modo reactivo | normal. Ahora: {current}."
+  }
 }

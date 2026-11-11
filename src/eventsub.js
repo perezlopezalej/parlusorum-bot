@@ -2,17 +2,15 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { truncate } = require('./utils/groq-utils');
-const { aiChat } = require('./utils/ai-router');
+const { template } = require('./utils/plantillas');
 const { restoreOpenSession, restoreSessionBosses, restoreSessionNarrative, saveSessionNarrative, getCurrentSessionId } = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
 const { persistBotState } = require('./utils/bot-state');
-const quality = require('./ai/quality');
-const { buildAlertSystem } = require('./ai/style');
 const { throttleSay } = require('./alerts/handler');
 const { getAppAccessToken } = require('./twitch/app-token');
 const {
   setStreamStartedAt, getStreamStartedAt,
-  setStreamIsLive, getStreamIsLive, isSilenced, setSilenceMode, setBrbMode, setStreamEndGraceUntil,
+  setStreamIsLive, getStreamIsLive, getFilterStats, resetFilterStats, isSilenced, setSilenceMode, setMuteUntil, setBotMode, setBrbMode, setStreamEndGraceUntil,
   setSessionStarting, getSessionStarting, clearSessionStarting,
   getDeathCount, setDeathCount, setBossCount,
   resetStreamNarrative, setStreamNarrative, getStreamNarrative, onNarrativeChange, resetBotHistory, resetReinforceCounter,
@@ -94,6 +92,17 @@ function formatAiUsage(usage) {
     const u = usage[k];
     return `${k}: ${u.stream.requests} este stream, ${u.day.requests} hoy`;
   }).join('; ');
+}
+
+// Tasa de descarte por filtro: descartados / (descartados + enviados) por origen, con los motivos más frecuentes
+function formatFilterStats(stats) {
+  const parts = Object.entries(stats || {}).map(([origin, s]) => {
+    const total = s.discarded + s.sent;
+    if (!total) return null;
+    const reasons = Object.entries(s.reasons).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k} ${n}`).join(', ');
+    return `${origin} ${s.discarded}/${total} (${Math.round((100 * s.discarded) / total)} %)${reasons ? ` [${reasons}]` : ''}`;
+  }).filter(Boolean);
+  return `descarte por filtro: ${parts.join('; ') || 'sin mensajes'}`;
 }
 
 function formatCohostStats({ attempts, sent, discards, groq429 }) {
@@ -498,7 +507,7 @@ function createEventSubHandler(client, channel, deps) {
           : 0;
         setStreamStartedAt(null);
         // El silencio y el BRB no pasan al siguiente directo; el bot aún puede despedirse unos minutos
-        setSilenceMode(false); setBrbMode(false, null, null);
+        setSilenceMode(false); setMuteUntil(0); setBotMode('normal'); setBrbMode(false, null, null);
         setStreamEndGraceUntil(endedAt + END_OF_STREAM_GRACE_MS);
         persistBotState();
         logger.info(`⚫ Stream offline via EventSub`);
@@ -528,6 +537,10 @@ function createEventSubHandler(client, channel, deps) {
             cohost,
           };
           logger.info(`📊 Fin de stream — ${formatCohostStats(cohost)}`);
+          const filters = getFilterStats();
+          resetFilterStats();
+          streamMetrics.filters = filters;
+          logger.info(`📊 Fin de stream — ${formatFilterStats(filters)}`);
           try {
             const gameInfo = await getCurrentGame().catch(() => null);
             const metrics = getSummary();
@@ -599,25 +612,14 @@ function createEventSubHandler(client, channel, deps) {
         const opcionesTexto = (outcomes || []).map((o, i) => `${i+1}) ${o.title}`).join(' | ');
         setActivePrediction({ title, outcomes });
         logger.info(`🔮 Predicción comenzada: "${title}"`);
-        try {
-          const response = await aiChat('alert', {
-            max_tokens: 120,
-            messages: [
-              { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Invita al chat a apostar.' }) },
-              { role: 'user', content: `<evento>El streamer ha abierto una predicción: «${title}». Opciones: ${opcionesTexto}.</evento>` }
-            ]
-          });
-          throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
-        } catch {
-          throttleSay(client, channel, truncate(`🔮 ¡PREDICCIÓN! "${title}" — ${opcionesTexto} — ¡Apuesta tus puntos! 🎯`));
-        }
+        throttleSay(client, channel, truncate(template('prediction_begin', { title, options: opcionesTexto })));
       }
 
       if (type === 'channel.prediction.lock') {
         const pred = getActivePrediction();
         const titulo = pred?.title || 'la predicción';
         logger.info(`🔒 Predicción cerrada: "${titulo}"`);
-        throttleSay(client, channel, truncate(`🔒 ¡Predicción cerrada! Ya no se pueden hacer apuestas en "${titulo}". ¡A esperar el resultado! 👀`));
+        throttleSay(client, channel, truncate(template('prediction_lock', { title: titulo })));
       }
 
       if (type === 'channel.prediction.end') {
@@ -628,18 +630,7 @@ function createEventSubHandler(client, channel, deps) {
           const totalPuntos = ganadorPred.channel_points || 0;
           const numGanadores = ganadorPred.top_predictors?.length ?? 0;
           logger.info(`🏆 Predicción terminada: ganó "${ganadorPred.title}"`);
-          try {
-            const response = await aiChat('alert', {
-              max_tokens: 120,
-              messages: [
-                { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Anuncia el resultado con dramatismo.' }) },
-                { role: 'user', content: `<evento>La predicción «${title}» terminó. Ganó «${ganadorPred.title}» con ${numGanadores} acertantes y ${totalPuntos} puntos en juego.</evento>` }
-              ]
-            });
-            throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
-          } catch {
-            throttleSay(client, channel, truncate(`🏆 ¡Ganó "${ganadorPred.title}"! ${numGanadores > 0 ? `¡${numGanadores} acertaron!` : ''} 🎉`));
-          }
+          throttleSay(client, channel, truncate(template('prediction_end', { winner: ganadorPred.title, winners: numGanadores > 0 ? `¡${numGanadores} acertaron!` : '' })));
         }
       }
 
@@ -647,18 +638,7 @@ function createEventSubHandler(client, channel, deps) {
         const { title, choices } = event || {};
         const opcionesTexto = (choices || []).map((c, i) => `${i+1}) ${c.title}`).join(' | ');
         logger.info(`📊 Poll comenzado: "${title}"`);
-        try {
-          const response = await aiChat('alert', {
-            max_tokens: 120,
-            messages: [
-              { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Invita al chat a votar.' }) },
-              { role: 'user', content: `<evento>El streamer ha abierto una encuesta: «${title}». Opciones: ${opcionesTexto}.</evento>` }
-            ]
-          });
-          throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
-        } catch {
-          throttleSay(client, channel, truncate(`📊 ¡ENCUESTA! "${title}" — ${opcionesTexto} — ¡Vota en el chat!`));
-        }
+        throttleSay(client, channel, truncate(template('poll_begin', { title, options: opcionesTexto })));
       }
 
       if (type === 'channel.poll.end') {
@@ -669,18 +649,7 @@ function createEventSubHandler(client, channel, deps) {
           const pct = totalVotos > 0 ? Math.round((ganadorPoll.votes / totalVotos) * 100) : 0;
           const esAjustado = pct < 40;
           logger.info(`📊 Poll terminado: ganó "${ganadorPoll.title}" con ${pct}%`);
-          try {
-            const response = await aiChat('alert', {
-              max_tokens: 120,
-              messages: [
-                { role: 'system', content: buildAlertSystem({ type: 'prediccion', maxChars: 300, extra: 'Anuncia el resultado con energía.' }) },
-                { role: 'user', content: `<evento>La encuesta «${title}» terminó. Ganó «${ganadorPoll.title}» con ${pct}% de ${totalVotos} votos.${esAjustado ? ' Fue muy reñido.' : ''}</evento>` }
-              ]
-            });
-            throttleSay(client, channel, truncate(quality.vetAuto(response.choices[0].message.content)));
-          } catch {
-            throttleSay(client, channel, truncate(`📊 Encuesta terminada: ganó "${ganadorPoll.title}" con ${pct}% de los votos${esAjustado ? ' (¡muy reñido!)' : ''}`));
-          }
+          throttleSay(client, channel, truncate(template(esAjustado ? 'poll_end_close' : 'poll_end', { winner: ganadorPoll.title, pct, votes: totalVotos })));
         }
       }
 
@@ -716,7 +685,7 @@ function createEventSubHandler(client, channel, deps) {
 
 module.exports = {
   createEventSubHandler,
-  formatCohostStats, formatTokenUse, formatAiUsage,
+  formatCohostStats, formatFilterStats, formatTokenUse, formatAiUsage,
   registerSubscriptions,
   subscriptionDefs, shouldResubscribe, handleRevocation,
   initStreamState,

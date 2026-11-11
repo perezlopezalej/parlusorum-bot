@@ -43,7 +43,7 @@ describe('estado persistido del bot', () => {
   });
   test('se restaura si es el mismo directo', () => {
     const r = restorableState(buildSnapshot(live), { live: true, streamStartedAt: 1_700_000_001_000 });
-    assert.deepEqual(r, { silenced: true, brbStart: 1_700_000_600_000, player: 'pao', deaths: 4, bosses: 2 });
+    assert.deepEqual(r, { silenced: true, brbStart: 1_700_000_600_000, player: 'pao', deaths: 4, bosses: 2, muteUntil: 0, mode: 'normal' });
   });
   test('no se restaura si es de otro directo, si no hay directo o si está vacío/corrupto', () => {
     const snap = buildSnapshot(live);
@@ -55,6 +55,6 @@ describe('estado persistido del bot', () => {
   });
   test('valores raros se sanean', () => {
     const r = restorableState({ ...buildSnapshot(live), player: 'otro', deaths: -3, bosses: 'x', brbStart: 'ya' }, { live: true, streamStartedAt: live.streamStartedAt });
-    assert.deepEqual(r, { silenced: true, brbStart: null, player: null, deaths: 0, bosses: 0 });
+    assert.deepEqual(r, { silenced: true, brbStart: null, player: null, deaths: 0, bosses: 0, muteUntil: 0, mode: 'normal' });
   });
 });

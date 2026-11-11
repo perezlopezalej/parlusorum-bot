@@ -28,7 +28,8 @@ const { getStreamInfo, getCurrentGame, loadBroadcasterTokens, ensureBotToken, re
 const { trackMessage, updatePeakViewers, getSummary } = require('./src/utils/metrics');
 const { startStreamSession } = require('./src/utils/supabase');
 const memory = require('./src/memory/handler');
-const { wrapClientSay } = require('./src/utils/irc-ratelimit');
+const { wrapClientSay, setApiSender } = require('./src/utils/irc-ratelimit');
+const chatApi = require('./src/twitch/chat-api');
 const { checkNewUser } = require('./src/moderation/bot-detector');
 const chatlog = require('./src/utils/chatlog');
 const { runWithOrigin, withOrigin } = chatlog;
@@ -127,6 +128,8 @@ const client = new tmi.Client({
 });
 
 wrapClientSay(client);
+// CHAT_SEND=api: los mensajes salen por la API Send Chat Message (insignia de Chat Bot); el chat se sigue leyendo por IRC
+if (chatApi.enabled()) { setApiSender(chatApi.sendChatMessage); logger.info('💬 Envío de mensajes por la API de Twitch (Chat Bot); IRC queda de lectura y respaldo'); }
 
 const RETRY_MIN_MS = 30 * 1000;
 const RETRY_MAX_MS = 10 * 60 * 1000;

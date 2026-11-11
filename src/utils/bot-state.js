@@ -15,13 +15,13 @@ const STARTED_AT_TOLERANCE_MS = 5000;
 const count = n => (Number.isInteger(n) && n >= 0 ? n : 0);
 
 // Lo que se guarda. Sin directo: nada (así un estado viejo nunca se restaura en el siguiente stream)
-function buildSnapshot({ live, streamStartedAt, silenced, brbStart, player, deaths, bosses }, now = Date.now()) {
+function buildSnapshot({ live, streamStartedAt, silenced, brbStart, player, deaths, bosses, muteUntil, mode }, now = Date.now()) {
   if (!live || !streamStartedAt) return { v: 1, live: false, savedAt: now };
-  return { v: 1, live: true, streamStartedAt, silenced: !!silenced, brbStart: brbStart || null, player: player || null, deaths: count(deaths), bosses: count(bosses), savedAt: now };
+  return { v: 1, live: true, streamStartedAt, silenced: !!silenced, brbStart: brbStart || null, player: player || null, deaths: count(deaths), bosses: count(bosses), muteUntil: Number.isFinite(muteUntil) && muteUntil > now ? muteUntil : 0, mode: mode === 'reactivo' ? 'reactivo' : 'normal', savedAt: now };
 }
 
 // Lo que se aplica al arrancar, o null si no procede (no hay directo, o lo guardado era de otro directo)
-function restorableState(saved, { live, streamStartedAt }) {
+function restorableState(saved, { live, streamStartedAt }, now = Date.now()) {
   if (!live || !streamStartedAt || !saved || saved.v !== 1 || !saved.live) return null;
   if (!Number.isFinite(saved.streamStartedAt) || Math.abs(saved.streamStartedAt - streamStartedAt) > STARTED_AT_TOLERANCE_MS) return null;
   return {
@@ -30,6 +30,9 @@ function restorableState(saved, { live, streamStartedAt }) {
     player: PLAYERS.includes(saved.player) ? saved.player : null,
     deaths: count(saved.deaths),
     bosses: count(saved.bosses),
+    // El silencio temporal solo se restaura si aún no ha caducado
+    muteUntil: Number.isFinite(saved.muteUntil) && saved.muteUntil > now ? saved.muteUntil : 0,
+    mode: saved.mode === 'reactivo' ? 'reactivo' : 'normal',
   };
 }
 
@@ -42,6 +45,8 @@ function currentSnapshot() {
     player: state.getPlayer(),
     deaths: state.getDeathCount(),
     bosses: state.getBossCount(),
+    muteUntil: state.getMuteUntil(),
+    mode: state.getBotMode(),
   });
 }
 
@@ -67,11 +72,13 @@ async function restoreBotState(client, channel) {
       return null;
     }
     if (r.silenced) state.setSilenceMode(true);
+    if (r.muteUntil) state.setMuteUntil(r.muteUntil);
+    if (r.mode === 'reactivo') state.setBotMode('reactivo');
     if (r.brbStart) state.setBrbMode(true, client, channel, r.brbStart);
     if (r.player) state.setPlayer(r.player);
     if (r.deaths > state.getDeathCount()) state.setDeathCount(r.deaths);
     if (r.bosses > state.getBossCount()) state.setBossCount(r.bosses);
-    logger.info(`♻️ Estado restaurado: silencio=${r.silenced}, brb=${!!r.brbStart}, juega=${r.player || '-'}, muertes=${state.getDeathCount()}, jefes=${state.getBossCount()}`);
+    logger.info(`♻️ Estado restaurado: silencio=${r.silenced}, callado_hasta=${r.muteUntil || '-'}, modo=${r.mode}, brb=${!!r.brbStart}, juega=${r.player || '-'}, muertes=${state.getDeathCount()}, jefes=${state.getBossCount()}`);
     return r;
   } catch (e) {
     logger.warn(`Estado del bot no restaurado: ${e.message}`);

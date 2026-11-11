@@ -3,8 +3,31 @@ const chatlog = require('./chatlog');
 const state = require('./state');
 const { limitFillers, limitLusorums } = require('../ai/quality');
 const { checkOutbound } = require('./output-guard');
+const { outboundBlock } = require('./bot-control');
 
 const BOT_NAME = process.env.BOT_USERNAME || 'bot';
+
+// Envío por la API Send Chat Message (insignia de Chat Bot). Si está activo y falla, el mensaje sale por IRC.
+// apiSender(msg) → { sent: true } | { sent: false, reason }; lanza si no se pudo usar la API.
+let apiSender = null;
+function setApiSender(fn) { apiSender = fn; }
+
+// Un mensaje por API (o IRC si la API no está o falla). Devuelve 'sent' | 'dropped'
+async function deliver(sayFn, channel, msg) {
+  if (apiSender) {
+    try {
+      const r = await apiSender(msg);
+      if (r.sent) return 'sent';
+      logger.warn(`Chat API: Twitch no publicó el mensaje (${r.reason}): "${String(msg).slice(0, 60)}"`);
+      state.recordFilterDiscard('salida', `api:${r.reason}`);
+      return 'dropped';
+    } catch (e) {
+      logger.warn(`Chat API no disponible (${e.message}); se envía por IRC`);
+    }
+  }
+  await sayFn(channel, msg);
+  return 'sent';
+}
 
 // Límites oficiales Twitch IRC:
 // - Cuenta normal: 20 msgs / 30 s → usamos 18 como margen
@@ -49,8 +72,14 @@ async function _sendNext() {
       logger.info(`IRC: mensaje caducado en cola, descartado: "${String(rawMsg).slice(0, 60)}"`);
       return false;
     }
-    if (client && client.readyState() !== 'OPEN') {
+    if (client && !apiSender && client.readyState() !== 'OPEN') {
       logger.warn('IRC: mensaje descartado — cliente no conectado');
+      return false;
+    }
+    // Respaldo de los controles en vivo: con silencio o modo reactivo, lo que no toca no sale aunque algún módulo lo olvide
+    const blockedBy = outboundBlock(meta?.origin, { silenced: state.isSilenced(), reactive: state.isReactive() });
+    if (blockedBy) {
+      logger.info(`IRC: mensaje no enviado (${blockedBy}) [${meta?.origin || 'otro'}]: "${String(rawMsg).slice(0, 60)}"`);
       return false;
     }
     const lusorums = limitLusorums(limitFillers(rawMsg), state.getLusorumsHistory());
@@ -65,17 +94,21 @@ async function _sendNext() {
     });
     if (!guard.ok) {
       logger.warn(`IRC: mensaje descartado por filtro de salida (${guard.reason}) [${origin}]: "${String(msg).slice(0, 80)}"`);
+      state.recordFilterDiscard('salida', String(guard.reason || 'salida'));
       return false;
     }
     state.noteLusorums(lusorums.had);
     _window.push(Date.now());
     let timer;
     try {
-      await Promise.race([
-        sayFn(channel, msg),
+      const outcome = await Promise.race([
+        deliver(sayFn, channel, msg),
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`say sin respuesta en ${SAY_TIMEOUT_MS} ms`)), SAY_TIMEOUT_MS); }),
       ]);
-      chatlog.logBotMessage(BOT_NAME, msg, meta);
+      if (outcome === 'sent') {
+        chatlog.logBotMessage(BOT_NAME, msg, meta);
+        state.recordFilterSent('salida');
+      }
     } catch (e) {
       logger.warn(`IRC say error: ${e.message}`);
     } finally {
@@ -170,4 +203,4 @@ function _testHooks({ gapMs, sayTimeoutMs, reset } = {}) {
   return { queued: _queue.length };
 }
 
-module.exports = { wrapClientSay, _testHooks };
+module.exports = { wrapClientSay, setApiSender, _testHooks };

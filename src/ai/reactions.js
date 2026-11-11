@@ -5,10 +5,11 @@
 
 const AI_ORIGINS = new Set(['cohost', 'mencion', 'timer_ia', 'hook', 'quemeperdi', 'dios_fua']);
 const WINDOW_MS = 60 * 1000;
-const FAST_MS = 20 * 1000;
+// La risa cuenta como reacción al bot hasta 45 s después (en chats pequeños la gente tarda en escribir)
+const LAUGH_MS = 45 * 1000;
 
 const LAUGH_RE = /(?:ja|je|ji|jo){2,}|\bjs(?:js)+|\bx+d+\b|\blol\b|\blul\b|kekw|omegalul|maxlol/i;
-const NEGATIVE_RE = /qu[eé] dice(?:s)? (?:este|el bot|dios)|no viene al caso|(?:el )?bot (?:est[aá]|va) (?:lia(?:d|o)+[oa]?|fatal|mal|loco)|est[aá] lia(?:d|o)+[oa]? (?:el )?bot|qu[eé] (?:cojones|co[nñ]o) dice|calla(?:te)? (?:bot|dios)/i;
+const NEGATIVE_RE = /qu[eé] dice(?:s)? (?:este|el bot|dios)|no viene al caso|(?:el )?bot (?:est[aá]|va) (?:lia(?:d|o)+[oa]?|fatal|mal|loco)|est[aá] lia(?:d|o)+[oa]? (?:el )?bot|qu[eé] (?:cojones|co[nñ]o) dice|calla(?:te)? (?:bot|dios)|(?:lo ha|ha) vuelto un pesa(?:d|o)+[oa]?|le quito el seguimiento|(?:quito|dejo) (?:el follow|de seguir)|qu[eé] le pasa al bot/i;
 const BOT_NAME_RE = /dios\s*_?\s*fua/i;
 
 const isLaugh = text => LAUGH_RE.test(String(text || ''));
@@ -41,7 +42,8 @@ function chatBaseline(rows) {
 }
 
 // Reacción a un mensaje del bot. next = filas de usuarios (no bot) posteriores, en orden.
-function scoreReaction(bot, next, { baseline = 0, botName = 'dios_fua' } = {}) {
+function scoreReaction(bot, next, { baseline = 0, botName = 'dios_fua', streamer = process.env.CHANNEL } = {}) {
+  const streamerLogin = String(streamer || '').toLowerCase();
   const t0 = timeOf(bot);
   const addressee = addresseeOf(bot.message);
   const inWindow = next.filter(r => !r.is_bot && timeOf(r) > t0 && timeOf(r) - t0 <= WINDOW_MS);
@@ -51,14 +53,18 @@ function scoreReaction(bot, next, { baseline = 0, botName = 'dios_fua' } = {}) {
   let addresseeAnswered = false;
   for (const r of inWindow) {
     const u = loginOf(r);
-    const fast = timeOf(r) - t0 <= FAST_MS;
+    const dt = timeOf(r) - t0;
     const laugh = isLaugh(r.message);
+    // Una risa dirigida a otra persona ("@x jajaja") no es una reacción al bot
+    const to = addresseeOf(r.message);
+    const laughAtBot = laugh && dt <= LAUGH_MS && (!to || to === botName.toLowerCase());
     if (laugh) laughUsers.add(u);
     if (isNegative(r.message)) negUsers.add(u);
     if (addressee && u === addressee) addresseeAnswered = true;
-    if (String(r.reply_parent_login || '').toLowerCase() === botName.toLowerCase() || namesBot(r.message) || (laugh && fast)) reactors.add(u);
+    if (String(r.reply_parent_login || '').toLowerCase() === botName.toLowerCase() || namesBot(r.message) || laughAtBot) reactors.add(u);
   }
-  const outsiders = [...reactors].filter(u => u !== addressee);
+  // Reacción ajena = de alguien que no es el destinatario de la mención (el streamer cuenta siempre)
+  const outsiders = [...reactors].filter(u => u !== addressee || u === streamerLogin);
   const extraLaugh = Math.max(0, laughUsers.size - baseline);
   const score = Math.round((reactors.size + extraLaugh * 0.5 - negUsers.size * 2) * 100) / 100;
   return {
@@ -68,7 +74,9 @@ function scoreReaction(bot, next, { baseline = 0, botName = 'dios_fua' } = {}) {
     negUsers: [...negUsers],
     addressee,
     ignored: reactors.size === 0 && !addresseeAnswered && negUsers.size === 0,
-    positive: reactors.size >= 2 && outsiders.length >= 1 && negUsers.size === 0,
+    positive: outsiders.length >= 1 && negUsers.size === 0,
+    // Hubo alguna reacción (p. ej. solo el destinatario) pero no basta para contar como "bien"
+    reacted: !(outsiders.length >= 1 && negUsers.size === 0) && negUsers.size === 0 && (reactors.size > 0 || addresseeAnswered),
     negative: negUsers.size > 0,
     score,
   };
@@ -90,9 +98,10 @@ function scoreSession(rows, { botName = 'dios_fua' } = {}) {
 function summarize({ baseline, scored }) {
   const byOrigin = {};
   for (const s of scored) {
-    const o = byOrigin[s.row.origin] ||= { sent: 0, positive: 0, negative: 0, ignored: 0 };
+    const o = byOrigin[s.row.origin] ||= { sent: 0, positive: 0, reacted: 0, negative: 0, ignored: 0 };
     o.sent++;
     if (s.positive) o.positive++;
+    if (s.reacted) o.reacted++;
     if (s.negative) o.negative++;
     if (s.ignored) o.ignored++;
   }
@@ -101,19 +110,20 @@ function summarize({ baseline, scored }) {
     baseline: Math.round(baseline * 100) / 100,
     total: scored.length,
     positive: scored.filter(s => s.positive).length,
+    reacted: scored.filter(s => s.reacted).length,
     negative: scored.filter(s => s.negative).length,
     ignored: scored.filter(s => s.ignored).length,
     byOrigin,
-    best: scored.filter(s => s.positive).sort((a, b) => b.score - a.score).slice(0, 3).map(cut),
+    best: scored.filter(s => s.positive).sort((a, b) => b.score - a.score).slice(0, 5).map(cut),
     worst: scored.filter(s => s.negative).map(cut),
   };
 }
 
 function formatSummary(sum) {
-  const origins = Object.entries(sum.byOrigin).map(([k, o]) => `${k} ${o.positive}+/${o.negative}-/${o.ignored} ign de ${o.sent}`).join(', ');
-  const best = sum.best.map(b => `"${b.message.slice(0, 60)}" (${b.score})`).join(' | ') || 'ninguno';
+  const origins = Object.entries(sum.byOrigin).map(([k, o]) => `${k} ${o.positive}+/${o.reacted} con reacción/${o.negative}-/${o.ignored} ign de ${o.sent}`).join(', ');
+  const best = sum.best.map(b => `[${b.origin}] "${b.message.slice(0, 80)}" (${b.score})`).join(' | ') || 'ninguno';
   const worst = sum.worst.map(b => `"${b.message.slice(0, 60)}" [${b.negUsers.join(',')}]`).join(' | ') || 'ninguno';
-  return `Reacciones (${sum.total} mensajes IA, risa base ${sum.baseline}): ${sum.positive} bien, ${sum.negative} mal, ${sum.ignored} ignorados. Por origen: ${origins || '-'}. Mejores: ${best}. Negativos: ${worst}`;
+  return `Reacciones (${sum.total} mensajes IA, risa base ${sum.baseline}): ${sum.positive} bien, ${sum.reacted} con reacción, ${sum.negative} mal, ${sum.ignored} ignorados. Por origen: ${origins || '-'}. Gustaron: ${best}. Negativos: ${worst}`;
 }
 
-module.exports = { AI_ORIGINS, WINDOW_MS, FAST_MS, isLaugh, isNegative, namesBot, addresseeOf, chatBaseline, scoreReaction, scoreSession, summarize, formatSummary };
+module.exports = { AI_ORIGINS, WINDOW_MS, LAUGH_MS, isLaugh, isNegative, namesBot, addresseeOf, chatBaseline, scoreReaction, scoreSession, summarize, formatSummary };

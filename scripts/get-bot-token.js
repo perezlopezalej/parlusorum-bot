@@ -1,4 +1,4 @@
-// Genera access + refresh token para la cuenta del BOT (scopes chat:read chat:edit)
+// Genera access + refresh token para la cuenta del BOT (scopes chat:read chat:edit user:write:chat user:bot)
 // y los guarda SOLO en Supabase (channel_config.bot_token / bot_refresh_token).
 //
 // Requisitos: CLIENT_ID, CLIENT_SECRET, SUPABASE_URL, SUPABASE_KEY en .env o en el entorno,
@@ -13,7 +13,8 @@ const { saveTokens, loadTokens } = require('../src/utils/supabase');
 
 const PORT = 3000;
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
-const SCOPES = 'chat:read chat:edit';
+// user:write:chat + user:bot permiten enviar por la API Send Chat Message con token de aplicación (insignia de Chat Bot)
+const SCOPES = 'chat:read chat:edit user:write:chat user:bot';
 
 const { CLIENT_ID, CLIENT_SECRET, SUPABASE_URL, SUPABASE_KEY } = process.env;
 const missing = ['CLIENT_ID', 'CLIENT_SECRET', 'SUPABASE_URL', 'SUPABASE_KEY'].filter(v => !process.env[v]);

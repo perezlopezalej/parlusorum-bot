@@ -5,7 +5,7 @@
 //   names: nicks extra a seudonimizar; generator: modelo que generó el texto (solo 'pick': el selector es de otra familia)
 //
 // Reparto por defecto. Se cambia con AI_CHAIN_<TIPO>=groq:modelo,…
-//   120b → 20b → qwen: los que necesitan más gracia (cohost, diosfua, quemeperdi, reaction)
+//   120b → 20b → qwen: los que necesitan más gracia (cohost, diosfua, quemeperdi)
 //   20b → 120b → qwen:  menciones y provocaciones (mucho volumen, respuestas cortas)
 //   qwen → 20b → 120b:  alert, timer, hook, endstream, trivia, command
 //   Cada modelo tiene su cupo propio (8.000 tokens/min, 200.000/día): el reparto equilibra un directo de 6 horas (ver PROGRESS.md)
@@ -21,12 +21,19 @@ const groqUtils = require('./groq-utils');
 const { GROQ_MODEL, GROQ_MODEL_FAST, GROQ_MODEL_LIGHT, GROQ_MODEL_PICK, GROQ_MODEL_COMPOUND, GROQ_MODEL_FALLBACKS, isReasoningModel, REASONING_HEADROOM } = groqUtils;
 
 const GROUP = {
-  diosfua: 'groq', quemeperdi: 'groq', cohost: 'groq', reaction: 'groq',
+  diosfua: 'groq', quemeperdi: 'groq', cohost: 'groq',
   mention: 'mid', provocation: 'mid',
   timer: 'light', hook: 'light', alert: 'light', endstream: 'light', trivia: 'light', command: 'light', summary: 'light',
   review: 'review', pick: 'pick',
 };
 const PROVIDERS = new Set(['groq']);
+// Tipos espontáneos: si el modelo principal no tiene cupo, el bot calla en vez de usar uno peor (y no espera a los 429).
+// Lo que pide una persona (!dios_fua, menciones, comandos) conserva los modelos de reserva.
+const SILENT_KINDS = new Set(['cohost', 'timer', 'hook', 'quemeperdi']);
+
+class NoQuotaError extends Error {
+  constructor(message) { super(message); this.name = 'NoQuotaError'; this.code = 'NO_QUOTA'; }
+}
 
 const num = (name, def) => { const v = parseInt(process.env[name] || '', 10); return v > 0 ? v : def; };
 const BLOCK_MAX_MS = 30 * 60 * 1000;
@@ -95,7 +102,10 @@ function blockLink(l, err, now = Date.now()) { state.blockAi(l.key, now + blockD
 // --- Presupuesto: saltar ANTES del 429 cuando el contador propio dice que no cabe ---
 function overBudget(l, estTokens, now = Date.now()) {
   const minute = state.getAiMinuteUsage(l.key, now);
-  return minute.requests >= Math.floor(num('AI_GROQ_RPM', 30) * 0.9) || minute.tokens + estTokens > num('AI_GROQ_TPM', 8000) * 0.85;
+  if (minute.requests >= Math.floor(num('AI_GROQ_RPM', 30) * 0.9) || minute.tokens + estTokens > num('AI_GROQ_TPM', 8000) * 0.85) return true;
+  // Cupo real que dijo Groq en la última respuesta (x-ratelimit-remaining-*), mientras siga vigente
+  const real = state.getGroqLimits(l.key, now);
+  return !!real && ((real.remainingTokens !== undefined && real.remainingTokens < estTokens) || (real.remainingRequests !== undefined && real.remainingRequests < 1));
 }
 
 // Primero los que tienen hueco; luego los sin presupuesto; los bloqueados, como último recurso
@@ -126,8 +136,17 @@ const timeoutFor = (opts) => opts.timeoutMs || num('AI_GROQ_TIMEOUT_MS', 20000);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Espera ante un 429: la que pide Groq (retry-after) o un retroceso exponencial, siempre con algo de aleatoriedad
+// para que varias peticiones que fallaron a la vez no reintenten juntas. rng inyectable para tests.
+function backoffMs(n, err, rng = Math.random) {
+  const asked = groqUtils.retryAfterMs(err);
+  if (asked) return asked + Math.round(rng() * 500);
+  const cap = Math.min(2 ** n * 1000, 8000);
+  return Math.round(cap / 2 + rng() * (cap / 2));
+}
+
 // Una petición a un eslabón. En el último, un 429 reintenta con espera (si no supera maxDelayMs)
-async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, names }, hasNext) {
+async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, names, noWait }, hasNext) {
   let p = buildRequest(l, params);
   // Los nicks no salen en el prompt: user1, user2… y se restauran en la respuesta
   const ps = pseudonymize(p.messages, unique([...state.getChatterNames(), ...(names || [])]));
@@ -138,7 +157,7 @@ async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, nam
     const handle = state.startAiRequest(l.provider, l.model, est);
     const t0 = Date.now();
     try {
-      const result = await transports[l.provider](p, { timeoutMs: timeoutFor({ timeoutMs }) });
+      const result = await transports[l.provider](p, { timeoutMs: timeoutFor({ timeoutMs }), onHeaders: h => state.noteGroqLimits(l.key, groqUtils.parseRateHeaders(h)) });
       state.finishAiRequest(handle, result?.usage);
       state.recordGroqTokens(l.model, result?.usage);
       chatlog.noteAiCall(l.model, Date.now() - t0);
@@ -148,8 +167,9 @@ async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, nam
       return result;
     } catch (err) {
       if (isQuota(err)) state.recordGroq429();
-      if (isQuota(err) && !hasNext && n < maxRetries && !isDaily(err)) {
-        const delay = groqUtils.retryAfterMs(err) || 2 ** n * 1000 + Math.random() * 500;
+      if (err?.headers) state.noteGroqLimits(l.key, groqUtils.parseRateHeaders(err.headers));
+      if (isQuota(err) && !hasNext && !noWait && n < maxRetries && !isDaily(err)) {
+        const delay = backoffMs(n, err);
         if (delay <= maxDelayMs) { await sleep(delay); continue; }
       }
       throw err;
@@ -161,7 +181,14 @@ async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, nam
 async function runChain(chain, kind, params, opts = {}) {
   const o = { kind, maxRetries: 2, maxDelayMs: Infinity, ...opts };
   const est = Math.ceil(JSON.stringify(params.messages || []).length / EST_CHARS_PER_TOKEN) + (params.max_tokens || 100);
-  const ordered = orderChain(chain, est);
+  const silent = SILENT_KINDS.has(kind);
+  if (silent) {
+    // Espontáneo: solo el modelo principal; sin cupo (bloqueado o sin presupuesto) se calla en vez de bajar de modelo
+    const first = chain[0];
+    if (state.isAiBlocked(first.key) || overBudget(first, est)) throw new NoQuotaError(`Sin cupo en ${first.key} para ${kind}: se calla`);
+    o.noWait = true;
+  }
+  const ordered = silent ? [chain[0], ...chain.slice(1)] : orderChain(chain, est);
   if (!ordered.length) throw new Error(`Sin modelo disponible para ${kind}`);
   let lastErr;
   for (let i = 0; i < ordered.length; i++) {
@@ -173,7 +200,11 @@ async function runChain(chain, kind, params, opts = {}) {
       return result;
     } catch (err) {
       lastErr = err;
-      if (!hasNext || !shouldFallThrough(err)) throw err;
+      // Espontáneo: solo un modelo retirado (404) justifica pasar al siguiente; un 429, 5xx o timeout lo deja callado
+      if (!hasNext || !shouldFallThrough(err) || (silent && !groqUtils.isModelGone(err))) {
+        if (silent && shouldFallThrough(err)) blockLink(l, err);
+        throw err;
+      }
       blockLink(l, err);
       const why = isQuota(err) ? `cupo ${isDaily(err) ? 'diario' : 'por minuto'} agotado` : groqUtils.isModelGone(err) ? 'modelo retirado' : isTimeout(err) ? 'timeout' : `error ${err.status}`;
       logger.warn(`⚠️ IA (${kind}): ${l.key} ${why}, probando ${ordered[i + 1].key}.`);
@@ -184,4 +215,4 @@ async function runChain(chain, kind, params, opts = {}) {
 
 function aiChat(kind, params, opts) { return runChain(getChain(kind, opts), kind, params, opts); }
 
-module.exports = { aiChat, runChain, getChain, defaultChain, parseChain, orderChain, overBudget, blockLink, blockDuration, setTransport, modelFamily, GROUP };
+module.exports = { aiChat, runChain, getChain, backoffMs, NoQuotaError, SILENT_KINDS, defaultChain, parseChain, orderChain, overBudget, blockLink, blockDuration, setTransport, modelFamily, GROUP };

@@ -109,7 +109,7 @@ describe('!privacidad', () => {
 describe('aviso de privacidad', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'aviso-privacidad.md'), 'utf8');
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'aviso-privacidad.md'), 'utf8').replace(/\r\n/g, '\n');
 
   test('el texto del panel cabe en 300 caracteres y menciona lo esencial', () => {
     const panel = /```\n([\s\S]*?)\n```/.exec(doc)[1];

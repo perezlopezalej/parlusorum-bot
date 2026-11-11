@@ -28,7 +28,7 @@ describe('cadenas por tipo de llamada', () => {
   });
 
   test('los tipos que necesitan más gracia (cohost, reaction, !dios_fua, !quemeperdi) empiezan por el 120b', () => {
-    for (const k of ['cohost', 'reaction', 'diosfua', 'quemeperdi']) {
+    for (const k of ['cohost', 'diosfua', 'quemeperdi']) {
       const c = router.getChain(k);
       assert.ok(c.every(l => l.provider === 'groq'), k);
       assert.match(c[0].model, /gpt-oss-120b/, k);
@@ -96,7 +96,7 @@ describe('salto de eslabón y bloqueos', () => {
   for (const status of [500, 503]) {
     test(`un ${status} salta de modelo y lo bloquea unos minutos`, async () => {
       fake('groq', p => { if (p.model === 'a') throw server(status); return ok(); });
-      await router.runChain(chain, 'cohost', { messages: [] });
+      await router.runChain(chain, 'mention', { messages: [] });
       assert.deepEqual(calls, ['groq:a', 'groq:b']);
       const left = state.aiBlockedUntil('groq:a') - Date.now();
       assert.ok(left > 60 * 1000 && left <= 5 * 60 * 1000);
@@ -105,7 +105,7 @@ describe('salto de eslabón y bloqueos', () => {
 
   test('un timeout salta de modelo y bloquea', async () => {
     fake('groq', p => { if (p.model === 'a') throw Object.assign(new Error('Request timed out.'), { code: 'ETIMEDOUT' }); return ok(); });
-    await router.runChain(chain, 'cohost', { messages: [] });
+    await router.runChain(chain, 'mention', { messages: [] });
     assert.deepEqual(calls, ['groq:a', 'groq:b']);
     assert.ok(state.isAiBlocked('groq:a'));
   });

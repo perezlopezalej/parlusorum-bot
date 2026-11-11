@@ -388,3 +388,23 @@ test('"quién desarrolló el Phantom Blade 0" es una pregunta de juego, no de id
   assert.equal(q.identityQuestion('dios fua quién te desarrolló'), 'creator');
   assert.equal(q.identityQuestion('quién creó a este bot'), 'creator');
 });
+
+describe('mayúsculas raras: los nombres propios y los nicks no cuentan', () => {
+  test('nicks reales en mayúsculas mixtas, con o sin @ y con números', () => {
+    for (const t of ['Claro, EvalUser, vamos allá.', '@EvalUser12 vamos allá', 'Ahí va EvalUser12, a tope.', 'Gracias SrPatataFrita por el apoyo', 'Eso lo dijo xXDarkWolfXx ayer']) {
+      assert.equal(q.oddCaps(t, ['EvalUser', 'EvalUser12', 'SrPatataFrita', 'xXDarkWolfXx']), '', t);
+    }
+  });
+  test('nombres del canal y del lore, sin pasarlos', () => {
+    for (const t of ['ParLusorum manda hoy', '@ParLusorum a tope', 'P1X3LUS sabe de esto', 'Dios_Fua lo ve', 'vlxj97 creó el bot', 'StreamElements avisa']) assert.equal(q.oddCaps(t), '', t);
+  });
+  test('sigue rechazando mayúsculas raras que no son nombres', () => {
+    assert.equal(q.oddCaps('Menudo MasterClass de sufrir', ['EvalUser']), 'MasterClass');
+    assert.equal(q.oddCaps('EvalUser dice que SOULS es genial', ['EvalUser']), 'SOULS');
+  });
+  test('validateMention acepta el nick de quien escribe y rechaza la misma forma si no lo es', () => {
+    const txt = 'EvalUser, eso fue un golpe tremendo, FUA.';
+    assert.equal(q.validateMention(txt, { names: ['EvalUser'] }).ok, true);
+    assert.equal(q.validateMention(txt).ok, false);
+  });
+});
