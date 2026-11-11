@@ -6,10 +6,10 @@
  * y las ESCRITURAS a Supabase (bloqueadas). No envía nada a Twitch.
  *
  * Casos con "filter": pasan una frase real del bot por los validadores de quality y por la revisión de sentido de factcheck
- * (cohost, timer_ia, hook o mention) y esperan que se descarte (expect.rejected) o que pase.
+ * (cohost, timer_ia u hook) y esperan que se descarte (expect.rejected) o que pase. Los casos que se resuelven solo con reglas
+ * viven en test/fixtures/frases-reales.json y corren en npm test.
  *
  * Casos con "filter": "pick" (candidates, chat, activity, expect.pick = número 1-based o 'none') prueban el selector con IA de src/ai/pick-best.js.
- * Casos con "filter": "inject": pasan una entrada de usuario por el filtro anti-inyección de src/utils/filter.js (expect.rejected); no gastan IA.
  *
  * Uso: npm run eval [-- --only id1,id2] [-- --verbose] [-- --repeat N]
  * Sale con código 1 si algún caso no cumple lo esperado.
@@ -134,19 +134,13 @@ async function runFilterCase(c) {
     cohost: t => quality.validateCohost(t, ctx),
     timer_ia: t => quality.validateTimerIA(t, ctx),
     hook: t => quality.validateHook(t, ctx),
-    mention: t => quality.validateMention(t, { question: c.question || '', player: ctx.player, names: c.names || [] }),
-    // Entrada del usuario: rejected = el filtro anti-inyección la bloquea antes de llegar a la IA (sin gasto de cupo)
-    inject: t => (require('../src/utils/filter').containsBlockedContent(t) ? { ok: false, reason: 'inyección/ofensivo' } : { ok: true }),
-    // Petición de silencio al bot (rejected = reconocida como tal) y resumen de fin de stream (reglas de src/memory/handler.js)
-    shutup: t => (classifyMessage(t, {}, { botNames: [process.env.BOT_USERNAME || 'Dios_Fua'] }) === 'shutup' ? { ok: false, reason: 'petición de silencio' } : { ok: true }),
-    summary: t => { const p = require('../src/memory/handler').summaryProblem(t); return p ? { ok: false, reason: p } : { ok: true }; },
   };
   if (!rules[c.filter]) throw new Error(`filtro desconocido: ${c.filter}`);
   const started = realNow();
   const n429 = state.getCohostStats().groq429;
   const v = rules[c.filter](c.input);
   let rejectedBy = v.ok ? null : `regla — ${v.reason}`;
-  if (!rejectedBy && !['shutup', 'inject'].includes(c.filter)) {
+  if (!rejectedBy) {
     const r = await factcheck.evaluate(c.input, `Juego: ${game}. Muertes anotadas: ${deaths}.`, { game, sense: true });
     if (r.discard) rejectedBy = 'revisión de datos del juego';
     else if (r.nonsense) rejectedBy = 'revisión de sentido (IA)';

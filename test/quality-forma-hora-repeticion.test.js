@@ -363,20 +363,8 @@ describe('un solo aviso de inicio y de raid', () => {
 });
 
 // ─────────────────────────────── Casos reales del eval ───────────────────────────────
-// Los casos d10-* de test/eval-cases.json se comprueban aquí solo con las reglas (sin IA); `npm run eval` añade el selector y el revisor de sentido
-test('eval-cases: las reglas dan lo esperado en los casos reales del 10-11', () => {
-  const cases = require('./eval-cases.json').filter(c => c.id.startsWith('d10-') && ['cohost', 'timer_ia', 'summary'].includes(c.filter));
-  assert.ok(cases.length >= 10);
-  for (const c of cases) {
-    const ctx = { deathCount: c.deaths ?? 5, recent: [], now: c.at ? new Date(c.at).getTime() : Date.now(), player: 'manu' };
-    const rules = {
-      cohost: t => q.validateCohost(t, ctx),
-      timer_ia: t => q.validateTimerIA(t, ctx),
-      summary: t => (summaryProblem(t) ? { ok: false } : { ok: true }),
-    };
-    const v = rules[c.filter](c.input);
-    assert.equal(!v.ok, c.expect.rejected, `${c.id}: ${JSON.stringify(v)}`);
-  }
+// Los casos del selector de test/eval-cases.json tienen la forma que espera scripts/eval.js (las reglas puras viven en frases-reales.test.js)
+test('eval-cases: los casos del selector están bien formados', () => {
   const picks = require('./eval-cases.json').filter(c => c.filter === 'pick');
   assert.ok(picks.length >= 4);
   for (const c of picks) assert.ok(c.candidates.length >= 2 && c.expect.pick !== undefined, c.id);

@@ -192,6 +192,5 @@ describe('identidad: el canal es de Manu y Pao, vlxj97 solo creó el bot', () =>
     const any = cases.find(c => c.id === 'abejas').expect.matchAny.map(p => new RegExp(p, 'i'));
     for (const t of ['Acortan su vida con el trabajo', 'Viven más en invierno, sí o sí', 'Tienen una vida más corta en verano', 'Duran menos en verano'])
       assert.ok(any.some(re => re.test(t)), t);
-    assert.equal(cases.find(c => c.id === 'g-nomadas-churros').informativo, true);
   });
 });

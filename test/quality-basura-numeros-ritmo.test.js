@@ -273,25 +273,3 @@ test('resumen de fin de stream: onStreamEnd filtra momentos y frases personales 
     assert.deepEqual(out.recurringPhrases, ['por el FUA']);
   } finally { setTransport('groq', async () => { throw new Error('transporte de prueba sin configurar'); }); }
 });
-
-// Los casos reales añadidos a test/eval-cases.json se comprueban aquí solo con las reglas (sin IA); `npm run eval` añade la revisión por IA
-test('eval-cases: las reglas dan lo esperado en los casos reales nuevos', () => {
-  const cases = require('./eval-cases.json');
-  const ids = new Set(['f-something-like', 'f-treinta-y-una', 'f-treinta-y-dos', 'f-treinta-y-tres', 'f-contador-control', 'f-despertador-lunes', 'f-autoayuda-fuerzas', 'f-genero-repetido', 'f-cuarentay-siete', 'f-cuarenta-y-siete-bien', 'f-apertura-repetida', 'f-juega-pao-control', 'f-juega-manu', 'f-silencio-fua', 'f-silencio-insulto', 'f-resumen-hamburguesas', 'f-resumen-control']);
-  const { classifyMessage } = require('../src/ai/patterns');
-  const { summaryProblem } = require('../src/memory/handler');
-  let checked = 0;
-  for (const c of cases.filter(x => ids.has(x.id))) {
-    const ctx = { deathCount: c.deaths ?? 5, recent: c.recent || [], lastCitedDeaths: !!c.lastCitedDeaths, player: c.player || 'manu' };
-    const rules = {
-      cohost: t => q.validateCohost(t, ctx),
-      timer_ia: t => q.validateTimerIA(t, ctx),
-      shutup: t => (classifyMessage(t, {}, { botNames: ['Dios_Fua'] }) === 'shutup' ? { ok: false } : { ok: true }),
-      summary: t => (summaryProblem(t) ? { ok: false } : { ok: true }),
-    };
-    const v = rules[c.filter](c.input);
-    assert.equal(!v.ok, c.expect.rejected, `${c.id}: ${JSON.stringify(v)}`);
-    checked++;
-  }
-  assert.equal(checked, ids.size);
-});
