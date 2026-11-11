@@ -231,3 +231,66 @@ describe('esquivar no es una mecánica del juego', () => {
     }
   });
 });
+
+describe('«FUA» final y vida personal (fase D, arreglos del eval)', () => {
+  test('limitTrailingFua no deja nunca una frase incompleta', () => {
+    const flags = [true, true];
+    const fixed = 'Me programó alguien, pero el canal es de Manu y Pao. Yo solo pongo el FUA.';
+    assert.deepEqual(q.limitTrailingFua(fixed, flags), { text: fixed, had: true });
+    const ok = q.limitTrailingFua('Vamos a petarlo entre todos, ¡FUA!', flags);
+    assert.equal(ok.had, false);
+    assert.equal(ok.text, 'Vamos a petarlo entre todos,'.replace(/,$/, '') + '.');
+  });
+
+  test('higiene y cuerpo cuentan como vida personal; el baño de sangre y el cuerpo a cuerpo no', () => {
+    for (const t of [
+      'El ritmo a veces se siente como una ducha de Pao',
+      'Manu se va al baño un momento',
+      'Hoy toca aseo y siesta',
+      'Menudo sudor lleva el streamer',
+    ])
+      assert.equal(q.personalMatch(t), true, t);
+    for (const t of ['Este jefe es un baño de sangre', 'Combate cuerpo a cuerpo contra el jefe'])
+      assert.equal(q.personalMatch(t), false, t);
+  });
+});
+
+describe('una sola línea y palabras separadas (fase D, arreglos del eval)', () => {
+  const NNBSP = String.fromCharCode(0x202f);
+  const ZWSP = String.fromCharCode(0x200b);
+  const LS = String.fromCharCode(0x2028);
+
+  test('oneLine convierte saltos de línea y espacios raros en un espacio, sin pegar palabras', () => {
+    assert.equal(
+      q.oneLine('la\ncolmena es más corta\r\nque la calma de siempre'),
+      'la colmena es más corta que la calma de siempre',
+    );
+    assert.equal(q.oneLine('muy pronto\n\n y nos vemos'), 'muy pronto y nos vemos');
+    assert.equal(q.oneLine(`la${NNBSP}voz${ZWSP}del${LS}FUA`), 'la voz del FUA');
+    assert.equal(q.oneLine('Se oye la voz.\n¿Os acordáis?'), 'Se oye la voz. ¿Os acordáis?');
+    assert.equal(q.oneLine('Se oye la voz.¿Os acordáis?'), 'Se oye la voz. ¿Os acordáis?');
+    assert.equal(q.oneLine('co\u00adlmena'), 'colmena');
+    assert.equal(q.oneLine(null), '');
+  });
+
+  test('truncate (todo lo que sale al chat) aplana las salidas de varias líneas', () => {
+    const multi =
+      '@ana En verano la\ncolmena vive más corta\nque en invierno,\ny pronto\n¡y nos vemos!\n\n¿Os acordáis de la calma de\nsiempre?';
+    const out = truncate(multi);
+    assert.ok(!/[\r\n]/.test(out), out);
+    assert.equal(
+      out,
+      '@ana En verano la colmena vive más corta que en invierno, y pronto ¡y nos vemos! ¿Os acordáis de la calma de siempre?',
+    );
+  });
+});
+
+test('quitar un emote entre paréntesis no deja «( )»', () => {
+  const e = emotes[0];
+  assert.equal(q.stripEmotes(`Qué bien (${e}) todo`, emotes), 'Qué bien todo');
+  assert.equal(q.applyEmotePolicy(`Qué bien (${e}) todo`, false, emotes), 'Qué bien todo');
+  assert.equal(
+    q.applyEmotePolicy(`Qué bien ( ) todo ${e}`, true, emotes),
+    `Qué bien ( ) todo ${e}`.replace('( ) ', ''),
+  );
+});

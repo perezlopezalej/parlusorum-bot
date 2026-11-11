@@ -1,6 +1,6 @@
 const Groq = require('groq-sdk');
 const channelConfig = require('../../config/channel.json');
-const { cutAtSentence } = require('../ai/quality');
+const { cutAtSentence, oneLine } = require('../ai/quality');
 
 // Modelos configurables via env var. Groq retira modelos con frecuencia:
 // toda la familia llama-3.x/llama-4 y los groq/compound devuelven 404 model_not_found
@@ -126,7 +126,7 @@ function stripThinking(result) {
 
 function truncate(msg, limit = TWITCH_MAX_LENGTH) {
   if (!msg) return '';
-  let clean = msg.replace(/\*+/g, '').replace(/  +/g, ' ').trim();
+  let clean = oneLine(msg).replace(/\*+/g, '').replace(/  +/g, ' ').trim();
   if (_emoteBeforeRe) clean = clean.replace(_emoteBeforeRe, '$1 $2');
   if (_emoteAfterRe) clean = clean.replace(_emoteAfterRe, '$1 $2');
   clean = clean.replace(/  +/g, ' ').trim();

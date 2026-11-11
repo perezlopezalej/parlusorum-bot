@@ -227,6 +227,8 @@ async function runCase(c, i, rep = 0) {
   events = [];
   currentLogs = [];
   aiCalls = [];
+  // freshState: salta una hora para que ningún cooldown global ni tope de menciones de casos anteriores descarte este caso
+  if (c.freshState) skewMs += 60 * 60 * 1000;
   if (c.filter) return runFilterCase(c);
   const n429 = state.getCohostStats().groq429;
   const said = [];
@@ -313,6 +315,8 @@ function check(exp, r) {
         : `no es de config/messages.json → ${exp.fromPool}`,
     );
   }
+  if (exp.fromFile && !require(`../config/${exp.fromFile}.json`).replies.includes(r.answer))
+    f.push(`no es una plantilla de config/${exp.fromFile}.json`);
   for (const key of exp.notFromPool || [])
     if (flattenPool(key).includes(r.answer)) f.push(`es una respuesta de reserva (${key})`);
   return f;

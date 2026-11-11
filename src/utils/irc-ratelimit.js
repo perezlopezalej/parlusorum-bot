@@ -1,7 +1,7 @@
 const logger = require('./logger');
 const chatlog = require('./chatlog');
 const state = require('./state');
-const { limitFillers, limitLusorums } = require('../ai/quality');
+const { limitFillers, limitLusorums, oneLine } = require('../ai/quality');
 const { checkOutbound } = require('./output-guard');
 const { outboundBlock } = require('./bot-control');
 
@@ -86,7 +86,10 @@ async function _sendNext() {
       );
       return false;
     }
-    const lusorums = limitLusorums(limitFillers(rawMsg), state.getLusorumsHistory());
+    const lusorums = limitLusorums(
+      limitFillers(typeof rawMsg === 'string' ? oneLine(rawMsg) : rawMsg),
+      state.getLusorumsHistory(),
+    );
     const msg = lusorums.text;
     const origin = meta?.origin || 'otro';
     const guard = checkOutbound(msg, {

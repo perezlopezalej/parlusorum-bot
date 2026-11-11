@@ -14,9 +14,17 @@ function emoteAllowed(recentBotMessages, emotes) {
 // Espacio sobrante antes de signos de puntuación; no toca "usa !comando" (el signo va pegado a una palabra)
 const SPACE_BEFORE_PUNCT_RE = /\s+([,.;:!?…])(?![\p{L}\p{N}_])/gu;
 
+// Un emote entre paréntesis o corchetes deja «( )» al quitarlo
+const EMPTY_BRACKETS_RE = /\(\s*\)|\[\s*\]/g;
+
 function stripEmotes(text, emotes) {
   if (!emotes.length) return text;
-  return text.replace(emoteRe(emotes), '').replace(SPACE_BEFORE_PUNCT_RE, '$1').replace(/ {2,}/g, ' ').trim();
+  return text
+    .replace(emoteRe(emotes), '')
+    .replace(EMPTY_BRACKETS_RE, '')
+    .replace(SPACE_BEFORE_PUNCT_RE, '$1')
+    .replace(/ {2,}/g, ' ')
+    .trim();
 }
 
 // El emote va siempre al final del mensaje (nunca en medio ni antes de "?", "!" o "."): se saca de donde esté y se añade tras el texto
@@ -26,6 +34,7 @@ function moveEmotesToEnd(text, emotes) {
   if (!found) return text;
   const body = String(text)
     .replace(emoteRe(emotes), '')
+    .replace(EMPTY_BRACKETS_RE, '')
     .replace(/ {2,}/g, ' ')
     .replace(SPACE_BEFORE_PUNCT_RE, '$1')
     .trim();
@@ -62,6 +71,7 @@ function applyEmotePolicy(text, allowed, emotes) {
   let seen = false;
   const single = text
     .replace(emoteRe(emotes), (m) => (seen ? '' : ((seen = true), m)))
+    .replace(EMPTY_BRACKETS_RE, '')
     .replace(/ {2,}/g, ' ')
     .replace(SPACE_BEFORE_PUNCT_RE, '$1')
     .trim();

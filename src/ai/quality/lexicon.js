@@ -144,7 +144,7 @@ function judgesChatMood(text) {
 // --- Redacción y temas vetados (cohost, hook, timer, menciones y avisos) ---
 // Vida personal: el bot no comenta comida, sueño, familia, trabajo, salud ni fútbol de nadie
 const PERSONAL_RE =
-  /\b(paella|tapas?|comer|comiendo|comida|cenar|cenando|cena|desayun\w*|almuerz\w*|hambre|sue[ñn]o|dormir|durmiendo|siesta|familia|hij[oa]s?|ni[ñn][oa]s?|madre|padre|abuel[oa]s?|novi[oa]|esposa|marido|trabajo|trabajar|curro|oficina|enferm[oa]s?|enfermedad|m[eé]dico|hospital|resfriad[oa]|salud|f[uú]tbol|estudi(?:o|os|a|as|ar|ando|ante|antes)|universidad|universitari[oa]s?|carrera|facultad|ade|semestres?|ex[aá]men(?:es)?|asignaturas?|oposici[oó]n(?:es)?|instituto|colegio)\b/i;
+  /\b(paella|tapas?|comer|comiendo|comida|cenar|cenando|cena|desayun\w*|almuerz\w*|hambre|sue[ñn]o|dormir|durmiendo|siesta|familia|hij[oa]s?|ni[ñn][oa]s?|madre|padre|abuel[oa]s?|novi[oa]|esposa|marido|trabajo|trabajar|curro|oficina|enferm[oa]s?|enfermedad|m[eé]dico|hospital|resfriad[oa]|salud|f[uú]tbol|estudi(?:o|os|a|as|ar|ando|ante|antes)|duch\w*|ba[ñn]o(?! de sangre)|ba[ñn]os|ba[ñn]ar\w*|ba[ñn]ando|aseo|higiene|lavarse|sudor|sudar|sudando|(?<!cuerpo a )cuerpo(?! a cuerpo)|universidad|universitari[oa]s?|carrera|facultad|ade|semestres?|ex[aá]men(?:es)?|asignaturas?|oposici[oó]n(?:es)?|instituto|colegio)\b/i;
 
 // "familia" como saludo al chat ("¡gracias, familia!", "la gran familia Lusorum") no es vida personal; "la familia de Manu" sí
 const FAMILY_GREETING_RE =

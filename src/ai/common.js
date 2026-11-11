@@ -2,6 +2,7 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const identityReplies = require('../../config/identity-replies.json');
+const injectionReplies = require('../../config/injection-replies.json');
 const { getStreamIsLive } = require('../utils/state');
 
 const GENERAL_TEMPERATURE = 0.3; // cultura general: menos creatividad, menos datos inventados
@@ -48,6 +49,15 @@ function pickRandom(arr) {
 }
 
 // Respuesta fija a una pregunta de identidad (config/identity-replies.json): rota sin repetir la última de ese tipo
+let lastInjectionReply = '';
+
+// Plantilla fija ante un intento de dar órdenes al bot (rota sin repetir la última)
+function pickInjectionReply() {
+  const pool = injectionReplies.replies.filter((r) => r !== lastInjectionReply);
+  lastInjectionReply = pool[Math.floor(Math.random() * pool.length)] || '';
+  return lastInjectionReply;
+}
+
 const lastIdentityReply = {};
 
 function pickIdentityReply(kind) {
@@ -67,4 +77,5 @@ module.exports = {
   GENERAL_TEMPERATURE,
   getFallback,
   pickIdentityReply,
+  pickInjectionReply,
 };

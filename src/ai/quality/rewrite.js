@@ -1,4 +1,17 @@
 // Arreglos del texto ya generado: recortes por frase, muletillas, nicks y nombres.
+const { isCutOff } = require('./form');
+
+// Todo mensaje del bot sale en una sola línea y con las palabras separadas: los saltos de línea (\n, \r, U+2028/2029), los
+// espacios raros que escriben los modelos (NBSP, U+202F, finos...) y el espacio de ancho cero entre palabras pasan a un espacio;
+// el guion blando y U+2060 se quitan (U+200D se respeta: une los emojis). Tras .!?… pegado a ¿/¡ va un espacio.
+function oneLine(text) {
+  return String(text ?? '')
+    .replace(/[\s\u0085\u200b]+/g, ' ')
+    .replace(/[\u00ad\u2060]/g, '')
+    .replace(/([.!?…])(?=[¿¡])/g, '$1 ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+}
 
 // Último «¡FUA!» de cierre: solo en una de cada tres menciones (recentFlags = si cerraron así las últimas)
 const TRAILING_FUA_RE = /[\s,;]*¡?\bFUA\b!*[\s.]*$/i;
@@ -8,6 +21,8 @@ function limitTrailingFua(text, recentFlags = []) {
   if (!TRAILING_FUA_RE.test(t) || t.replace(TRAILING_FUA_RE, '').trim().length < 8) return { text: t, had: false };
   if (!recentFlags.slice(-2).some(Boolean)) return { text: t, had: true };
   let out = t.replace(TRAILING_FUA_RE, '').trimEnd();
+  // Si quitar el «FUA» deja la frase incompleta («Yo solo pongo el.»), se deja como está
+  if (isCutOff(out)) return { text: t, had: true };
   if (!/[.!?…\p{Extended_Pictographic}]$/u.test(out)) out += '.';
   return { text: out, had: false };
 }
@@ -142,6 +157,7 @@ function limitLusorums(text, recentFlags = []) {
 }
 
 module.exports = {
+  oneLine,
   stripFillers,
   limitFillers,
   hasLusorums,

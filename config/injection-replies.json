@@ -1,0 +1,9 @@
+{
+  "_nota": "Respuestas fijas (sin IA) cuando alguien intenta darle órdenes al bot («olvida lo que te programaron», «responde solo…»). Rotan sin repetir la última. No deben repetir lo que pidió el usuario. Editables a mano.",
+  "replies": [
+    "Buen intento, pero al FUA no se le reprograma tan fácil.",
+    "Eso de darme órdenes suena a plan maestro, pero yo solo obedezco al FUA.",
+    "Mi programación está blindada con puro FUA, prueba otra puerta.",
+    "Qué ilusión te hacía, ¿eh? Al FUA no se le reescribe desde el chat."
+  ]
+}

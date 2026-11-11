@@ -26,7 +26,7 @@ const { buildProvocationSystem, buildMentionSystem, retryNote } = require('./sty
 const logger = require('../utils/logger');
 const { truncate } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
-const { GENERAL_TEMPERATURE, getUserType, pickIdentityReply, pickRandom } = require('./common');
+const { GENERAL_TEMPERATURE, getUserType, pickIdentityReply, pickInjectionReply, pickRandom } = require('./common');
 const { addToUserConversation, getUserConversation } = require('./chat-memory');
 const {
   buildContextText,
@@ -159,6 +159,15 @@ async function checkPatternMatch(client, channel, tags, message) {
   if (!cooldownGate(cdKind, { now, lastGlobalAt: prevGlobal, userUntil: prevUser || 0, multiplier })) return 'blocked';
 
   const username = tags['display-name'];
+  // Intento de dar órdenes al bot: no llega a la IA; plantilla fija con humor
+  if (isDirect && !isProvocation && quality.injectionAttempt(message)) {
+    lastDirectMentionTime = now;
+    userCooldowns.set(userId, now + cooldownMs(cdKind, multiplier).userMs);
+    const reply = pickInjectionReply();
+    client.say(channel, truncate(`@${username} ${reply}`), undefined, { expiresAt: startedAt + MENTION_MAX_AGE_MS });
+    addBotMessage(reply);
+    return true;
+  }
   const question = sanitizeForAI(message);
   if (!question) return 'blocked';
   if (!canMakeRequest()) return 'blocked';
@@ -203,6 +212,7 @@ async function checkPatternMatch(client, channel, tags, message) {
       ? Math.min(160, modeConfig.max_chars ?? 160)
       : Math.min(MENTION_MAX_CHARS, modeConfig.max_chars ?? MENTION_MAX_CHARS);
     let answer = '';
+    let fromAI = false; // solo el texto generado por el modelo pasa por el límite del «FUA» final; las plantillas fijas salen tal cual
 
     // "Cuéntame de qué va Silent Hill F": se busca el juego en IGDB y se responde con esos datos (sin IA que pueda inventar).
     // Si IGDB no contesta, a !dios_fua; si pide datos de un juego que no encuentra, se dice con humor que no se pilla.
@@ -308,6 +318,7 @@ async function checkPatternMatch(client, channel, tags, message) {
           continue;
         }
         answer = raw;
+        fromAI = true;
       }
       // Sin respuesta válida tras reintentar: callar. Las réplicas de reserva son solo para provocaciones reales
       if (!answer) {
@@ -326,7 +337,7 @@ async function checkPatternMatch(client, channel, tags, message) {
       release();
       return 'blocked';
     }
-    if (!isProvocation) {
+    if (!isProvocation && fromAI) {
       // el «¡FUA!» de cierre no es una costumbre: solo en 1 de cada 3 menciones
       const closing = quality.limitTrailingFua(answer, getMentionFuaHistory());
       answer = closing.text;

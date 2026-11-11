@@ -1,6 +1,7 @@
 // Control de calidad puro de las respuestas de la IA (sin estado ni I/O): tono, repetición, emotes, muertes y cortes.
 // Fachada: los consumidores hacen require('./quality'); cada módulo vive en este directorio.
 const {
+  oneLine,
   stripFillers,
   limitFillers,
   hasLusorums,
@@ -105,6 +106,7 @@ const {
 } = require('./validators');
 const {
   identityQuestion,
+  injectionAttempt,
   extractGameQuery,
   extractGameMention,
   isCurrentGameQuestion,
@@ -114,6 +116,7 @@ const {
 const { inventedQuote, unsupportedAttributes, inventedCompany } = require('./facts');
 
 module.exports = {
+  oneLine,
   stripFillers,
   limitFillers,
   hasLusorums,
@@ -185,6 +188,7 @@ module.exports = {
   sameOpening,
   moveEmotesToEnd,
   identityQuestion,
+  injectionAttempt,
   extractGameQuery,
   extractGameMention,
   madridDay,

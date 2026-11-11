@@ -16,7 +16,14 @@ const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
 const { truncate, TWITCH_MAX_LENGTH } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
-const { GENERAL_TEMPERATURE, getFallback, getUserType, pickIdentityReply, pickRandom } = require('./common');
+const {
+  GENERAL_TEMPERATURE,
+  getFallback,
+  getUserType,
+  pickIdentityReply,
+  pickInjectionReply,
+  pickRandom,
+} = require('./common');
 const { addToUserConversation, getUserConversation, questionCooldowns, trackMessage } = require('./chat-memory');
 const { buildContextText, buildRoleText, buildToneText, getModeConfig, refreshMode } = require('./prompt-context');
 
@@ -124,6 +131,14 @@ async function handleQuestion(client, channel, tags, args) {
   const rawQuestion = args.slice(1).join(' ');
   if (!rawQuestion) {
     client.say(channel, `@${username} escribe algo después de !dios_fua 😅`);
+    return;
+  }
+  // Intento de dar órdenes al bot: no llega a la IA; plantilla fija con humor
+  if (quality.injectionAttempt(rawQuestion)) {
+    const reply = pickInjectionReply();
+    client.say(channel, truncate(`@${username} ${reply}`));
+    addBotMessage(reply);
+    questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
     return;
   }
   const question = sanitizeForAI(rawQuestion);
