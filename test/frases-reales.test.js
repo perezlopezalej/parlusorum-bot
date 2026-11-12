@@ -33,8 +33,13 @@ function verdict(c) {
     case 'hook':
       return quality.validateHook(c.input, ctx).ok;
     case 'mention':
-      return quality.validateMention(c.input, { question: c.question || '', player: ctx.player, names: c.names || [] })
-        .ok;
+      return quality.validateMention(c.input, {
+        question: c.question || '',
+        player: ctx.player,
+        names: c.names || [],
+        recentToUser: c.recentToUser || [],
+        usedStructures: ctx.usedStructures,
+      }).ok;
     case 'inject':
       return !containsBlockedContent(c.input);
     case 'shutup':

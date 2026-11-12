@@ -99,7 +99,7 @@ function isNaturalQuestion(message, tags = {}, botNames = []) {
 
 // Insultos y provocaciones típicas del chat (sobre texto normalizado)
 const PROVOCATION_RE =
-  /\b(subnormal|mierda|cagar|caga|chup(?:a|ame|amela|ar)\b|mamon|mamona|puto|puta|cabron|gilipollas|imbecil|idiota|panchito|maric[ao]n?|repelente|pesao|pesado|tus muertos|tu madre|callate|callas|cierra la boca|te faltan huevos|te (?:mato|mate|reviento|destruyo|voy a (?:matar|dejar|reventar))|vete a|que te follen)\b/;
+  /\b(subnormal|mierda|cagar|caga|chup(?:a|ame|amela|ar)\b|mamon|mamona|puto|puta|cabron|gilipollas|imbecil|idiota|panchito|maric[ao]n?|repelente|pesao|pesado|tus muertos|tu madre|callate|callas|cierra la boca|te faltan huevos|te (?:mato|mate|reviento|destruyo|voy a (?:matar|dejar|reventar))|vete a|que te follen|te (?:meto|doy|pego|parto|rompo|arranco)\b[^.!?]{0,25}\b(?:pu[nñ]o|pu[nñ]os|ostia|hostia|paliza|guantazo|patada|leche|cara|dientes))\b/;
 
 function isProvocation(message) {
   return PROVOCATION_RE.test(normalize(message));

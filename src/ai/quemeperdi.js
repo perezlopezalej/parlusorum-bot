@@ -142,7 +142,12 @@ Cuenta lo ocurrido.`,
       getBotHistory().map((e) => e.msg),
       qEmotes,
     );
-    const qBody = quality.applyEmotePolicy(text, qAllow, qEmotes);
+    const qBody = quality.applyEmotePolicy(
+      text,
+      qAllow,
+      qEmotes,
+      getBotHistory().map((e) => e.msg),
+    );
     const qOut = truncate(quality.fitWithEmotes(`@${username} ${qBody}`, TWITCH_MAX_LENGTH, qEmotes));
     client.say(channel, qOut);
     addBotMessage(qOut.replace(/^@\S+\s*/, ''));

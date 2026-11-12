@@ -13,6 +13,8 @@ const {
   addBotMessage,
   getDeathCount,
   markNamed,
+  markStructure,
+  getUsedStructures,
   noteMentionFua,
   getMentionFuaHistory,
 } = require('../utils/state');
@@ -253,11 +255,19 @@ async function checkPatternMatch(client, channel, tags, message) {
     } else {
       const userType = getUserType(username, tags);
       const userConv = getUserConversation(userId);
+      const recentBot = getBotHistory();
+      const lastBot = recentBot.filter((e) => Date.now() - e.ts < 120000).slice(-1)[0]?.msg || '';
+      const recentToUser = userConv.filter((m) => m.role === 'assistant').map((m) => m.content);
       const system = buildMentionSystem({
-        context: await buildContextText(),
+        lastBot,
+        context: await buildContextText({ question }),
         role: await buildRoleText(userType, username, tags['user-id']),
         tone: buildToneText(question),
-        emoteLine: emoteLineFor(allowEmote, emotes),
+        emoteLine: emoteLineFor(
+          allowEmote,
+          emotes,
+          recentBot.map((e) => e.msg),
+        ),
         modeLine: modeConfig.prompt_extension,
       });
 
@@ -286,6 +296,8 @@ async function checkPatternMatch(client, channel, tags, message) {
           question,
           player: getPlayer(),
           names: [username, ...getChatterNames()],
+          recentToUser,
+          usedStructures: getUsedStructures(),
         });
         if (!check.ok) {
           fixKey = check.rule;
@@ -343,9 +355,16 @@ async function checkPatternMatch(client, channel, tags, message) {
       answer = closing.text;
       noteMentionFua(closing.had);
     }
-    const out = quality.applyEmotePolicy(truncate(`@${username} ${answer}`, maxChars), allowEmote, emotes);
+    const out = quality.applyEmotePolicy(
+      truncate(`@${username} ${answer}`, maxChars),
+      allowEmote,
+      emotes,
+      getBotHistory().map((e) => e.msg),
+    );
     client.say(channel, out, undefined, { expiresAt: startedAt + MENTION_MAX_AGE_MS });
-    addBotMessage(out.replace(/^@\S+\s*/, ''));
+    const sent = out.replace(/^@\S+\s*/, '');
+    addBotMessage(sent);
+    if (fromAI) markStructure(quality.closingMark(sent)); // la coletilla final no se repite en el stream
     markNamed([username]);
     return true;
   } catch (err) {

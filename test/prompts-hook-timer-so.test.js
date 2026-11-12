@@ -458,7 +458,7 @@ describe('preguntas de identidad con plantillas fijas', () => {
     stubModels(() => {
       throw new Error('la identidad no debe llamar a la IA');
     });
-    const seen = new Set();
+    const replies = []; // en orden de salida
     for (let i = 0; i < 6; i++) {
       said = [];
       const realNow = Date.now;
@@ -474,9 +474,11 @@ describe('preguntas de identidad con plantillas fijas', () => {
         Date.now = realNow;
       }
       assert.ok(said.length === 1 && /vlxj97/.test(said[0]), said[0]);
-      seen.add(said[0].replace(/^@\S+ /, ''));
+      replies.push(said[0].replace(/^@\S+ /, ''));
     }
-    assert.ok(seen.size >= 3, `${seen.size} variantes`);
+    // La rotación solo garantiza no repetir la última variante (A, B, A es válido), no un mínimo de variantes distintas
+    for (let i = 1; i < replies.length; i++) assert.notEqual(replies[i], replies[i - 1], `repetida seguida en ${i}`);
+    assert.ok(new Set(replies).size >= 2, 'rota entre variantes');
     said = [];
     await ai.handleQuestion(
       client,

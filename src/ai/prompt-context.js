@@ -18,6 +18,7 @@ const { sanitizeForAI } = require('../utils/filter');
 const { getMemoryContext } = require('../memory/handler');
 const { getLoreTerms } = require('../lore/handler');
 const { playerLine, roleLine, dayLine } = require('./style');
+const { freshEmotes, asksAboutPastStream } = require('./quality');
 const { chatHistory, getCachedUserFacts } = require('./chat-memory');
 const { CREATOR_USERNAME, STREAMER_USERNAME } = require('./common');
 
@@ -103,11 +104,14 @@ async function getLoreBlock() {
   return `<lore>La comunidad del canal son los Lusorums.${terms ? ` Términos del canal: ${terms}.` : ''}</lore>`;
 }
 
-// Contexto de menciones y !dios_fua: juego, quién juega, caídas, lore y el último stream
-async function buildContextText() {
+// Contexto de menciones y !dios_fua: juego, quién juega, caídas, lore y el último stream.
+// El último stream solo entra si es del mismo juego, salvo que la pregunta sea por los streams anteriores:
+// entonces se usa aunque sea de otro juego y se dice de cuál era.
+async function buildContextText({ question = '' } = {}) {
   const parts = [];
+  let game = '';
   try {
-    const game = (await getCurrentGame().catch(() => null))?.game;
+    game = (await getCurrentGame().catch(() => null))?.game || '';
     const safeGame = game ? sanitizeForAI(game) : '';
     if (safeGame) parts.push(`Se está jugando a «${safeGame}».`);
   } catch {
@@ -124,8 +128,13 @@ async function buildContextText() {
     /* sin lore aprendido */
   }
   try {
-    const memory = await getMemoryContext({ maxStreams: 1, summaryMax: 160, maxHighlights: 1, plain: true });
-    if (memory) parts.push(`Último stream: ${memory}`);
+    if (asksAboutPastStream(question)) {
+      const memory = await getMemoryContext({ maxStreams: 2, summaryMax: 240, maxHighlights: 2, plain: true });
+      if (memory) parts.push(`Streams anteriores (cada uno con su fecha y su juego; di de qué juego era): ${memory}`);
+    } else {
+      const memory = await getMemoryContext({ maxStreams: 1, summaryMax: 160, maxHighlights: 1, plain: true, game });
+      if (memory) parts.push(`Último stream: ${memory}`);
+    }
   } catch {
     /* sin memoria */
   }
@@ -168,8 +177,11 @@ function buildToneText(question) {
   return parts.join(' ');
 }
 
-const emoteLineFor = (allowEmote, emotes) =>
-  allowEmote ? `Puedes cerrar con un emote de esta lista: ${emotes.join(', ')}.` : 'Escribe solo texto.';
+// recent = últimos mensajes del bot: se ofrecen solo los emotes que no han cerrado ninguno de los últimos
+const emoteLineFor = (allowEmote, emotes, recent = []) =>
+  allowEmote
+    ? `Puedes cerrar con un emote de esta lista: ${freshEmotes(emotes, recent).join(', ')}.`
+    : 'Escribe solo texto.';
 
 module.exports = {
   refreshMode,

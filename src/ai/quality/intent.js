@@ -180,7 +180,17 @@ function isCurrentGameQuestion(text) {
   return CURRENT_GAME_RE.test(t);
 }
 
+// «¿Qué pasó en el último stream?», «el directo de ayer», «el stream anterior»: pide la memoria entre streams
+// (entonces se usa aunque sea de otro juego, diciendo cuál era)
+const PAST_STREAM_RE =
+  /(?<!\p{L})(?:[uú]ltim[oa]s?|anterior(?:es)?|pasad[oa]s?|de ayer|otro d[ií]a)\s+(?:\p{L}+\s+)?(?:stream|streams|directo|directos|sesi[oó]n|sesiones)\b|\b(?:stream|streams|directo|directos)\s+(?:de ayer|anterior(?:es)?|pasad[oa]s?)\b|\bqu[eé]\s+(?:pas[oó]|hicisteis|jugasteis|jugaron)\s+(?:ayer|la otra vez|la vez pasada)\b/iu;
+
+function asksAboutPastStream(text) {
+  return PAST_STREAM_RE.test(String(text || ''));
+}
+
 module.exports = {
+  asksAboutPastStream,
   identityQuestion,
   injectionAttempt,
   extractGameQuery,

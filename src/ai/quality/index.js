@@ -21,6 +21,7 @@ const {
 const {
   personalMatch,
   mentionsEthnicTerms,
+  mirrorsUser,
   LATAM_RE,
   ROBOT_REFUSAL_RE,
   FORMULAS,
@@ -86,6 +87,9 @@ const {
   openingKey,
   sameOpening,
   structureKey,
+  closingMark,
+  repeatsClosing,
+  repeatedClosing,
 } = require('./repetition');
 const { plainWords } = require('./text');
 const {
@@ -96,6 +100,8 @@ const {
   dropPartialEmote,
   fitWithEmotes,
   moveEmotesToEnd,
+  dropRepeatedTail,
+  freshEmotes,
 } = require('./emotes');
 const {
   vetAuto,
@@ -116,6 +122,7 @@ const {
   isCurrentGameQuestion,
   isGameQuestion,
   isDeathQuestion,
+  asksAboutPastStream,
 } = require('./intent');
 const { inventedQuote, unsupportedAttributes, inventedCompany } = require('./facts');
 
@@ -131,6 +138,7 @@ module.exports = {
   limitTrailingFua,
   personalMatch,
   mentionsEthnicTerms,
+  mirrorsUser,
   hasElongation,
   cleanChatNoise,
   oddCaps,
@@ -194,6 +202,11 @@ module.exports = {
   selfHelp,
   openingKey,
   sameOpening,
+  closingMark,
+  repeatsClosing,
+  repeatedClosing,
+  dropRepeatedTail,
+  freshEmotes,
   moveEmotesToEnd,
   identityQuestion,
   injectionAttempt,
@@ -220,6 +233,7 @@ module.exports = {
   disparagesGame,
   isGameQuestion,
   isDeathQuestion,
+  asksAboutPastStream,
   SPORTS_RE,
   lastSentenceEnd,
   cutAtSentence,

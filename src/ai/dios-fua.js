@@ -176,7 +176,7 @@ async function handleQuestion(client, channel, tags, args) {
     const userConv = getUserConversation(userId);
     const questionMode = getModeConfig();
     const systemContent = buildQuestionSystem({
-      context: await buildContextText(),
+      context: await buildContextText({ question }),
       role: await buildRoleText(userType, username, tags['user-id']),
       tone: buildToneText(question),
       modeLine: questionMode.prompt_extension,

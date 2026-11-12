@@ -265,7 +265,7 @@ async function runCohost(client, channel, moment = null) {
     const nameLine = namesAllowed
       ? 'Puedes nombrar a quien aparece en el suceso.'
       : 'Dirígete a Manu o al chat en general.';
-    const emoteLine = emoteLineFor(allowEmote, emotes);
+    const emoteLine = emoteLineFor(allowEmote, emotes, recentBot);
     const loreBlock = await getLoreBlock();
     const windowLines = chatHistory.filter((m) => m.ts > now - 5 * 60 * 1000).slice(-25);
     const chatSummary = condenseChat(windowLines);
@@ -309,7 +309,7 @@ async function runCohost(client, channel, moment = null) {
     };
     // Un candidato listo para validar: recorte, política de emotes y, si abre con un nombre ya citado, sin él
     const prepare = (candidate) => {
-      let text = quality.applyEmotePolicy(truncate(candidate, maxChars), allowEmote, emotes);
+      let text = quality.applyEmotePolicy(truncate(candidate, maxChars), allowEmote, emotes, recentBot);
       if (!namesAllowed) {
         const repeated = quality.recentlyNamedIn(text, named, now, COHOST_NAME_WINDOW);
         const stripped = repeated.length ? quality.stripLeadingNames(text, repeated) : null;

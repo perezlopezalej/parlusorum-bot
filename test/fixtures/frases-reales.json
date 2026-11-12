@@ -494,5 +494,42 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "f-49-seguir-partida-3",
+    "filter": "mention",
+    "question": "Dios fua son 49 minutos no metros corrige tu error",
+    "names": ["stewar32"],
+    "recentToUser": [
+      "@stewar32 ¡Ay, 49 minutos! Si no corriste, al menos el FUA te anima a seguir. ¡A seguir la partida, que el FUA no se queda sin ritmo! 🚀"
+    ],
+    "input": "@stewar32 ¡Vale, vale! No te preocupes, el FUA siempre está a tu lado. ¡A seguir con la partida! 🚀",
+    "note": "Frase real del directo (11-11): tercera respuesta seguida a stewar32 con la misma coletilla.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-coletilla-ya-usada-en-stream",
+    "filter": "mention",
+    "names": ["stewar32"],
+    "usedStructures": [],
+    "input": "@stewar32 Si tuvieras cuerpo, yo también te meto un puño… de FUA, claro. ¡A seguir con la partida! 🚀",
+    "question": "Dios fua si tuvieras cuerpo te meto un puño",
+    "note": "Frase real del directo (11-11): devuelve al usuario su «si tuvieras cuerpo» (espejo).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-control-mencion-energia",
+    "filter": "mention",
+    "question": "Dios fua vete a pastar",
+    "names": ["stewar32"],
+    "input": "@stewar32 Mucha energía para quedarte en eso, campeón.",
+    "note": "Control (11-11): réplica corta que sí vale.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

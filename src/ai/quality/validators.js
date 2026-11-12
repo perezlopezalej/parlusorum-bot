@@ -25,6 +25,7 @@ const {
   mentionsGenre,
   mentionsMechanics,
   mentionsOtherGame,
+  mirrorsUser,
   personalMatch,
   selfHelp,
 } = require('./lexicon');
@@ -50,7 +51,9 @@ const {
 } = require('./numbers');
 const {
   recentlyNamedIn,
+  repeatedClosing,
   repeatedInStream,
+  repeatsClosing,
   repeatsFormula,
   repeatsYear,
   sameOpening,
@@ -360,7 +363,12 @@ function validateTimerIA(
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 // ctx.question: lo que escribió el usuario (los consejos y las mecánicas solo valen si él los sacó)
 // ctx.names: nicks que pueden aparecer (quien escribe y el chat); no cuentan como mayúsculas raras
-function validateMention(text, { question = '', player = 'manu', names = [] } = {}) {
+// ctx.recentToUser: respuestas anteriores del bot a este usuario (sin repetir arranque, parecido ni cierre)
+// ctx.usedStructures: marcas del stream (la coletilla final no sale dos veces)
+function validateMention(
+  text,
+  { question = '', player = 'manu', names = [], recentToUser = [], usedStructures = new Set() } = {},
+) {
   if (!text || text.length < 3) return { ok: false, rule: 'vacio', reason: 'vacío' };
   if (leaksTech(text))
     return {
@@ -379,6 +387,23 @@ function validateMention(text, { question = '', player = 'manu', names = [] } = 
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   const style = styleProblem(text, { personal: false, minWords: 2, player, names });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
+  if (mirrorsUser(text, question))
+    return {
+      ok: false,
+      rule: 'espejo',
+      reason: 'devuelve al usuario su propia frase («si tuvieras…»); responde con algo tuyo',
+    };
+  if (recentToUser.length && (sameOpening(text, recentToUser) || tooSimilar(text, recentToUser, 0.5)))
+    return {
+      ok: false,
+      rule: 'repetido',
+      reason: 'repite el arranque o las palabras de tus respuestas anteriores a este usuario; cambia la estructura',
+    };
+  const closing =
+    (recentToUser.length && repeatsClosing(text, recentToUser)
+      ? 'repite la coletilla final que ya usaste con este usuario; cierra con otra idea o sin frase final'
+      : '') || repeatedClosing(text, usedStructures);
+  if (closing) return { ok: false, rule: 'cierre', reason: closing };
   if (TIPS_RE.test(text) && !TIPS_RE.test(question))
     return { ok: false, rule: 'consejos', reason: 'ofrece consejos o tips que nadie ha pedido' };
   if (REDIRECT_RE.test(text) && !MECHANICS_RE.test(question))

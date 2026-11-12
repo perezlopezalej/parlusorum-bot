@@ -107,18 +107,61 @@ function streamMarks(text, game = '') {
   if (WEEKDAY_RE.test(text)) marks.push('dia-semana');
   if (ENTRE_RE.test(text)) marks.push('entre-x-y');
   for (const w of notableWords(text, game)) marks.push(`w:${w}`);
+  const closing = closingMark(text);
+  if (closing) marks.push(closing);
   return marks;
 }
 
 // Motivo si el texto repite algo que ya salió en el stream (used = Set de marcas)
 function repeatedInStream(text, used = new Set(), game = '') {
   if (!used || !used.size) return '';
+  const closing = repeatedClosing(text, used);
+  if (closing) return closing;
   if (used.has('dia-semana') && WEEKDAY_RE.test(text))
     return 'repite el día de la semana, que ya se dijo en este stream; habla del momento sin nombrarlo';
   if (used.has('entre-x-y') && ENTRE_RE.test(text))
     return 'repite la estructura «Entre X y Y…» de este stream; empieza de otra forma';
   for (const w of notableWords(text, game))
     if (used.has(`w:${w}`)) return `repite la palabra «${w}», que ya se usó en este stream; usa otra`;
+  return '';
+}
+
+// --- Coletillas: la última frase exclamativa de un mensaje con varias frases («¡A seguir con la partida!») ---
+// Cola del mensaje: emotes del canal (parlus1…) y emojis finales
+const TAIL_RE = /(?:\s*(?:parlus1\w+|\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic})*))+\s*$/u;
+
+function closingSentence(text) {
+  const body = String(text || '')
+    .replace(TAIL_RE, '')
+    .trim();
+  const m = /[.!?…]\s+¡?([^.!?…]*)!+$/u.exec(body); // exige una frase anterior: un mensaje de una sola frase no tiene coletilla
+  if (!m) return '';
+  const sentence = m[1].trim();
+  const words = sentence.split(/\s+/).filter(Boolean);
+  return words.length >= 3 && words.length <= 14 && contentWords(sentence).size >= 2 ? sentence : '';
+}
+
+const sameClosing = (a, b) => !!a && !!b && similarity(a, b) >= 0.5;
+
+// ¿Termina el texto con una coletilla ya usada en `recent` (mensajes anteriores)?
+function repeatsClosing(text, recent = []) {
+  const mine = closingSentence(text);
+  return !!mine && recent.some((r) => sameClosing(mine, closingSentence(r)));
+}
+
+// Marca por stream de la coletilla del texto ('' si no tiene)
+function closingMark(text) {
+  const s = closingSentence(text);
+  return s ? `c:${norm(s)}` : '';
+}
+
+// Motivo si la coletilla del texto ya salió en este stream (used = Set de marcas)
+function repeatedClosing(text, used = new Set()) {
+  const mine = closingSentence(text);
+  if (!mine || !used) return '';
+  for (const key of used)
+    if (typeof key === 'string' && key.startsWith('c:') && sameClosing(mine, key.slice(2)))
+      return `repite la coletilla final «${mine}», que ya salió en este stream; cierra con otra idea o sin frase final`;
   return '';
 }
 
@@ -153,4 +196,7 @@ module.exports = {
   namesIn,
   similarity,
   openingKey,
+  closingMark,
+  repeatsClosing,
+  repeatedClosing,
 };

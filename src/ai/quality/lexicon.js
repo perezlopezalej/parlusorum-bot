@@ -300,6 +300,18 @@ function summaryPersonalLife(text) {
   return personalMatch(t) || SUMMARY_PERSONAL_RE.test(t.replace(FAMILY_GREETING_RE, ' '));
 }
 
+// «Dios fua si tuvieras cuerpo te meto un puño» → «Si tuvieras cuerpo, yo también te meto un puño»: devolver al usuario su
+// propia hipótesis en segunda persona no es una respuesta. Se detecta la hipótesis del usuario repetida en la respuesta.
+const HYPOTHETICAL_RE =
+  /\bsi (?:tuvieras|tuvieses|fueras|fueses|pudieras|pudieses|estuvieras|estuvieses|supieras|quisieras)\s+\p{L}+/giu;
+
+function mirrorsUser(text, question) {
+  const asked = (String(question || '').match(HYPOTHETICAL_RE) || []).map(norm);
+  if (!asked.length) return false;
+  const reply = norm(text);
+  return asked.some((phrase) => reply.includes(phrase));
+}
+
 // Alguien dice que está mal o de bajón: el cohost libre calla
 const PERSONAL_DISTRESS_RE =
   /\b(baj[oó]n|bajona|de bajon|estoy mal|me siento mal|me encuentro mal|triste|tristeza|deprimid[oa]|depre|ansiedad|agobiad[oa]|estresad[oa]|llorand[oa]|mal d[ií]a|hecho polvo|no puedo m[aá]s)\b/i;
@@ -315,6 +327,7 @@ module.exports = {
   disparagesGame,
   ETHNIC_RE,
   mentionsEthnicTerms,
+  mirrorsUser,
   personalMatch,
   PROFANITY_RE,
   BOT_SELF_RE,

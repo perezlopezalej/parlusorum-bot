@@ -138,6 +138,7 @@ async function runTimerIA(client) {
         truncate((response.choices[0].message.content || '').trim()),
         allowEmote,
         emotes,
+        getBotHistory().map((e) => e.msg),
       );
       const check = quality.validateTimerIA(out, {
         deathCount,

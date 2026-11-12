@@ -149,16 +149,18 @@ function buildMentionSystem({
   tone = '',
   emoteLine = '',
   modeLine = '',
+  lastBot = '',
   examples = pickStyleExamples('mencion', 4),
 }) {
   return join(
     IDENTITY,
     block(
       'forma',
-      `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. Las expresiones coloquiales («por la cara», «a lo loco») se entienden por su sentido de uso, y si no la pillas, pregunta con humor qué quiere decir. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor; el toque del FUA va al final, aparte de la explicación.`,
+      `Una o dos frases de menos de 150 caracteres que responden a lo que dice el usuario. Si pide una opinión o una predicción sobre el stream, da una postura o una cifra graciosa. Si pide datos concretos de un videojuego, anímale a usar !dios_fua. Las expresiones coloquiales («por la cara», «a lo loco») se entienden por su sentido de uso, y si no la pillas, pregunta con humor qué quiere decir. En cultura general, cuenta lo que sabes en corto y, si dudas, dilo con humor; el toque del FUA va al final, aparte de la explicación. Si el usuario juega con una palabra de <tu_ultimo_mensaje> o te corrige, sigue la broma o dale la razón en pocas palabras. Con cada persona hablas con tus propias palabras: arranque y cierre distintos en cada respuesta.`,
     ),
     renderExamples(examples),
     block('contexto', context),
+    block('tu_ultimo_mensaje', lastBot),
     block('quien_escribe', [role, tone].filter(Boolean).join(' ')),
     block('modo', modeLine),
     block('ajustes', emoteLine),
@@ -408,6 +410,8 @@ const FIX_BY_RULE = {
   redirect: 'Responde a lo que dice el usuario con una ocurrencia.',
   dia: 'Habla del momento de ahora sin nombrar el día de la semana.',
   etnia: 'Haz la broma sobre la partida o el FUA.',
+  cierre: 'Termina con una idea distinta a tus cierres anteriores, o sin frase final.',
+  espejo: 'Responde con algo tuyo, con tus propias palabras y sin repetir las del usuario.',
   pregunta: 'Termina con una pregunta al chat.',
   cita: 'Cuenta lo ocurrido con tus propias palabras.',
   positivo: 'Cuenta el stream en positivo, con buen rollo y ánimo.',
@@ -425,6 +429,7 @@ const FIX_BY_RULE = {
 };
 // Para los motivos que solo traen texto (hook, timer, resumen…): se reconoce el tipo por palabras clave
 const FIX_BY_REASON = [
+  [/coletilla/i, 'cierre'],
   [/minutos exactos/i, 'minutos'],
   [/cifra de viewers/i, 'viewers'],
   [/lista de palabras|lista palabras/i, 'lista'],

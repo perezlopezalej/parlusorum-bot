@@ -64,8 +64,39 @@ function fitWithEmotes(text, limit, emotes) {
   return stripEmotes(t, emotes);
 }
 
-// Aplica la política: sin permiso se quitan todos; con permiso se deja como mucho el primero, al final del mensaje
-function applyEmotePolicy(text, allowed, emotes) {
+// Símbolo con el que cierra el mensaje: emote del canal (en minúsculas) o emoji; '' si no cierra con ninguno
+const TAIL_EMOJI_RE = /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic})*)\s*$/u;
+
+function tailSymbol(text, emotes = []) {
+  const t = String(text || '').trimEnd();
+  const emote = emotes.find((e) => t.toLowerCase().endsWith(e.toLowerCase()));
+  if (emote) return emote.toLowerCase();
+  const m = TAIL_EMOJI_RE.exec(t);
+  return m ? m[1] : '';
+}
+
+// Si el mensaje cierra con el mismo emote o emoji que alguno de los últimos `n` mensajes del bot, se lo quita
+function dropRepeatedTail(text, recent = [], emotes = [], n = 3) {
+  const sym = tailSymbol(text, emotes);
+  if (!sym || n <= 0 || !recent.slice(-n).some((r) => tailSymbol(r, emotes) === sym)) return text;
+  const body = String(text).trimEnd().slice(0, -sym.length).trimEnd();
+  return body || text;
+}
+
+// Emotes que no han cerrado ninguno de los últimos `n` mensajes del bot (si todos se han usado, la lista entera)
+function freshEmotes(emotes = [], recent = [], n = 4) {
+  const used = new Set(recent.slice(-n).map((r) => tailSymbol(r, emotes)));
+  const fresh = emotes.filter((e) => !used.has(e.toLowerCase()));
+  return fresh.length ? fresh : emotes;
+}
+
+// Aplica la política: sin permiso se quitan todos; con permiso se deja como mucho el primero, al final del mensaje.
+// `recent` = últimos mensajes del bot: el mismo emote o emoji de cierre no se repite
+function applyEmotePolicy(text, allowed, emotes, recent = []) {
+  return dropRepeatedTail(applyEmotes(text, allowed, emotes), recent, emotes);
+}
+
+function applyEmotes(text, allowed, emotes) {
   if (!emotes.length) return text;
   if (!allowed) return stripEmotes(text, emotes);
   let seen = false;
@@ -86,4 +117,6 @@ module.exports = {
   dropPartialEmote,
   fitWithEmotes,
   moveEmotesToEnd,
+  dropRepeatedTail,
+  freshEmotes,
 };

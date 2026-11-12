@@ -156,9 +156,16 @@ let memoryCacheTime = 0;
 const MEMORY_CACHE_TTL = 10 * 60 * 1000;
 
 // Texto de memoria para el prompt. maxStreams/summaryMax recortan el perfil "lean" (los más recientes primero)
-function renderMemory(memories, { maxStreams = 5, summaryMax = 500, maxHighlights = 2, plain = false } = {}) {
-  if (!memories.length) return '';
-  const lines = memories.slice(0, maxStreams).map((m) => {
+// game: solo entran los streams del mismo juego (los detalles de otro juego no se mezclan con el actual)
+function renderMemory(
+  memories,
+  { maxStreams = 5, summaryMax = 500, maxHighlights = 2, plain = false, game = '' } = {},
+) {
+  const sameGame = game
+    ? memories.filter((m) => String(m.game || '').toLowerCase() === String(game).toLowerCase())
+    : memories;
+  if (!sameGame.length) return '';
+  const lines = sameGame.slice(0, maxStreams).map((m) => {
     const date = m.stream_date;
     const game = m.game || 'sin juego';
     const summary = sanitizeMemoryField(m.summary, summaryMax);
@@ -199,4 +206,11 @@ function invalidateMemoryCache() {
   memoryCacheTime = 0;
 }
 
-module.exports = { onStreamEnd, getMemoryContext, invalidateMemoryCache, generateStreamMemory, summaryProblem };
+module.exports = {
+  onStreamEnd,
+  getMemoryContext,
+  invalidateMemoryCache,
+  generateStreamMemory,
+  summaryProblem,
+  renderMemory,
+};
