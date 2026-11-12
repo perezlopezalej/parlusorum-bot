@@ -10,6 +10,7 @@ const quality = require('../src/ai/quality');
 const { classifyMessage } = require('../src/ai/patterns');
 const { containsBlockedContent } = require('../src/utils/filter');
 const { summaryProblem } = require('../src/memory/handler');
+const { gameVocabulary } = require('../src/ai/moment-facts');
 const cases = require('./fixtures/frases-reales.json');
 
 function verdict(c) {
@@ -24,10 +25,13 @@ function verdict(c) {
     usedStructures: new Set(c.usedStructures || []),
     lastCitedDeaths: !!c.lastCitedDeaths,
     player: c.player || 'manu',
+    // chat: líneas del chat de ese momento (regla `copia`); el vocabulario del juego sale de su nombre
+    chatLines: c.chat || [],
+    gameWords: gameVocabulary(c.game || ''),
   };
   switch (c.filter) {
     case 'cohost':
-      return quality.validateCohost(c.input, ctx).ok;
+      return quality.validateCohost(c.input, { ...ctx, game: ctx.currentGame }).ok;
     case 'timer_ia':
       return quality.validateTimerIA(c.input, ctx).ok;
     case 'hook':

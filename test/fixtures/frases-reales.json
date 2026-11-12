@@ -531,5 +531,91 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "f-coto-vlxj97",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "chat": ["coto"],
+    "input": "Si el FUA fuera una ley de la física, cada coto de vlxj97 tendría gravedad propia y arrastraría al chat al infinito.",
+    "note": "Frase real del directo (11-11): copia «coto», una palabra suelta del chat.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-pug-bozal-abadia",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "chat": ["Si parece un pug con bozal jajaja jajaja"],
+    "input": "¿Alguien ha visto al pug con bozal persiguiendo a los Lusorums en la abadía? 😂",
+    "note": "Frase real del directo (11-11): copia «pug con bozal» del chat y mete la abadía de otro juego.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-separar-chupar",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "chat": ["Si té he dicho que té tiene que separar para marcarlo", "A chuparla"],
+    "input": "El chat sugiere separar y chupar, pero la verdadera lucha es no caer del coloso, ¿no?",
+    "note": "Frase real del directo (11-11): copia la jerga del chat («separar», «chupar»).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-cola-entre-patas",
+    "filter": "timer_ia",
+    "game": "Shadow of the Colossus",
+    "input": "Manu repasando al coloso mientras el chat se ríe, en una media hora tan limpia que hasta el FUA tiene la cola entre las patas.",
+    "note": "Frase real del directo (11-11): frase hecha que no pega con lo que pasa.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-fua-gravedad",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "usedStructures": ["metafora"],
+    "input": "El FUA es la gravedad del chat, siempre te tira hacia abajo justo cuando te levantas!",
+    "note": "Frase real del directo (11-11): otra metáfora cuando ya había salido la del stream.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-control-confeti-primera-metafora",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "input": "Una hora y pico de directo y el chat ya está tirando FUA como si fueran confeti.",
+    "note": "Control (11-11): la primera metáfora del stream sí vale.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f-control-chat-rie-colosos",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "chat": ["ese coloso es enorme", "jajaja el coloso", "dale ya"],
+    "input": "¡Vaya, el chat no para de reír mientras Manu sigue peleando con colosos!",
+    "note": "Control (11-11): una palabra del juego que también dice el chat no es copia.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f-control-hook-tres-caidas",
+    "filter": "hook",
+    "game": "Shadow of the Colossus",
+    "deaths": 3,
+    "input": "Tres caídas hoy y ninguna tregua: ¿qué le gritáis a Manu para que levante cabeza?",
+    "note": "Control (11-11): pregunta al chat sobre un hecho real.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

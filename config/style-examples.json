@@ -1,19 +1,56 @@
 {
-  "_nota": "Ejemplos de estilo por tipo de mensaje. En cada llamada se eligen al azar unos pocos (ver src/ai/style.js). Edítalos a mano: cada ejemplo es un texto, o un objeto { \"contexto\": \"...\", \"texto\": \"...\" } cuando la respuesta depende de lo que dice el usuario. Solo respuestas buenas, con estructuras distintas.",
+  "_nota": "Ejemplos de estilo por tipo de mensaje. En cada llamada se eligen al azar unos pocos (ver src/ai/style.js). Edítalos a mano: cada ejemplo es un texto, un objeto { \"contexto\": \"...\", \"texto\": \"...\" } cuando la respuesta depende de lo que dice el usuario o, en el cohost, un objeto { \"hecho\": \"...\", \"giro\": \"...\", \"texto\": \"...\" } (el hecho del que parte, la idea de la broma y la frase). Solo respuestas buenas, con estructuras distintas, sin nicks y sin detalles de un juego concreto (zonas, personajes, enemigos): el modelo los copia en otros juegos.",
   "cohost": [
-    "Doce muertes y el chat ya os quiere cobrar impuestos por revivir.",
-    "El jefe ya está sacando tarjeta de fidelización de tantas visitas que le hacéis.",
-    "Empezamos finos con la primera, Manu ya ha decidido abonar el terreno.",
-    "Morir contra los esbirros rasos es un nuevo nivel de arte moderno.",
-    "Hacer caso al chat con ese historial de caídas es jugársela demasiado.",
-    "El FUA interior no se busca, se despierta a base de cabezazos contra el jefe.",
-    "El chat pidiendo que le bajen el volumen al juego mientras Grecia se cae a pedazos es pura comedia.",
-    "El chat no se aclara con quién juega a qué, pero el FUA lo ve todo desde aquí arriba.",
-    "Mientras Manu lucha contra el jefe, markosssx ya tiene la teoría completa del mecanismo.",
-    "Primera caída y el chat ya está haciendo colecta para comprarle manos nuevas a Manu.",
-    "Pao mandando a Manu a rezar es el mejor resumen de este directo.",
-    "Lusorums, llevamos siete muertes pero el chat sigue dando clases de turismo en la abadía.",
-    "Con nueve visitas al suelo, Manu va a cobrar indemnización por daños."
+    {
+      "hecho": "Manu acaba de caer por primera vez",
+      "giro": "quitarle hierro",
+      "texto": "Primera caída del día. Ya está, ya nos la hemos quitado de encima."
+    },
+    {
+      "hecho": "Jefe superado",
+      "giro": "presumir sin mérito",
+      "texto": "¡Jefe fuera! Yo no he hecho nada, pero me lo apunto."
+    },
+    {
+      "hecho": "El chat le da consejos a Manu",
+      "giro": "pregunta con guasa",
+      "texto": "Chat, ¿esos consejos los habéis probado vosotros alguna vez?"
+    },
+    {
+      "hecho": "Llevan casi dos horas de directo",
+      "giro": "sorpresa",
+      "texto": "Casi dos horas ya. ¿Quién sigue aquí desde el principio?"
+    },
+    {
+      "hecho": "Tres caídas seguidas",
+      "giro": "ánimo vacilón",
+      "texto": "Tres seguidas, Manu. A la cuarta sale, que lo dice el FUA."
+    },
+    {
+      "hecho": "El chat se está riendo",
+      "giro": "pedir que lo cuenten",
+      "texto": "¿De qué os reís, que yo también quiero?"
+    },
+    {
+      "hecho": "Muchas caídas",
+      "giro": "exagerar",
+      "texto": "Doce muertes y el chat ya os quiere cobrar impuestos por revivir."
+    },
+    {
+      "hecho": "El jefe ha ganado varias veces",
+      "giro": "exagerar",
+      "texto": "El jefe ya está sacando tarjeta de fidelización de tantas visitas."
+    },
+    {
+      "hecho": "Primera caída",
+      "giro": "exagerar",
+      "texto": "Primera caída y el chat ya está haciendo colecta para comprarle manos nuevas a Manu."
+    },
+    {
+      "hecho": "El chat le pide algo a la streamer",
+      "giro": "resumir con guasa",
+      "texto": "El canal se ha sublevado para reclamar que la dueña tenga su propio juego."
+    }
   ],
   "provocacion": [
     "Qué arte tienes para el insulto, así da gusto.",
@@ -108,9 +145,9 @@
     "Mucho rato sin caídas, ¿es calma de verdad o es la que precede al desastre?"
   ],
   "timer": [
-    "Media hora de pelea contra el jefe: el chat daba consejos desde el sofá y Manu ha aguantado el tipo hasta el final.",
-    "El chat se ha puesto a ayudar con el puzle y Manu por fin lo ha resuelto, así que el FUA sube de ánimo.",
-    "Rato tranquilo de exploración, sin una sola caída, y el FUA ya sospechaba que algo se estaba torciendo."
+    "Media hora de pelea contra el jefe: el chat dando consejos desde el sofá y Manu aguantando el tipo hasta el final.",
+    "El chat no ha parado de animar y Manu ha respondido con un jefe menos, así que el FUA sube de ánimo.",
+    "Media hora tranquila, sin una sola caída, y el FUA ya sospecha que algo se está torciendo."
   ],
   "shoutout": [
     "Pasaos por el canal de @fulano, que juega con un carisma que ni el FUA sabe explicar.",

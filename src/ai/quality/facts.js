@@ -1,5 +1,6 @@
 // Datos inventados: países, estudios, personas y citas que no constan en la fuente.
 const { norm } = require('./text');
+const { PROFANITY_RE, mentionsEthnicTerms, mentionsGroups, personalMatch } = require('./lexicon');
 
 // !quemeperdi: validación del resumen; devuelve el motivo de rechazo o null
 // Texto entre comillas ("…", «…», “…») de más de dos palabras que no aparece en el chat ni en los datos: cita inventada
@@ -178,4 +179,56 @@ function inventedCompany(text, source = '') {
   return unsupportedAttributes(text, source, { persons: false });
 }
 
-module.exports = { unsupportedAttributes, inventedQuote, inventedCompany };
+// ─── Hechos del momento (src/ai/moment-facts.js): cada comentario del cohost declara de qué hecho parte ───
+// Una palabra del texto toca una clave si es igual o, con claves de 4+ letras, si empieza por ella («caidas» con «caid»)
+function touchesKeys(text, keys = []) {
+  const words = norm(text)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return keys.some((key) => {
+    const k = norm(key);
+    if (!k) return false;
+    if (k.includes(' ')) return norm(text).includes(k);
+    return words.some((w) => w === k || (k.length >= 4 && w.startsWith(k)));
+  });
+}
+
+// Hecho del que parte el texto: el declarado o, si no declara ninguno, el primero cuyas claves toca (o el suceso abierto)
+function factFor(text, facts = [], declared = '') {
+  const id = String(declared || '')
+    .trim()
+    .toLowerCase();
+  if (id) return facts.find((f) => f.id === id) || null;
+  return facts.find((f) => !f.abierto && touchesKeys(text, f.claves)) || facts.find((f) => f.abierto) || null;
+}
+
+// Motivo de rechazo si el comentario no parte de uno de los hechos dados ('' si pasa o si no hay hechos que comprobar).
+// Un hecho «abierto» (el suceso que se comenta) no exige claves: su texto viene de fuera y no se puede prever el vocabulario.
+function factProblem(text, { facts = [], hecho = '' } = {}) {
+  if (!facts || !facts.length) return '';
+  const fact = factFor(text, facts, hecho);
+  if (!fact)
+    return hecho ? 'declara un hecho que no está en la lista de hechos' : 'no parte de ningún hecho de la lista';
+  if (fact.abierto || touchesKeys(text, fact.claves)) return '';
+  return `dice partir del hecho «${fact.texto}» pero no habla de él`;
+}
+
+// Motivo de rechazo si el giro (la idea de la broma) va por un tema vetado ('' si pasa; un giro vacío no se juzga)
+function giroProblem(giro) {
+  const g = String(giro || '');
+  if (!g.trim()) return '';
+  if (mentionsEthnicTerms(g) || mentionsGroups(g)) return 'el giro bromea con grupos de personas o etnias';
+  if (personalMatch(g)) return 'el giro va por la vida personal';
+  if (PROFANITY_RE.test(g)) return 'el giro es una grosería';
+  return '';
+}
+
+module.exports = {
+  unsupportedAttributes,
+  inventedQuote,
+  inventedCompany,
+  touchesKeys,
+  factFor,
+  factProblem,
+  giroProblem,
+};

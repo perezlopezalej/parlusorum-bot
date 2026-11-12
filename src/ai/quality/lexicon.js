@@ -121,6 +121,23 @@ function forcedComparison(text) {
   return FORCED_COMPARISON_RE.test(String(text || ''));
 }
 
+// Frases hechas que el modelo coloca donde no pegan (11-11: «hasta el FUA tiene la cola entre las patas» tras media hora
+// sin caídas). Lista corta y editable; solo se aplica a los mensajes automáticos (cohost, hook y resumen de media hora).
+const IDIOM_RE =
+  /(?<!\p{L})(?:(?:la cola|el rabo) entre las (?:patas|piernas)|gato por liebre|(?:tres|cinco) pies al gato|las casta[ñn]as del fuego|como pez en el agua|a troche y moche)(?!\p{L})/iu;
+
+function misusedIdiom(text) {
+  return IDIOM_RE.test(String(text || ''));
+}
+
+// Grupos de personas (por sexo, edad, físico, origen, religión o ideas): la broma del cohost no va por ahí
+const GROUPS_RE =
+  /(?<!\p{L})(?:mujeres|hombres|t[ií]as|viej[oa]s|ancian[oa]s|abuel[oa]s|gord[oa]s?|calv[oa]s|enan[oa]s|cieg[oa]s|sord[oa]s|coj[oa]s|discapacit\p{L}*|minusv[aá]lid\p{L}*|homosexual\p{L}*|gays?|lesbianas?|transexual\p{L}*|inmigra\p{L}*|extranjer[oa]s|religi[oó]n\p{L}*|religios[oa]s?|musulman\p{L}*|cat[oó]lic[oa]s|jud[ií][oa]s?|cristian[oa]s|pol[ií]tic[oa]s?|nacionalidad\p{L}*|raza|razas|[eé]tnic\p{L}*|etnias?|acentos?|andalu\p{L}*|catalan\p{L}*|vasc[oa]s|galleg[oa]s|latin[oa]s|sudamerican\p{L}*|chin[oa]s|moros?|negr[oa]s)(?!\p{L})/iu;
+
+function mentionsGroups(text) {
+  return GROUPS_RE.test(String(text || ''));
+}
+
 // "¿Qué os da fuerzas cuando el mundo se pone difícil?": frases de autoayuda y preguntas de motivación
 const SELF_HELP_RE =
   /\b(?:qu[eé] os (?:da|mueve|motiva|anima|inspira|hace seguir)|fuerzas?\s+(?:cuando|para seguir|para levantarse)|cuando el mundo|se pone dif[ií]cil|superar (?:las |la )?(?:adversidades?|dificultades|obst[aá]culos)|nunca te rindas|lo que no te mata|sigue tus sue[ñn]os|cada ca[ií]da (?:es|nos) (?:ense[ñn]a|una lecci[oó]n)|aprend(?:e|emos) de cada)\b/i;
@@ -344,6 +361,8 @@ module.exports = {
   claimsEnemyKills,
   mentionsGenre,
   forcedComparison,
+  misusedIdiom,
+  mentionsGroups,
   selfHelp,
   mentionsOtherGame,
   MECHANICS_RE,

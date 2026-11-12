@@ -332,9 +332,10 @@ describe('jefes seguidos', () => {
         t0 + i,
       );
     await sleep(900);
-    const cohostPrompts = prompts.filter((m) => /<suceso>/.test(m[1].content));
+    const cohostPrompts = prompts.filter((m) => /Comenta el suceso/.test(m[1].content));
     assert.equal(cohostPrompts.length, 1, 'un solo comentario');
-    assert.match(cohostPrompts[0][1].content, /<suceso>Han caído 3 jefes seguidos/);
+    assert.match(cohostPrompts[0][1].content, /<hechos>\nh1\. Han caído 3 jefes seguidos/);
+    assert.match(cohostPrompts[0][1].content, /Comenta el suceso, que es el hecho h1/);
     assert.equal(said.length, 1);
   });
 });

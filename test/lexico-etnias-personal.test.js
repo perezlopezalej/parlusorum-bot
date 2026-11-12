@@ -7,7 +7,6 @@ const assert = require('node:assert/strict');
 
 const quality = require('../src/ai/quality');
 const { checkOutbound } = require('../src/utils/output-guard');
-const { chatSample } = require('../src/utils/narrative');
 const { summaryProblem } = require('../src/memory/handler');
 
 describe('etnias y pueblos', () => {
@@ -92,17 +91,5 @@ describe('vida personal ampliada', () => {
 
   test('el cohost las rechaza como vida personal', () => {
     assert.equal(quality.styleProblem('El FUA ya sabe que la gordi se queda pillao').rule, 'personal');
-  });
-});
-
-describe('chatSample', () => {
-  test('descarta líneas con etnias o vida personal', () => {
-    const lines = [
-      { username: 'a', message: 'Gitano desgastado jaajajaj jaja' },
-      { username: 'b', message: 'Pero te levanto 110 en banca jajaja' },
-      { username: 'c', message: 'Toy con la gordi en el sofá ahora mismo' },
-      { username: 'd', message: 'Manu tiene que saltar antes de que el coloso gire' },
-    ];
-    assert.deepEqual(chatSample(lines), ['Manu tiene que saltar antes de que el coloso gire']);
   });
 });

@@ -19,7 +19,7 @@ const router = require('../src/utils/ai-router');
 const state = require('../src/utils/state');
 const style = require('../src/ai/style');
 const q = require('../src/ai/quality');
-const narrative = require('../src/utils/narrative');
+const { buildMomentFacts } = require('../src/ai/moment-facts');
 const { pickBest, parsePick, buildPickPrompt } = require('../src/ai/pick-best');
 const ai = require('../src/ai/handler');
 const alerts = require('../src/alerts/handler');
@@ -168,7 +168,7 @@ describe('minutos aproximados y repeticiones del stream', () => {
     const p = style.buildCohostSystem({ game: 'Hell Is Us', minutes: 116, form: style.COHOST_FORMS[0] });
     assert.match(p, /casi dos horas/);
     assert.doesNotMatch(p, /116/);
-    assert.match(narrative.pickFreeTopic({ minutes: 147, pick: () => 0 }).note, /dos horas y media/);
+    assert.ok(buildMomentFacts({ minutes: 147 }).some((f) => f.texto === 'Llevan dos horas y media de directo'));
   });
   test('día de la semana, "Entre X y Y…" y palabras llamativas: una vez por stream', () => {
     const first = 'Entre Pao y Manu, vaya martes de masterclass y sufrimiento.';
@@ -254,22 +254,6 @@ describe('vida personal: estudios y "familia" como saludo', () => {
   });
 });
 
-describe('muestra del chat para el resumen de media hora', () => {
-  test('sin nombres, comandos, risas ni ruido', () => {
-    const out = narrative.chatSample([
-      { username: 'a', message: 'Mira debajo del asiento de copiloto y en la estantería' },
-      { username: 'b', message: 'jajajajaja' },
-      { username: 'c', message: '@a parrrrrrr' },
-      { username: 'd', message: '!muertes +1' },
-      { username: 'e', message: 'Por fin encontramos el último puzle' },
-    ]);
-    assert.deepEqual(out, [
-      'Mira debajo del asiento de copiloto y en la estantería',
-      'Por fin encontramos el último puzle',
-    ]);
-  });
-});
-
 // ─────────────────────────────── Selector con IA ───────────────────────────────
 describe('selector con IA', () => {
   test('parsePick y buildPickPrompt', () => {
@@ -349,7 +333,7 @@ describe('selector con IA', () => {
       }),
     );
 
-  test('cohost: envía el candidato que elige el selector y le pasa chat, hora y actividad', async () => {
+  test('cohost: envía el candidato que elige el selector y le pasa los hechos, la hora y la actividad', async () => {
     stubModels((p, sel) => (sel ? choose(p, B) : json(A, B, C)));
     const out = await ai.runCohost(client, '#parlusorum', null);
     assert.equal(out, 'sent');
@@ -358,8 +342,8 @@ describe('selector con IA', () => {
     const prompt = selectorCalls()[0].messages[1].content;
     assert.match(prompt, /<ahora>/);
     assert.match(prompt, /Mensajes en el chat en los últimos 5 minutos: [1-9]\d*/);
-    assert.match(prompt, /user\d+: Jajaja otra vez ese jefe/); // los nicks salen seudonimizados
-    assert.doesNotMatch(prompt, /gangar79/);
+    assert.match(prompt, /<hechos>\nh1\. /); // los mismos hechos que el generador
+    assert.doesNotMatch(prompt, /<chat>|gangar79|user\d+:|Jajaja otra vez ese jefe/); // ninguna línea del chat
     assert.match(prompt, /1\) .*\n2\) /); // 2 candidatos por defecto
   });
   test('cohost: si el selector dice que ninguno vale, reintenta una vez con la corrección y se calla', async () => {
@@ -414,14 +398,16 @@ describe('timer IA', () => {
     assert.match(generated()[0].messages[1].content, /hasta ahora: 5/);
     assert.match(generated()[1].messages[1].content, /hasta ahora: 7/);
     assert.equal(sent[0], GOOD);
+    // el selector recibe el resumen, nunca las líneas del chat
+    assert.doesNotMatch(selectorCalls()[0].messages[1].content, /<chat>|asiento|copiloto/);
   });
-  test('el resumen lleva líneas del chat sin nombres y no una lista de palabras', async () => {
+  test('el resumen lleva el tema del chat en una frase del código, sin líneas literales', async () => {
     stubModels((p, sel) => (sel ? text('{"mejor": 1}') : text(GOOD)));
     await timers.runTimerIA(client);
     const user = generated()[0].messages[1].content;
-    assert.match(user, /<chat>[\s\S]*Mira debajo del asiento del copiloto[\s\S]*<\/chat>/);
-    assert.doesNotMatch(user, /user\d|Temas del chat/);
-    assert.match(generated()[0].messages[0].content, /sin nombres de usuario ni palabras sueltas/);
+    assert.match(user, /El chat le está dando consejos a Manu\./);
+    assert.doesNotMatch(user, /<chat>|asiento|copiloto|user\d|Temas del chat/);
+    assert.match(generated()[0].messages[0].content, /usando solo lo que aparece en <resumen>/);
   });
   test('si el selector no lo ve bueno, no se envía nada', async () => {
     stubModels((p, sel) => (sel ? text('{"mejor": 0}') : text(GOOD)));

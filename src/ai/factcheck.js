@@ -30,8 +30,8 @@ function stripEmotes(text) {
   let t = String(text || '');
   for (const e of CHANNEL_EMOTES) t = t.split(e).join(' ');
   return t
-    .replace(/\bparlus1w+/gi, '')
-    .replace(/s{2,}/g, ' ')
+    .replace(/\bparlus1\w+/gi, '')
+    .replace(/\s{2,}/g, ' ')
     .trim();
 }
 

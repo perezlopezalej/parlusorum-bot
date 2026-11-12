@@ -5,7 +5,14 @@ process.env.EVENTSUB_SECRET = process.env.EVENTSUB_SECRET || 'secreto-de-pruebas
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildMomentFacts, chatTopic, classifyLine, gameVocabulary, renderFacts } = require('../src/ai/moment-facts');
+const {
+  buildMomentFacts,
+  chatTopic,
+  classifyLine,
+  gameVocabulary,
+  properNouns,
+  renderFacts,
+} = require('../src/ai/moment-facts');
 
 const line = (username, message) => ({ username, message });
 const NOW = 1_000_000_000;
@@ -144,6 +151,75 @@ describe('buildMomentFacts', () => {
     const [f] = buildMomentFacts({ game: 'Hades', player: 'Manu' });
     assert.ok(f.claves.includes('hades'));
     assert.ok(f.claves.includes('juegan'));
+  });
+});
+
+describe('suceso en cola, rotación y jugadores', () => {
+  test('el suceso que se comenta va el primero, es abierto y sustituye a los hechos de caídas y jefes', () => {
+    const facts = buildMomentFacts({
+      game: 'Hades',
+      minutes: 60,
+      player: 'Manu',
+      deathCount: 4,
+      bosses: 2,
+      moment: { kind: 'boss', description: 'Han caído 3 jefes seguidos en pocos minutos.' },
+      avoid: ['suceso'],
+      now: NOW,
+    });
+    assert.equal(facts[0].texto, 'Han caído 3 jefes seguidos en pocos minutos');
+    assert.equal(facts[0].abierto, true);
+    assert.equal(facts.filter((f) => f.tipo === 'suceso').length, 1);
+  });
+
+  test('la rotación deja primero el tipo que lleva más tiempo sin salir', () => {
+    const base = {
+      game: 'Hades',
+      minutes: 90,
+      player: 'Manu',
+      deathCount: 2,
+      chatLines: [line('a', 'tienes que esquivar'), line('b', 'dale ya'), line('c', 'sube')],
+      now: NOW,
+    };
+    const first = (avoid) => buildMomentFacts({ ...base, avoid })[0].tipo;
+    assert.equal(first([]), 'suceso');
+    assert.equal(first(['suceso']), 'chat');
+    assert.equal(first(['suceso', 'chat']), 'estado');
+    assert.equal(first(['suceso', 'chat', 'estado']), 'tiempo');
+    assert.equal(first(['chat', 'estado', 'tiempo', 'suceso']), 'chat');
+  });
+
+  test('citeDeaths=false: sin cifra de caídas; antes de 20 minutos el rato no es un hecho', () => {
+    const recent = [{ type: 'death', ts: NOW - 1000, description: 'x' }];
+    const texts = (opts) => buildMomentFacts({ game: 'Hades', player: 'Manu', now: NOW, ...opts }).map((f) => f.texto);
+    assert.ok(texts({ deathCount: 6, events: recent, citeDeaths: false }).includes('Manu acaba de caer'));
+    assert.ok(!texts({ deathCount: 6, citeDeaths: false }).some((t) => /caídas/.test(t)));
+    assert.ok(!texts({ minutes: 12 }).some((t) => /directo/.test(t)));
+    assert.ok(texts({ minutes: 25 }).includes('Llevan media hora de directo'));
+  });
+
+  test('con Manu y Pao a la vez, los verbos van en plural', () => {
+    const facts = buildMomentFacts({
+      game: 'It Takes Two',
+      player: 'Manu y Pao',
+      deathCount: 2,
+      chatLines: [line('a', 'tienes que saltar'), line('b', 'dale ya'), line('c', 'sube')],
+      now: NOW,
+    }).map((f) => f.texto);
+    assert.ok(facts.includes('Juegan a It Takes Two y juegan Manu y Pao'));
+    assert.ok(facts.includes('Manu y Pao llevan dos caídas hoy'));
+    assert.ok(facts.includes('El chat les está dando consejos a Manu y Pao'));
+  });
+
+  test('chatTopic con minUsers: el resumen de media hora pide más usuarios', () => {
+    const lines = [line('a', 'tienes que saltar'), line('b', 'dale ya'), line('a', 'sube')];
+    assert.equal(chatTopic(lines, { player: 'Manu' }).categoria, 'consejos');
+    assert.equal(chatTopic(lines, { player: 'Manu', minUsers: 3 }), null);
+  });
+
+  test('properNouns: nombres propios de la ficha, sin las palabras que abren frase', () => {
+    const nouns = properNouns('Tales recount the story of Wander and his horse Agro. The Forbidden Lands await.');
+    assert.deepEqual(nouns.sort(), ['agro', 'forbidden', 'lands', 'wander']);
+    assert.deepEqual(properNouns(''), []);
   });
 });
 

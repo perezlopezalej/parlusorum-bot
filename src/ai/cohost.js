@@ -32,8 +32,6 @@ const {
 } = require('../utils/state');
 const { mergeBossMoments, bossInBatch, BOSS_SETTLE_MS } = require('../utils/narrative');
 const {
-  buildStoryBlock,
-  condenseChat,
   classifyCohostMoment,
   eventCohostAllowed,
   eventExpired,
@@ -48,9 +46,9 @@ const {
   streakAllowed,
   STREAK_COHOST_GAP_MS,
   hourlyCapReached,
-  pickFreeTopic,
 } = require('../utils/narrative');
 const factcheck = require('./factcheck');
+const { buildMomentFacts, gameVocabulary, properNouns, renderFacts } = require('./moment-facts');
 const { pickBest } = require('./pick-best');
 const quality = require('./quality');
 const { canMakeRequest } = require('../utils/ratelimit');
@@ -60,7 +58,7 @@ const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
 const { truncate, TWITCH_MAX_LENGTH } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
-const { chatHistory, getRecentHistory } = require('./chat-memory');
+const { chatHistory } = require('./chat-memory');
 const { getEventSubLiveStatus, isDirectedElsewhere } = require('./common');
 const { emoteLineFor, getLoreBlock, getModeConfig, refreshMode } = require('./prompt-context');
 
@@ -125,7 +123,9 @@ function detectChatMood(messages) {
   return 'NEUTRO';
 }
 
-// Cohost: habla cuando pasa algo destacado (`moment`, siempre, en cola) y, por reloj, reaccionando a lo que se habla en el chat.
+// Cohost: habla cuando pasa algo destacado (`moment`, siempre, en cola) y, por reloj, sobre un hecho del momento.
+// El modelo no recibe líneas del chat: recibe <hechos> escritos por el código (moment-facts.js) y cada candidato declara
+// de qué hecho parte ({ hecho, giro, frase }). El selector y el revisor reciben esos mismos hechos.
 // runCohost devuelve 'sent' | 'dropped' | 'retry' (retry = ahora no puede; se reintenta mientras el evento no caduque).
 // La respuesta se valida en código: lo grave (inventos del juego, muertes, latam, robot) se descarta tras un reintento; lo leve
 // (nombre repetido, fórmula, parecido, ambiente) se reintenta una vez y si persiste se envía igual. Después, la comprobación
@@ -138,7 +138,7 @@ const FREE_ATTEMPTS_MAX_PER_HOUR = 8;
 
 let lastCohostForm = ''; // id de la última forma del cohost (rota, no se repite seguida)
 
-let lastFreeTopic = ''; // id del último tema del cohost libre enviado (rota, no se repite seguido)
+let recentFactTypes = []; // tipos de hecho de los últimos comentarios libres, del más antiguo al más reciente (rotan)
 
 let lastSharedAt = 0; // último comentario enviado del cupo compartido (libre o racha)
 
@@ -223,7 +223,7 @@ async function runCohost(client, channel, moment = null) {
     recordCohostDiscard('ratelimit');
     return 'dropped';
   }
-  const recentContext = moment ? getRecentHistory(5) : publicChatContext(5);
+  const recentContext = moment ? '' : publicChatContext(5); // solo para saber si hay chat: no entra en el prompt
   if (!moment && !recentContext) return 'dropped';
   // Alguien dice que está mal o de bajón: el cohost libre no bromea con eso (calla)
   if (!moment && quality.hasPersonalDistress(recentContext)) {
@@ -252,6 +252,7 @@ async function runCohost(client, channel, moment = null) {
 
   try {
     const gameInfo = await getCurrentGame();
+    const game = gameInfo?.game || '';
     const mood = detectChatMood(chatHistory.slice(-10).map((m) => m.message || ''));
     const startedAt = getStreamStartedAt();
     const minutes = startedAt ? Math.floor((now - startedAt) / 60000) : null;
@@ -267,20 +268,49 @@ async function runCohost(client, channel, moment = null) {
       : 'Dirígete a Manu o al chat en general.';
     const emoteLine = emoteLineFor(allowEmote, emotes, recentBot);
     const loreBlock = await getLoreBlock();
-    const windowLines = chatHistory.filter((m) => m.ts > now - 5 * 60 * 1000).slice(-25);
-    const chatSummary = condenseChat(windowLines);
     const maxChars = modeConfig.max_chars ?? TWITCH_MAX_LENGTH;
-    // Ficha del juego actual (caché de IGDB) para que el revisor reconozca como respaldados el año, el estudio o el género
-    const gameFacts = gameInfo?.game
-      ? factcheck.gameFactsText((await lookupGameInfo(gameInfo.game, { detail: true }).catch(() => ({}))).info)
-      : '';
-    const facts = `Juego: ${gameInfo?.game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${gameFacts} ${moment ? `Suceso: ${moment.description}. ` : ''}Chat reciente: ${recentContext}`;
+    // Ficha del juego actual (caché de IGDB): el revisor reconoce como respaldados el año, el estudio o el género, y sus
+    // nombres propios cuentan como vocabulario del juego
+    const sheet = game ? (await lookupGameInfo(game, { detail: true }).catch(() => ({}))).info : null;
+    const gameFacts = factcheck.gameFactsText(sheet);
+    const gameWords = [...new Set([...gameVocabulary(game), ...properNouns(sheet?.description)])];
 
     // El número de muertes no se cita en dos mensajes seguidos del bot (salvo en la primera muerte y el récord, que son el dato)
     const countIsTheNews = moment && ['first_death', 'record'].includes(moment.kind);
     const lastCitedDeaths =
       !countIsTheNews && quality.citesDeathCount(recentBot[recentBot.length - 1] || '', deathCount);
     const deathLine = `${baseDeathLine}${lastCitedDeaths ? ' Esta vez deja fuera la cifra de caídas.' : ''}${raidLine}`;
+
+    // Hechos del momento: lo único que el modelo, el selector y el revisor saben del directo. El primero (h1) es el que se
+    // comenta: el suceso en cola o, en los libres, un tipo de hecho distinto al de los últimos comentarios.
+    const playerName = { pao: 'Pao', ambos: 'Manu y Pao' }[getPlayer()] || 'Manu';
+    const chatLines = chatHistory
+      .filter((m) => m.ts > now - 5 * 60 * 1000 && !isDirectedElsewhere(m.message))
+      .slice(-25)
+      .map((m) => ({ username: m.username, message: m.message }));
+    const factsAvoiding = (avoid) =>
+      buildMomentFacts({
+        game,
+        gameWords,
+        minutes,
+        deathCount,
+        bosses: getBossCount(),
+        player: playerName,
+        events: getStreamNarrative(),
+        chatLines,
+        now,
+        avoid,
+        moment,
+        citeDeaths: !lastCitedDeaths,
+      });
+    let momentFacts = factsAvoiding(recentFactTypes);
+    if (!momentFacts.length) {
+      recordCohostDiscard('sin_tema');
+      logger.info('Co-host: sin hechos que comentar');
+      return 'dropped';
+    }
+    const reviewData = () =>
+      `Juego: ${game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${gameFacts} Hechos del momento: ${momentFacts.map((f) => f.texto).join('. ')}.`;
     const validateCtx = {
       player: getPlayer(),
       deathCount,
@@ -291,12 +321,15 @@ async function runCohost(client, channel, moment = null) {
       nameWindowMs: COHOST_NAME_WINDOW,
       usedStructures: getUsedStructures(),
       lastCitedDeaths,
-      game: gameInfo?.game || '',
+      game,
+      channelGames: channelConfig.games_played || [],
+      chatLines,
+      gameWords,
     };
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
     let generatorModel; // modelo que escribió los candidatos: el selector es de otra familia
     const reviewText = async (text, { sense = true } = {}) => {
-      const review = await factcheck.evaluate(text, facts, { game: gameInfo?.game, sense });
+      const review = await factcheck.evaluate(text, reviewData(), { game, sense });
       if (review.discard) {
         logger.info(`Co-host descartado (datos del juego sin respaldo): ${text.slice(0, 80)}`);
         return { ok: false, reason: 'factcheck' };
@@ -319,18 +352,10 @@ async function runCohost(client, channel, moment = null) {
     };
 
     let reply = '';
+    let replyFact = ''; // id del hecho del que parte el comentario enviado
     let fixKey = ''; // regla fallida del intento anterior: el reintento recibe solo la corrección en positivo
     const form = pickCohostForm(lastCohostForm); // la forma cambia en cada comentario, sin repetir la anterior
     lastCohostForm = form.id;
-    // Cohost libre: el código elige el tema (rotando) y el modelo solo devuelve la lista vacía si de verdad no puede hablar de él
-    const topicCtx = {
-      minutes: minutes || 0,
-      bosses: getBossCount(),
-      game: gameInfo?.game || '',
-      deathCount,
-      canCiteDeaths: !lastCitedDeaths,
-    };
-    let freeTopic = moment ? null : pickFreeTopic({ ...topicCtx, last: lastFreeTopic });
     for (let attempt = 0; attempt < 2 && !reply; attempt++) {
       if (attempt > 0 && !canMakeRequest()) {
         reason = 'ratelimit';
@@ -338,8 +363,6 @@ async function runCohost(client, channel, moment = null) {
       }
       const system =
         buildCohostSystem({
-          game: gameInfo?.game || '',
-          minutes,
           deathLine,
           player: getPlayer(),
           mood,
@@ -351,13 +374,21 @@ async function runCohost(client, channel, moment = null) {
           modeLine: modeConfig.prompt_extension,
           event: !!moment,
           weekday: !getUsedStructures().has('dia-semana'),
+          plain: getUsedStructures().has('metafora'), // ya salió la metáfora del stream: frases directas
         }) + retryNote(fixKey);
-      const chatBlock = recentContext ? `<chat>\n${recentContext}\n</chat>` : '';
-      const user = moment
-        ? `<suceso>${moment.description}</suceso>\n${chatBlock}\nComenta el suceso.`
-        : `${chatBlock}${chatSummary ? `\n<resumen_chat>${chatSummary}</resumen_chat>` : ''}${buildStoryBlock(getStreamNarrative(), now)}\n<tema>${freeTopic.note}</tema>\nComenta el tema.`;
+      const user = `${renderFacts(momentFacts)}\n${
+        moment
+          ? 'Comenta el suceso, que es el hecho h1; los demás hechos son solo contexto.'
+          : 'Comenta el hecho h1; los demás hechos son contexto y también valen si dan más juego.'
+      }`;
+      // Un suceso solo se comenta a sí mismo; lo que el modelo ha leído (prompt y hechos) no cuenta como copia del chat
+      const attemptCtx = {
+        ...validateCtx,
+        facts: moment ? momentFacts.slice(0, 1) : momentFacts,
+        allowedWords: [system, user],
+      };
       const response = await aiChat('cohost', {
-        max_tokens: 220,
+        max_tokens: COHOST_CANDIDATES === 3 ? 450 : 320, // cada candidato es un objeto { hecho, giro, frase }
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
@@ -374,9 +405,9 @@ async function runCohost(client, channel, moment = null) {
         }
         recordCohostDiscard('skip'); // cuenta cada lista vacía del modelo (sale en el resumen de fin de stream)
         if (attempt === 0) {
-          // segundo intento con otro tema
-          freeTopic = pickFreeTopic({ ...topicCtx, last: freeTopic.id });
-          logger.info(`Co-host: sin candidatos, reintento con otro tema (${freeTopic.id})`);
+          // segundo intento con otro hecho en cabeza
+          momentFacts = factsAvoiding([...recentFactTypes, momentFacts[0].tipo]);
+          logger.info(`Co-host: sin candidatos, reintento con otro hecho (${momentFacts[0].tipo})`);
           continue;
         }
         reason = 'sin_tema';
@@ -384,20 +415,23 @@ async function runCohost(client, channel, moment = null) {
         break;
       }
       // El código elige: pasa todos los filtros y es el que menos se parece a los últimos mensajes del bot
-      const { ranked, failures } = rankCandidates(candidates.map(prepare), {
-        validate: (t) => quality.validateCohost(t, validateCtx),
-        recent: recentBot,
-      });
+      const { ranked, failures } = rankCandidates(
+        candidates.map((c) => ({ text: prepare(c.frase), hecho: c.hecho, giro: c.giro })),
+        {
+          validate: (t, c) => quality.validateCohost(t, { ...attemptCtx, hecho: c.hecho, giro: c.giro }),
+          recent: recentBot,
+        },
+      );
       for (const f of failures) logger.info(`Co-host descartado (${f.reason}): ${f.text.slice(0, 80)}`);
       if (ranked.length) {
-        // Un modelo pequeño elige el mejor comparándolos con el chat y el juego, o dice que ninguno vale (entonces se calla)
+        // Un modelo pequeño elige el mejor comparándolos con los mismos hechos, o dice que ninguno vale (entonces se calla)
         const pick = await pickBest(
-          ranked.map((r) => r.text),
+          ranked.map((r) => ({ text: r.text, hecho: r.hecho })),
           {
             dayLine: dayLine(new Date(now)),
-            game: gameInfo?.game || '',
-            facts: `Caídas anotadas: ${deathCount}. Juega ${getPlayer() === 'pao' ? 'Pao' : 'Manu'}.${minutes != null ? ` Llevan ${quality.approxDuration(minutes)} de directo.` : ''}${moment ? ` Suceso: ${moment.description}.` : ''}`,
-            chat: getRecentHistory(8),
+            game,
+            facts: `Caídas anotadas: ${deathCount}. Juega ${playerName}.`,
+            hechos: renderFacts(momentFacts),
             activity: chatHistory.filter((m) => m.ts > now - 5 * 60 * 1000).length,
             generator: generatorModel,
           },
@@ -405,8 +439,10 @@ async function runCohost(client, channel, moment = null) {
         if (pick.status === 'ok') {
           const chosen = ranked[pick.index].text;
           const review = await reviewText(chosen, { sense: false }); // el sentido ya lo ha mirado el selector: aquí solo los datos del juego
-          if (review.ok) reply = chosen;
-          else {
+          if (review.ok) {
+            reply = chosen;
+            replyFact = ranked[pick.index].hecho;
+          } else {
             fixKey = review.reason;
             reason = review.reason;
           }
@@ -420,6 +456,7 @@ async function runCohost(client, channel, moment = null) {
             const review = await reviewText(candidate.text);
             if (review.ok) {
               reply = candidate.text;
+              replyFact = candidate.hecho;
               break;
             }
             fixKey = review.reason;
@@ -439,11 +476,15 @@ async function runCohost(client, channel, moment = null) {
       recordCohostDiscard(reason);
       return 'dropped';
     } // los candidatos fallaron: se calla
-    if (freeTopic) lastFreeTopic = freeTopic.id;
+    if (!moment) {
+      // el tipo de hecho comentado pasa al final de la rotación
+      const type = (quality.factFor(reply, momentFacts, replyFact) || momentFacts[0]).tipo;
+      recentFactTypes = [...recentFactTypes.filter((t) => t !== type), type].slice(-3);
+    }
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     addCohostText(kindKey, reply);
-    for (const key of quality.streamMarks(reply, gameInfo?.game || '')) markStructure(key);
+    for (const key of quality.streamMarks(reply, game)) markStructure(key);
     markNamed(quality.namesIn(reply, [...chatHistory.slice(-60).map((m) => m.username), 'pao']));
     recordCohost();
     recordCohostSent(kind);

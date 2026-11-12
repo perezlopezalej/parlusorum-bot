@@ -26,10 +26,12 @@ const {
   mentionsMechanics,
   mentionsOtherGame,
   mirrorsUser,
+  misusedIdiom,
   personalMatch,
   selfHelp,
 } = require('./lexicon');
-const { inventedQuote, unsupportedAttributes } = require('./facts');
+const { copiedFromChat } = require('./copy');
+const { factProblem, giroProblem, inventedQuote, unsupportedAttributes } = require('./facts');
 const {
   WORD_LIST_RE,
   hasElongation,
@@ -50,6 +52,9 @@ const {
   wrongWeekday,
 } = require('./numbers');
 const {
+  METAPHOR_MARK,
+  METAPHOR_REASON,
+  isMetaphor,
   recentlyNamedIn,
   repeatedClosing,
   repeatedInStream,
@@ -74,7 +79,11 @@ function gameTalkProblem(text) {
 }
 
 // Motivo de rechazo por redacción o tema vetado (null si pasa). opts.personal=false deja pasar la vida personal (menciones)
-function styleProblem(text, { personal = true, minWords = 3, player = 'manu', now = new Date(), names = [] } = {}) {
+// opts.idioms: frases hechas vetadas en los mensajes automáticos (por defecto, igual que personal)
+function styleProblem(
+  text,
+  { personal = true, idioms = personal, minWords = 3, player = 'manu', now = new Date(), names = [] } = {},
+) {
   const t = String(text || '');
   const junk = junkProblem(t, { minWords });
   if (junk) return junk;
@@ -119,6 +128,8 @@ function styleProblem(text, { personal = true, minWords = 3, player = 'manu', no
     return { rule: 'canal', reason: 'el canal es de Manu y Pao; vlxj97 solo creó el bot, no le atribuyas el canal' };
   if (CREATOR_CLAIM_RE.test(t))
     return { rule: 'creador', reason: 'eres el bot del canal, no su creador; te creó vlxj97' };
+  if (idioms && misusedIdiom(t))
+    return { rule: 'modismo', reason: 'usa una frase hecha que no pega con lo que pasa; dilo con palabras llanas' };
   if (personal && personalMatch(t))
     return {
       rule: 'personal',
@@ -145,6 +156,8 @@ const VIEWERS_REASON =
   'cita una cifra de viewers; los de una raid son visitantes de otro canal, no los espectadores del canal';
 
 // Validación del cohost. ctx: { deathCount, recent: string[], sameKind: string[], named: Map, now, nameWindowMs }
+// ctx.facts/hecho/giro: hechos del momento, el que declara el candidato y su giro (reglas `hecho` y `giro`).
+// ctx.chatLines/allowedWords/gameWords: regla `copia`. ctx.game/channelGames: sin nombrar otros juegos.
 // Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
 // se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
 function validateCohost(
@@ -160,6 +173,13 @@ function validateCohost(
     lastCitedDeaths = false,
     player = 'manu',
     game = '',
+    channelGames = [],
+    facts = [],
+    hecho = '',
+    giro = '',
+    chatLines = [],
+    allowedWords = [],
+    gameWords = [],
   } = {},
 ) {
   if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
@@ -170,10 +190,38 @@ function validateCohost(
     return { ok: false, rule: 'muertes', reason: 'menciona muertes que no están en el contador' };
   const style = styleProblem(text, { player, now: new Date(now) });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
+  const twist = giroProblem(giro);
+  if (twist) return { ok: false, rule: 'giro', reason: twist };
+  const fact = factProblem(text, { facts, hecho });
+  if (fact) return { ok: false, rule: 'hecho', reason: fact };
+  const copied = copiedFromChat(text, chatLines, {
+    allowed: [...facts.map((f) => f.texto), ...allowedWords, game],
+    gameWords,
+    numbers: [deathCount],
+  });
+  if (copied)
+    return {
+      ok: false,
+      rule: 'copia',
+      reason: `copia del chat «${copied}»; cuenta el hecho con tus propias palabras`,
+    };
   if (lastCitedDeaths && citesDeathCount(text, deathCount))
     return { ok: false, rule: 'contador', reason: DEATH_REPEAT_REASON };
   const gameProblem = gameTalkProblem(text);
   if (gameProblem) return { ok: false, rule: 'juego', reason: gameProblem };
+  const other = game ? mentionsOtherGame(text, game, channelGames) : null;
+  if (other)
+    return {
+      ok: false,
+      rule: 'otro_juego',
+      reason: `nombra otro videojuego (${other}); habla solo del juego actual o de ningún juego`,
+    };
+  if (forcedComparison(text))
+    return {
+      ok: false,
+      rule: 'comparacion',
+      reason: 'usa una comparación forzada con objetos o situaciones cotidianas; di la idea directa',
+    };
   if (exactMinutes(text)) return { ok: false, rule: 'minutos', reason: EXACT_MINUTES_REASON };
   if (citesViewers(text)) return { ok: false, rule: 'viewers', reason: VIEWERS_REASON };
   if (WORD_LIST_RE.test(plainWords(text)))
@@ -186,6 +234,8 @@ function validateCohost(
       rule: 'nombre',
       reason: `nombra a ${names.join(', ')}, que ya se nombró hace poco; no lo repitas`,
     };
+  if (usedStructures.has(METAPHOR_MARK) && isMetaphor(text))
+    return { ok: false, soft: true, rule: 'metafora', reason: METAPHOR_REASON };
   const repeated = repeatedInStream(text, usedStructures, game);
   if (repeated) return { ok: false, soft: true, rule: 'repetido', reason: repeated };
   const structure = structureKey(text);
@@ -240,6 +290,7 @@ function validateHook(
     requireQuestion = false,
     extraDeathNumbers = [],
     now = Date.now(),
+    usedStructures = new Set(),
   } = {},
 ) {
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
@@ -253,6 +304,7 @@ function validateHook(
   if (exactMinutes(text)) return { ok: false, reason: EXACT_MINUTES_REASON };
   if (citesViewers(text)) return { ok: false, reason: VIEWERS_REASON };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
+  if (usedStructures.has(METAPHOR_MARK) && isMetaphor(text)) return { ok: false, reason: METAPHOR_REASON };
   const style = styleProblem(text, { player, now: new Date(now) });
   if (style) return { ok: false, reason: style.reason };
   const game = gameTalkProblem(text);
@@ -280,6 +332,7 @@ function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '' } = 
 
 // Comentario IA del timer: misma validación que el hook, sin nota del juego y sin repetir ideas del stream
 // ctx.currentGame/channelGames: sin nombrar otros juegos; ctx.named: usuarios nombrados hace poco (no repetirlos)
+// ctx.chatLines/allowedWords/gameWords: regla `copia` (palabras del chat que no vienen del resumen ni del juego)
 function validateTimerIA(
   text,
   {
@@ -294,6 +347,9 @@ function validateTimerIA(
     usedStructures = new Set(),
     lastCitedDeaths = false,
     player = 'manu',
+    chatLines = [],
+    allowedWords = [],
+    gameWords = [],
   } = {},
 ) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
@@ -343,6 +399,12 @@ function validateTimerIA(
   if (/@\w/.test(text)) return { ok: false, reason: 'no etiquetes a nadie con @' };
   const style = styleProblem(text, { player, now: new Date(now) });
   if (style) return { ok: false, reason: style.reason };
+  const copied = copiedFromChat(text, chatLines, {
+    allowed: [...allowedWords, currentGame],
+    gameWords,
+    numbers: [deathCount, ...extraDeathNumbers],
+  });
+  if (copied) return { ok: false, reason: `copia del chat «${copied}»; cuenta la idea con tus propias palabras` };
   if (matchesFormula(text) && repeatsFormula(text, recent))
     return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent, 0.5))

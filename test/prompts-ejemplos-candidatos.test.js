@@ -107,9 +107,15 @@ describe('prompts nuevos: sin prohibidas citadas', () => {
 describe('ejemplos y formas', () => {
   test('los ejemplos del cohost salen del archivo editable y rotan', () => {
     const data = style.loadExamples();
-    assert.equal(data.cohost.length, 13);
+    assert.equal(data.cohost.length, 10);
     const seen = new Set();
-    for (let i = 0; i < 30; i++) seen.add(style.pickStyleExamples('cohost', 4).join('|'));
+    for (let i = 0; i < 30; i++)
+      seen.add(
+        style
+          .pickStyleExamples('cohost', 4)
+          .map((e) => e.texto)
+          .join('|'),
+      );
     assert.ok(seen.size > 3);
     for (const e of style.pickStyleExamples('cohost', 4)) assert.ok(data.cohost.includes(e));
   });
@@ -143,12 +149,15 @@ describe('ejemplos y formas', () => {
 
 describe('candidatos', () => {
   test('parseCandidates: JSON, bloque ```json, array suelto, texto plano y JSON cortado', () => {
-    assert.deepEqual(style.parseCandidates('{"candidatos":["a b","c d","e f","g h"]}'), ['a b', 'c d', 'e f']);
-    assert.deepEqual(style.parseCandidates('```json\n{"candidatos":["uno"]}\n```'), ['uno']);
-    assert.deepEqual(style.parseCandidates('["x y","z w"]'), ['x y', 'z w']);
-    assert.deepEqual(style.parseCandidates('Una frase sin JSON.'), ['Una frase sin JSON.']);
-    assert.deepEqual(style.parseCandidates('{"candidatos":["completo uno","cortado'), ['completo uno']);
-    assert.deepEqual(style.parseCandidates('{"candidatos":[]}'), []);
+    const frases = (raw) => style.parseCandidates(raw).map((c) => c.frase);
+    assert.deepEqual(frases('{"candidatos":["a b","c d","e f","g h"]}'), ['a b', 'c d', 'e f']);
+    assert.deepEqual(frases('```json\n{"candidatos":["uno"]}\n```'), ['uno']);
+    assert.deepEqual(frases('["x y","z w"]'), ['x y', 'z w']);
+    assert.deepEqual(frases('Una frase sin JSON.'), ['Una frase sin JSON.']);
+    assert.deepEqual(frases('{"candidatos":["completo uno","cortado'), ['completo uno']);
+    assert.deepEqual(frases('{"candidatos":[]}'), []);
+    // un candidato que es solo texto llega sin hecho ni giro
+    assert.deepEqual(style.parseCandidates('["x y"]'), [{ hecho: '', giro: '', frase: 'x y' }]);
   });
   test('rankCandidates: descarta los que fallan y deja primero el que menos se parece a lo reciente', () => {
     const recent = ['El jefe ya sabe el nombre de Manu y toca sacar el FUA.'];
@@ -209,8 +218,13 @@ describe('cohost con tres candidatos', () => {
     assert.match(sys, /<ejemplos>[\s\S]*<example>/);
     assert.match(sys, /<forma>/);
     assert.match(sys, /\{"candidatos"/);
-    assert.match(prompts[0][1].content, /<chat>/);
-    assert.match(prompts[0][1].content, /<tema>/);
+    assert.match(sys, /\{"hecho":"h1","giro":"…","frase":"…"\}/);
+    assert.match(sys, /<example><hecho>[^<]+<\/hecho><giro>[^<]+<\/giro><frase>[^<]+<\/frase><\/example>/);
+    // el modelo recibe hechos escritos por el código, no líneas del chat
+    assert.match(prompts[0][1].content, /<hechos>\nh1\. /);
+    assert.match(prompts[0][1].content, /Comenta el hecho h1/);
+    assert.doesNotMatch(prompts[0][1].content, /<chat>|<resumen_chat>|<stream_story>|<tema>/);
+    assert.doesNotMatch(prompts[0][1].content, /Jajaja otra vez|no te rindas|pasárselo|user\d/);
     for (const re of FORBIDDEN_IN_PROMPT) assert.doesNotMatch(sys, re);
   });
 

@@ -5,34 +5,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const q = require('../src/ai/quality');
 const factcheck = require('../src/ai/factcheck');
-const { pickFreeTopic } = require('../src/utils/narrative');
-
-// --- Tema del cohost libre elegido por el código ---
-test('pickFreeTopic: nunca repite el tema anterior y rota por todos', () => {
-  const ctx = { minutes: 90, bosses: 2, game: 'Phantom Blade Zero', deathCount: 5 };
-  const seen = new Set();
-  for (let i = 0; i < 6; i++) {
-    for (const last of ['tiempo', 'partida', 'chat_juego', 'lore', 'lusorums', 'fua']) {
-      assert.notEqual(pickFreeTopic({ ...ctx, last, pick: () => i / 6 }).id, last);
-    }
-    seen.add(pickFreeTopic({ ...ctx, pick: () => i / 6 }).id);
-  }
-  assert.ok(seen.size >= 5, `solo ${seen.size} temas distintos`);
-});
-
-test('pickFreeTopic: sin tiempo de directo ni juego solo ofrece temas que no inventan', () => {
-  const ids = new Set();
-  for (let i = 0; i < 10; i++) ids.add(pickFreeTopic({ minutes: 5, game: '', pick: () => i / 10 }).id);
-  assert.ok(!ids.has('tiempo') && !ids.has('partida'));
-  assert.ok(ids.has('lore') && ids.has('chat_juego'));
-});
-
-test('pickFreeTopic: no cita muertes si canCiteDeaths es false', () => {
-  for (let i = 0; i < 10; i++) {
-    const t = pickFreeTopic({ minutes: 60, game: 'X', deathCount: 9, canCiteDeaths: false, pick: () => i / 10 });
-    assert.ok(!/caídas|\(9/.test(t.note));
-  }
-});
 
 // --- Ficha de IGDB para el revisor ---
 test('gameFactsText: la ficha incluye año, estudio, géneros y descripción', () => {

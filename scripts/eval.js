@@ -132,16 +132,33 @@ function flattenPool(key) {
 
 const stripMention = (s) => String(s || '').replace(/^@\S+\s*/, '');
 
-// Caso de selector: candidatos reales (buenos y malos) y el contexto; el selector con IA debe elegir el bueno o callar (pick: 'none')
+// Caso de selector: candidatos reales (buenos y malos) y el contexto; el selector con IA debe elegir el bueno o callar (pick: 'none').
+// Como en producción, el selector no recibe el chat: recibe los hechos del momento que el código saca de él (moment-facts).
 async function runPickCase(c) {
   const { pickBest } = require('../src/ai/pick-best');
   const { dayLine } = require('../src/ai/style');
+  const { buildMomentFacts, gameVocabulary, renderFacts } = require('../src/ai/moment-facts');
   const started = realNow();
+  const game = c.game || 'Hell Is Us';
+  const chatLines = (c.chat || []).map((l) => {
+    const m = /^([^:\s]+):\s*(.*)$/.exec(l);
+    return m ? { username: m[1], message: m[2] } : { username: 'chat', message: l };
+  });
+  const hechos = renderFacts(
+    buildMomentFacts({
+      game,
+      gameWords: gameVocabulary(game),
+      minutes: c.minutes,
+      deathCount: c.deaths ?? 5,
+      player: 'Manu',
+      chatLines,
+    }),
+  );
   const res = await pickBest(c.candidates, {
     dayLine: dayLine(c.at ? new Date(c.at) : new Date()),
-    game: c.game || 'Hell Is Us',
+    game,
     facts: `Caídas anotadas: ${c.deaths ?? 5}. Juega Manu.`,
-    chat: (c.chat || []).join('\n'),
+    hechos,
     activity: c.activity ?? (c.chat || []).length,
   });
   const failures = [];

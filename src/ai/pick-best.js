@@ -1,6 +1,7 @@
 // Selector con IA: entre los candidatos que ya pasan los filtros del código, un modelo de OTRA familia que el generador
 // (generó gpt-oss → elige qwen, y al revés) elige el mejor, con los candidatos en orden aleatorio,
-// comparándolos entre sí (ortografía, lógica, encaje con lo que acaba de pasar) o dice que ninguno vale (entonces se calla).
+// comparándolos entre sí (ortografía, lógica, encaje con los hechos del momento) o dice que ninguno vale (entonces se calla).
+// Recibe los mismos hechos que el generador, nunca el chat literal: así no da por bueno un candidato «porque el chat lo dijo».
 
 const { aiChat } = require('../utils/ai-router');
 const { canMakeAuxRequest } = require('../utils/ratelimit');
@@ -12,15 +13,20 @@ const SYSTEM =
   'Solo dices que ninguno vale si TODOS los candidatos tienen un fallo claro de estas tres clases: ' +
   '(1) ortografía: palabras cortadas, inventadas o mal escritas, género o número incorrectos; ' +
   '(2) sin sentido: la frase no significa nada, el sujeto y la acción no encajan o la comparación no tiene lógica; ' +
-  '(3) no cuadra con <chat>, <datos> y <ahora>: atribuye al chat algo que no aparece en <chat> (apuestas, silencio, discusiones), contradice la actividad del chat, la hora o el contador, o mezcla quién juega. ' +
+  '(3) no cuadra con <hechos>, <datos> y <ahora>: habla de algo que no está en los hechos (apuestas, silencio, discusiones del chat, cosas que nadie ha contado), contradice la actividad del chat, la hora o el contador, o mezcla quién juega. Si un candidato lleva delante el hecho del que dice partir («[h2]»), tiene que hablar de ese hecho. ' +
   'No son fallos: que tenga poca gracia, un estilo flojo, una exageración o broma clara, «puzle» o «puzzle», ni «el FUA», que es el grito de carácter del canal. Entre varios válidos, elige el que mejor se entienda y mejor encaje con lo que ha pasado. ' +
-  'Ejemplos de fallo: «Men martes tarde más majo» (palabra cortada), «Manu se ha besado el suelo» (el suelo no se besa), «ha probado el suelo más veces que el felpudo de casa» (comparación sin lógica), «Rata de exploración tranquila» (frase sin sentido), «el chat mudo» con el chat hablando. ' +
+  'Ejemplos de fallo: «Men martes tarde más majo» (palabra cortada), «Manu se ha besado el suelo» (el suelo no se besa), «ha probado el suelo más veces que el felpudo de casa» (comparación sin lógica), «Rata de exploración tranquila» (frase sin sentido), «media hora tan limpia que hasta el FUA tiene la cola entre las patas» (frase hecha que no pega con lo que pasa), «el chat mudo» con el chat hablando. ' +
   'Ante la duda entre elegir y descartar, elige. Responde solo con este JSON: {"mejor": N} con el número del mejor, o {"mejor": 0} si todos tienen un fallo claro.';
 
 const block = (tag, body) => (body ? `<${tag}>\n${String(body).trim()}\n</${tag}>` : '');
 
-function buildPickPrompt(candidates, { dayLine = '', game = '', facts = '', chat = '', activity = null } = {}) {
-  const list = candidates.map((c, i) => `${i + 1}) ${stripEmotes(c)}`).join('\n');
+// candidates: textos u objetos { text, hecho } (hecho = id del hecho del que parte). ctx.hechos: bloque <hechos> ya montado
+// (moment-facts.renderFacts) o ''. El selector no recibe líneas del chat: solo los hechos y cuántos mensajes hay.
+function buildPickPrompt(candidates, { dayLine = '', game = '', facts = '', hechos = '', activity = null } = {}) {
+  const textOf = (c) => (typeof c === 'string' ? c : c.text);
+  const list = candidates
+    .map((c, i) => `${i + 1}) ${c.hecho ? `[${c.hecho}] ` : ''}${stripEmotes(textOf(c))}`)
+    .join('\n');
   return [
     block('ahora', dayLine),
     block(
@@ -33,7 +39,7 @@ function buildPickPrompt(candidates, { dayLine = '', game = '', facts = '', chat
         .filter(Boolean)
         .join(' '),
     ),
-    block('chat', chat || '(sin mensajes recientes)'),
+    String(hechos || '').trim(),
     block('candidatos', list),
   ]
     .filter(Boolean)

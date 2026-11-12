@@ -1,7 +1,5 @@
 // Lógica pura de la narrativa del stream y del disparo del cohost (sin estado ni I/O)
 
-const { approxDuration, hasElongation, cleanChatNoise, mentionsEthnicTerms, personalMatch } = require('../ai/quality');
-
 const MAX_NARRATIVE_EVENTS = 12;
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -46,76 +44,6 @@ function relativeTime(ts, now) {
 function buildStoryBlock(events, now = Date.now()) {
   if (!events || events.length === 0) return '';
   return `\n<stream_story>${events.map((e) => `[${relativeTime(e.ts, now)}] [${e.type}] ${e.description}`).join(' | ')}</stream_story>`;
-}
-
-const STOPWORDS = new Set([
-  'para',
-  'pero',
-  'como',
-  'esto',
-  'esta',
-  'este',
-  'esos',
-  'esas',
-  'solo',
-  'muy',
-  'que',
-  'por',
-  'con',
-  'una',
-  'uno',
-  'los',
-  'las',
-  'del',
-  'porque',
-  'cuando',
-  'donde',
-  'ahora',
-  'tambien',
-  'también',
-  'todo',
-  'todos',
-  'pues',
-  'bien',
-  'jaja',
-  'jajaja',
-]);
-
-// Condensa líneas de chat en una frase de contexto sin llamar a la IA
-function condenseChat(lines, { topUsers = 3, topWords = 4, lastN = 3, maxLast = 80 } = {}) {
-  if (!lines || lines.length === 0) return '';
-  const users = new Map();
-  const words = new Map();
-  for (const { username, message } of lines) {
-    users.set(username, (users.get(username) || 0) + 1);
-    for (const w of new Set(
-      String(message)
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}_]+/u),
-    )) {
-      if (w.length >= 4 && !STOPWORDS.has(w) && !hasElongation(w)) words.set(w, (words.get(w) || 0) + 1);
-    }
-  }
-  const top = (map, n, min) =>
-    [...map.entries()]
-      .filter(([, c]) => c >= min)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, n);
-  const userPart = top(users, topUsers, 1)
-    .map(([u, c]) => `${u}(${c})`)
-    .join(', ');
-  const wordPart = top(words, topWords, 2)
-    .map(([w]) => w)
-    .join(', ');
-  const last = lines
-    .slice(-lastN)
-    .map((m) => `${m.username}: ${cleanChatNoise(String(m.message)).slice(0, maxLast)}`)
-    .join(' / ');
-  return (
-    `${lines.length} mensajes de ${users.size} usuarios. Más activos: ${userPart}.` +
-    (wordPart ? ` Se repite: ${wordPart}.` : '') +
-    ` Últimos: ${last}`
-  );
 }
 
 // Descarta marcas de más de 1 h y dice si se alcanzó el tope por hora
@@ -281,41 +209,6 @@ function streakAllowed({
   return !hourlyCapReached(sharedStamps, max, now);
 }
 
-// Tema concreto de cada intento del cohost libre, elegido por el código y rotando (nunca el mismo dos veces seguidas):
-// con "habla de lo que veas" el modelo respondía SKIP en 31 de 35 intentos. `last` = id del tema anterior.
-// → { id, note } con note listo para el prompt.
-function pickFreeTopic({
-  minutes = 0,
-  bosses = 0,
-  game = '',
-  deathCount = 0,
-  canCiteDeaths = true,
-  last = '',
-  pick = Math.random,
-} = {}) {
-  const time = minutes >= 20 ? approxDuration(minutes) : '';
-  const topics = [];
-  if (time)
-    topics.push({
-      id: 'tiempo',
-      note: `el rato que llevan de directo (${time}), dicho de forma aproximada y sin minutos exactos`,
-    });
-  if (game)
-    topics.push({
-      id: 'partida',
-      note: `cómo va la partida: ${bosses > 0 ? `${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'} hoy` : 'el ritmo de la sesión'}${deathCount > 0 && canCiteDeaths ? ` y las caídas de Manu (${deathCount} anotadas)` : ''}; cuéntalo con humor sobre la sesión`,
-    });
-  topics.push({
-    id: 'chat_juego',
-    note: 'algo que el chat haya dicho sobre el juego o la partida contado en general, como una anécdota del directo',
-  });
-  topics.push({ id: 'lore', note: 'una broma del lore del canal' });
-  topics.push({ id: 'lusorums', note: 'los Lusorums, el chat, con cariño y humor' });
-  topics.push({ id: 'fua', note: 'el FUA como fuerza universal, con una broma directa' });
-  const pool = topics.filter((t) => t.id !== last);
-  return pool[Math.min(pool.length - 1, Math.floor(pick() * pool.length))];
-}
-
 // --- Jefes seguidos: varios !boss en pocos minutos se comentan una sola vez ---
 const BOSS_MERGE_MS = 2 * 60 * 1000; // hueco máximo entre dos jefes para que cuenten como una tanda
 const BOSS_SETTLE_MS = 25 * 1000; // el comentario del primer jefe espera por si llegan más
@@ -353,41 +246,18 @@ function windowFacts(events = [], now = Date.now(), windowMs = 30 * 60 * 1000) {
   return { deaths, bosses, streak, celebrations, lines, relevant: lines.length > 0 };
 }
 
-// Muestra del chat para que la IA cuente el tema: sin nombres, sin comandos, sin risas ni ruido, sin emotes ni @menciones
-// y sin líneas con etnias ni vida personal (pareja, gimnasio, peso...): lo que no se ve no se copia.
-function chatSample(lines = [], { n = 8, minLen = 18, maxLen = 90 } = {}) {
-  const out = [];
-  for (const { message } of lines) {
-    const text = cleanChatNoise(
-      String(message || '')
-        .replace(/https?:\/\/\S+/gi, ' ')
-        .replace(/@\w+/g, ' ')
-        .replace(/\bparlus1\w*/gi, ' ')
-        .replace(/\s+/g, ' '),
-    );
-    if (text.startsWith('!') || text.length < minLen) continue;
-    if (/^(?:(?:ja|je|ji|jo|ju|ha|he)+\W*)+$/i.test(text)) continue;
-    if (mentionsEthnicTerms(text) || personalMatch(text)) continue;
-    out.push(text.slice(0, maxLen));
-  }
-  return [...new Set(out)].slice(-n);
-}
-
 module.exports = {
   windowFacts,
-  chatSample,
   mergeBossMoments,
   bossInBatch,
   BOSS_MERGE_MS,
   BOSS_SETTLE_MS,
   streakAllowed,
   STREAK_COHOST_GAP_MS,
-  pickFreeTopic,
   MAX_NARRATIVE_EVENTS,
   pruneNarrative,
   restoreNarrative,
   buildStoryBlock,
-  condenseChat,
   pruneHourly,
   hourlyCapReached,
   EVENT_COHOST_MIN_GAP_MS,

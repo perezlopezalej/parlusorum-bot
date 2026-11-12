@@ -4,7 +4,6 @@ const {
   pruneNarrative,
   restoreNarrative,
   buildStoryBlock,
-  condenseChat,
   hourlyCapReached,
   pruneHourly,
 } = require('../src/utils/narrative');
@@ -83,32 +82,6 @@ describe('buildStoryBlock', () => {
       block,
       '\n<stream_story>[hace 8 minutos] [death] Muerte #3 | [ahora] [sub] Ana se suscribió</stream_story>',
     );
-  });
-});
-
-describe('condenseChat', () => {
-  const lines = [
-    { username: 'ana', message: 'que boss tan dificil' },
-    { username: 'ana', message: 'otra vez el boss' },
-    { username: 'bob', message: 'el boss es imposible' },
-  ];
-
-  test('sin líneas devuelve cadena vacía', () => {
-    assert.equal(condenseChat([]), '');
-  });
-
-  test('resume usuarios activos, palabras repetidas y últimos mensajes', () => {
-    const out = condenseChat(lines);
-    assert.match(out, /^3 mensajes de 2 usuarios\./);
-    assert.match(out, /ana\(2\), bob\(1\)/);
-    assert.match(out, /Se repite: boss\./);
-    assert.match(out, /Últimos: .*bob: el boss es imposible$/);
-  });
-
-  test('trunca los últimos mensajes y omite palabras de relleno', () => {
-    const out = condenseChat([{ username: 'a', message: 'ab '.repeat(100) }], { maxLast: 10 });
-    assert.ok(out.endsWith('a: ab ab ab a'));
-    assert.ok(!out.includes('Se repite'));
   });
 });
 

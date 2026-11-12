@@ -36,16 +36,16 @@ function pickStyleExamples(type, n = 4, { rng = Math.random, data = loadExamples
   return shuffled(list, rng).slice(0, n);
 }
 
+// Un ejemplo es un texto, { contexto, texto } (respuesta a un mensaje) o { hecho, giro, texto } (cohost: del hecho a la frase)
 function renderExamples(list) {
   if (!list.length) return '';
-  const body = list
-    .map((e) =>
-      typeof e === 'string'
-        ? `<example>${e}</example>`
-        : `<example><mensaje>${e.contexto}</mensaje><respuesta>${e.texto}</respuesta></example>`,
-    )
-    .join('\n');
-  return `<ejemplos>\n${body}\n</ejemplos>`;
+  const one = (e) => {
+    if (typeof e === 'string') return `<example>${e}</example>`;
+    if (e.hecho)
+      return `<example><hecho>${e.hecho}</hecho><giro>${e.giro || ''}</giro><frase>${e.texto}</frase></example>`;
+    return `<example><mensaje>${e.contexto}</mensaje><respuesta>${e.texto}</respuesta></example>`;
+  };
+  return `<ejemplos>\n${list.map(one).join('\n')}\n</ejemplos>`;
 }
 
 const block = (tag, body) => (body ? `<${tag}>${String(body).trim()}</${tag}>` : '');
@@ -69,20 +69,28 @@ function roleLine(userType, { creator = 'vlxj97', streamer = 'parlusorum' } = {}
   return '';
 }
 
-// --- Cohost: la forma cambia en cada comentario ---
+// --- Cohost: la forma cambia en cada comentario; las formas sencillas (reacción, pregunta) pesan más ---
 const COHOST_FORMS = [
-  { id: 'reaccion', text: 'Reacción muy corta: una exclamación de pocas palabras con mucha chispa.' },
-  { id: 'exageracion', text: 'Exageración: lleva lo que pasa a un extremo desmesurado y gracioso.' },
-  { id: 'pregunta', text: 'Pregunta al chat: una pregunta con guasa sobre lo que está ocurriendo.' },
+  { id: 'reaccion', weight: 3, text: 'Reacción muy corta: una exclamación de pocas palabras con mucha chispa.' },
+  { id: 'exageracion', weight: 2, text: 'Exageración: lleva lo que pasa a un extremo desmesurado y gracioso.' },
+  { id: 'pregunta', weight: 2, text: 'Pregunta al chat: una pregunta con guasa sobre lo que está ocurriendo.' },
   {
     id: 'autoironia',
+    weight: 1,
     text: 'Autoironía de dios ofendido: Dios Fua se queja con teatralidad, como una deidad a la que nadie hace caso.',
   },
-  { id: 'vacile', text: 'Vacile cariñoso al chat: una pulla amable dirigida a los Lusorums en general.' },
+  { id: 'vacile', weight: 1, text: 'Vacile cariñoso al chat: una pulla amable dirigida a los Lusorums en general.' },
 ];
+// Sorteo con pesos entre las formas que no son la anterior
 function pickCohostForm(lastId = '', rng = Math.random) {
   const pool = COHOST_FORMS.filter((f) => f.id !== lastId);
-  return pool[Math.floor(rng() * pool.length)];
+  const total = pool.reduce((a, f) => a + f.weight, 0);
+  let r = rng() * total;
+  for (const f of pool) {
+    r -= f.weight;
+    if (r < 0) return f;
+  }
+  return pool[pool.length - 1];
 }
 
 // --- Prompts ---
@@ -114,7 +122,9 @@ function buildCohostSystem({
   event = false,
   weekday = true,
   candidates = 3,
+  plain = false,
 }) {
+  const shape = '{"hecho":"h1","giro":"…","frase":"…"}';
   const stream = [
     game ? `Juegan a «${game}».` : '',
     minutes != null ? `Llevan ${quality.approxDuration(minutes)} de directo.` : '',
@@ -128,17 +138,29 @@ function buildCohostSystem({
     IDENTITY,
     block(
       'forma',
-      'Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. Al chat le atribuyes solo lo que aparece en <chat> o <resumen_chat>.',
+      'Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. Cada comentario parte de uno de los <hechos> y le da un giro propio: «hecho» es el número del hecho elegido, «giro» la idea de la broma en tres o cuatro palabras y «frase» lo que se dice en el chat, con tus propias palabras.',
     ),
     renderExamples(examples),
     block('stream', stream),
     block('ambiente', mood ? `El chat está en modo ${mood}.` : ''),
     loreBlock,
     block('modo', modeLine),
-    block('ajustes', `${form.text} ${nameLine} ${emoteLine}`.replace(/\s+/g, ' ')),
+    block(
+      'ajustes',
+      `${form.text} ${plain ? 'Frase directa, que cuente las cosas tal cual pasan.' : ''} ${nameLine} ${emoteLine}`.replace(
+        /\s+/g,
+        ' ',
+      ),
+    ),
     block(
       'tarea',
-      `Escribe ${candidates === 2 ? '2 comentarios distintos' : '3 comentarios distintos'} entre sí, todos con esa forma, sobre ${event ? 'el suceso' : 'el tema indicado'}, con humor y la voz de Dios Fua. Devuelve solo este JSON: {"candidatos":[${candidates === 2 ? '"…","…"' : '"…","…","…"'}]}.${event ? '' : ' Si no hay nada que decir sin inventar, devuelve {"candidatos":[]}.'}`,
+      `Escribe ${candidates === 2 ? '2 comentarios distintos' : '3 comentarios distintos'} entre sí, todos con esa forma, sobre ${event ? 'el suceso (el hecho h1)' : 'el hecho indicado'}, con humor y la voz de Dios Fua. Devuelve solo este JSON: {"candidatos":[${Array(
+        candidates === 2 ? 2 : 3,
+      )
+        .fill(shape)
+        .join(
+          ',',
+        )}]}.${event ? '' : ' Si el hecho no da para un comentario sin inventar, devuelve {"candidatos":[]}.'}`,
     ),
   );
 }
@@ -289,7 +311,7 @@ function buildTimerSystem({
     IDENTITY,
     block(
       'forma',
-      'Una sola frase natural de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen> y <chat>. Del chat cuentas de qué se ha hablado en general, con tus palabras y como mucho una idea («el chat ayudando con el puzle»), sin nombres de usuario ni palabras sueltas copiadas; solo atribuyes al chat lo que se ve en <chat>. Sin cifras entre paréntesis ni formato de informe, y sin citar la hora ni el día.',
+      'Una sola frase natural de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen> y con tus propias palabras. Del chat cuentas como mucho la idea general que da el resumen («el chat dando consejos»). Sin cifras entre paréntesis ni formato de informe, y sin citar la hora ni el día.',
     ),
     renderExamples(examples),
     block(
@@ -333,16 +355,23 @@ function buildQueMePerdiSystem({
 }
 
 // --- Varios candidatos en una llamada ---
-// Acepta {"candidatos":[...]} (con o sin ```json), un array suelto o, si no hay JSON, el texto entero como único candidato.
+// Devuelve [{ hecho, giro, frase }]. Acepta {"candidatos":[{hecho,giro,frase},…]} (con o sin ```json), candidatos que son
+// solo texto (hecho y giro vacíos), un array suelto, un JSON cortado por max_tokens (se quedan los candidatos completos) o,
+// si no hay JSON, el texto entero como único candidato.
 function parseCandidates(raw, max = 3) {
   const text = String(raw || '')
     .replace(/```(?:json)?/gi, '')
     .trim();
   if (!text) return [];
+  const str = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim() : '');
+  const toCandidate = (c) =>
+    c && typeof c === 'object'
+      ? { hecho: str(c.hecho).toLowerCase(), giro: str(c.giro), frase: str(c.frase || c.texto) }
+      : { hecho: '', giro: '', frase: str(c) };
   const clean = (list) =>
     list
-      .map((c) => String(c || '').trim())
-      .filter(Boolean)
+      .map(toCandidate)
+      .filter((c) => c.frase)
       .slice(0, max);
   const tryParse = (s) => {
     try {
@@ -357,24 +386,34 @@ function parseCandidates(raw, max = 3) {
     const parsed = piece && tryParse(piece);
     if (Array.isArray(parsed)) return clean(parsed);
     if (parsed && Array.isArray(parsed.candidatos)) return clean(parsed.candidatos);
+    if (parsed && (parsed.frase || parsed.texto)) return clean([parsed]);
   }
-  const items = [...text.matchAll(/"((?:[^"\\]|\\.)+)"/g)].map((m) => m[1]);
-  if (/candidatos/i.test(text) && items.length > 1) return clean(items.slice(1)); // JSON cortado por max_tokens
+  if (/candidatos/i.test(text)) {
+    // JSON cortado por max_tokens: los objetos que llegaron enteros o, en el formato de solo texto, las cadenas completas
+    const whole = [...text.matchAll(/\{[^{}]*\}/g)].map((m) => tryParse(m[0])).filter((o) => o && o.frase);
+    if (whole.length) return clean(whole);
+    if (/"frase"|"hecho"/.test(text)) return [];
+    const items = [...text.matchAll(/"((?:[^"\\]|\\.)+)"/g)].map((m) => m[1]);
+    if (items.length > 1) return clean(items.slice(1));
+  }
   return clean([text]);
 }
 
 // Entre los candidatos que pasan `validate`, el que menos se parece a los mensajes recientes.
-// validate(text) → { ok, rule?, reason? }. Devuelve { ranked: [{text, sim}], failures: [{text, rule, reason}] }.
+// Cada candidato es un texto o un objeto con `text` (el resto de campos se conserva: hecho, giro…).
+// validate(text, candidato) → { ok, rule?, reason? }. Devuelve { ranked: [{text, sim, …}], failures: [{text, rule, reason}] }.
 function rankCandidates(candidates, { validate, recent = [] }) {
   const ranked = [];
   const failures = [];
   const seen = new Set();
-  for (const text of candidates) {
+  for (const candidate of candidates) {
+    const item = typeof candidate === 'string' ? { text: candidate } : candidate;
+    const { text } = item;
     const key = text.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const check = validate(text);
-    if (check.ok) ranked.push({ text, sim: recent.reduce((m, r) => Math.max(m, quality.similarity(text, r)), 0) });
+    const check = validate(text, item);
+    if (check.ok) ranked.push({ ...item, sim: recent.reduce((m, r) => Math.max(m, quality.similarity(text, r)), 0) });
     else failures.push({ text, rule: check.rule, reason: check.reason });
   }
   ranked.sort((a, b) => a.sim - b.sim);
@@ -426,9 +465,19 @@ const FIX_BY_RULE = {
   formato: 'Cuéntalo como una frase natural y sin cifras entre paréntesis.',
   ruido: 'Escribe palabras normales del español, sin letras alargadas.',
   selector: 'Una sola idea que se entienda a la primera y encaje con lo que acaba de pasar.',
+  hecho: 'Parte de uno de los hechos de la lista y cuenta eso mismo con tus palabras.',
+  giro: 'Lleva la broma a la partida, a Manu o al FUA.',
+  copia: 'Cuenta el hecho con tus propias palabras.',
+  otro_juego: 'Habla solo del juego de hoy.',
+  comparacion: 'Di la idea directa, tal cual pasa.',
+  metafora: 'Di la idea directa, tal cual pasa.',
+  modismo: 'Dilo con palabras llanas.',
 };
 // Para los motivos que solo traen texto (hook, timer, resumen…): se reconoce el tipo por palabras clave
 const FIX_BY_REASON = [
+  [/met[aá]fora/i, 'metafora'],
+  [/frase hecha/i, 'modismo'],
+  [/copia del chat/i, 'copia'],
   [/coletilla/i, 'cierre'],
   [/minutos exactos/i, 'minutos'],
   [/cifra de viewers/i, 'viewers'],

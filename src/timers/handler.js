@@ -16,7 +16,8 @@ const {
   markNamed,
   getNamedUsers,
 } = require('../utils/state');
-const { windowFacts, chatSample } = require('../utils/narrative');
+const { windowFacts } = require('../utils/narrative');
+const { chatTopic, gameVocabulary, properNouns } = require('../ai/moment-facts');
 const { pickBest } = require('../ai/pick-best');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
@@ -32,6 +33,7 @@ const { buildTimerSystem, retryNote, dayLine } = require('../ai/style');
 const { truncate } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
 const MIN_CHAT_FOR_SUMMARY = 15; // mensajes en la ventana para contar solo de qué ha hablado el chat
+const MIN_USERS_FOR_TOPIC = 3; // usuarios distintos en el mismo tema para que entre en el resumen
 const AI_TIMER_INTERVAL_MS = parseInt(process.env.AI_TIMER_INTERVAL_MS || String(30 * 60 * 1000), 10);
 const AI_TIMER_NAME_WINDOW_MS = 15 * 60 * 1000; // un nombre (Pao incluido) no se repite en otro comentario IA durante este rato
 
@@ -81,16 +83,25 @@ async function runTimerIA(client) {
   const now = Date.now();
   const firstFacts = windowFacts(getStreamNarrative(), now, AI_TIMER_INTERVAL_MS);
   const chatLines = getChatWindow(AI_TIMER_INTERVAL_MS, now);
-  const sample = chatSample(chatLines, { n: 8 });
-  const chatTalk = chatLines.length >= MIN_CHAT_FOR_SUMMARY && sample.length >= 4;
-  if (!firstFacts.relevant && !chatTalk) {
+  // Del chat solo entra el tema, en una frase fija escrita por el código (moment-facts): ninguna línea literal llega al modelo
+  const playerName = { pao: 'Pao', ambos: 'Manu y Pao' }[getPlayer()] || 'Manu';
+  const topicFor = (gameWords) =>
+    chatLines.length >= MIN_CHAT_FOR_SUMMARY
+      ? chatTopic(chatLines, { player: playerName, gameWords, minUsers: MIN_USERS_FOR_TOPIC })
+      : null;
+  if (!firstFacts.relevant && !topicFor(gameVocabulary(game))) {
     logger.info('Timer IA: nada relevante en la última media hora, no se envía');
     return '';
   }
 
   try {
-    // Ficha del juego actual (caché de IGDB) solo para el revisor: así no descarta datos correctos como el año
-    const gameFacts = factcheck.gameFactsText((await lookupGameInfo(game, { detail: true }).catch(() => ({}))).info);
+    // Ficha del juego actual (caché de IGDB): el revisor no descarta datos correctos como el año, y sus nombres propios
+    // cuentan como vocabulario del juego
+    const sheet = (await lookupGameInfo(game, { detail: true }).catch(() => ({}))).info;
+    const gameFacts = factcheck.gameFactsText(sheet);
+    const gameWords = [...new Set([...gameVocabulary(game), ...properNouns(sheet?.description)])];
+    const topic = topicFor(gameWords);
+    const chatTalk = !!topic;
     const emotes = channelConfig.channel_emotes || [];
 
     let msg = '';
@@ -102,8 +113,7 @@ async function runTimerIA(client) {
       const deathCount = getDeathCount();
       const facts = windowFacts(getStreamNarrative(), at, AI_TIMER_INTERVAL_MS);
       if (!facts.relevant && !chatTalk) break;
-      const summary = `Última media hora: ${facts.lines.length ? facts.lines.join('; ') : 'sin caídas ni jefes nuevos'}. Total de caídas del directo hasta ahora: ${deathCount} (dato de apoyo; no hace falta citarlo).`;
-      const chatBlock = sample.length ? `\n<chat>\n${sample.join('\n')}\n</chat>` : '';
+      const summary = `Última media hora: ${facts.lines.length ? facts.lines.join('; ') : 'sin caídas ni jefes nuevos'}.${topic ? ` ${topic.texto}.` : ''} Total de caídas del directo hasta ahora: ${deathCount} (dato de apoyo; no hace falta citarlo).`;
       // Lo que ya se dijo en ese tramo (cohost incluido): el código comprueba el parecido, el prompt no lo cita
       const saidInWindow = getBotHistory()
         .filter((e) => at - e.ts <= AI_TIMER_INTERVAL_MS)
@@ -120,7 +130,7 @@ async function runTimerIA(client) {
         max_tokens: 90,
         messages: [
           { role: 'system', content: `${system}${retryNote(feedback)}` },
-          { role: 'user', content: `<resumen>${summary}</resumen>${chatBlock}` },
+          { role: 'user', content: `<resumen>${summary}</resumen>` },
         ],
       });
       // Si el contador cambió mientras la IA escribía, el texto parte de datos viejos: se rehace con el estado actual
@@ -152,6 +162,9 @@ async function runTimerIA(client) {
         named: getNamedUsers(),
         now: at,
         nameWindowMs: AI_TIMER_NAME_WINDOW_MS,
+        chatLines,
+        allowedWords: [system, summary],
+        gameWords,
       });
       if (!check.ok) {
         recordFilterDiscard('timer_ia', String(check.reason).slice(0, 30));
@@ -159,12 +172,11 @@ async function runTimerIA(client) {
         logger.info(`Timer IA descartado (${check.reason}): ${out.slice(0, 80)}`);
         continue;
       }
-      // Un modelo pequeño comprueba ortografía, lógica y que cuadre con el chat y el juego; si no puede, la revisión de siempre
+      // Un modelo pequeño comprueba ortografía, lógica y que cuadre con el resumen y el juego; si no puede, la revisión de siempre
       const pick = await pickBest([out], {
         dayLine: dayLine(new Date(at)),
         game,
-        facts: `Caídas anotadas: ${deathCount}. Juega ${getPlayer() === 'pao' ? 'Pao' : 'Manu'}. ${summary}`,
-        chat: sample.join('\n'),
+        facts: `Caídas anotadas: ${deathCount}. Juega ${playerName}. ${summary}`,
         activity: getChatWindow(5 * 60 * 1000, at).length,
         generator: response._ai?.model,
       });
@@ -250,7 +262,7 @@ function start(client, config) {
     40 * 60 * 1000,
   );
 
-  // Timer IA: resumen de la última media hora. El código reúne lo que ha pasado (caídas, jefes, temas del chat) y la IA
+  // Timer IA: resumen de la última media hora. El código reúne lo que ha pasado (caídas, jefes, tema del chat) y la IA
   // lo cuenta con gracia en una frase. Si no ha pasado nada relevante, no se envía nada.
   timerRefs.push(
     setInterval(

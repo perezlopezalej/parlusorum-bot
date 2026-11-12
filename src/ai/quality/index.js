@@ -39,6 +39,8 @@ const {
   claimsEnemyKills,
   mentionsGenre,
   forcedComparison,
+  misusedIdiom,
+  mentionsGroups,
   selfHelp,
   hasPersonalDistress,
   mentionsGame,
@@ -90,6 +92,7 @@ const {
   closingMark,
   repeatsClosing,
   repeatedClosing,
+  isMetaphor,
 } = require('./repetition');
 const { plainWords } = require('./text');
 const {
@@ -124,7 +127,16 @@ const {
   isDeathQuestion,
   asksAboutPastStream,
 } = require('./intent');
-const { inventedQuote, unsupportedAttributes, inventedCompany } = require('./facts');
+const {
+  inventedQuote,
+  unsupportedAttributes,
+  inventedCompany,
+  touchesKeys,
+  factFor,
+  factProblem,
+  giroProblem,
+} = require('./facts');
+const { copiedFromChat, wordRank } = require('./copy');
 
 module.exports = {
   oneLine,
@@ -238,4 +250,13 @@ module.exports = {
   lastSentenceEnd,
   cutAtSentence,
   dropTrailingFragment,
+  misusedIdiom,
+  mentionsGroups,
+  isMetaphor,
+  touchesKeys,
+  factFor,
+  factProblem,
+  giroProblem,
+  copiedFromChat,
+  wordRank,
 };

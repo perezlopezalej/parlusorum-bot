@@ -99,13 +99,35 @@ function notableWords(text, game = '') {
   return out;
 }
 
-// Marcas de este texto para `markStructure`: estructura, día de la semana, "Entre…" y palabras largas
+// Metáforas y comparaciones con marca reconocible: una por stream entre cohost, hook y resumen de media hora.
+// «si el FUA fuera una ley…», «como si fueran confeti», «ni que fuera…», «más intenso que una banca», «el FUA es la gravedad del chat».
+const METAPHOR_RES = [
+  /(?<!\p{L})si\s[^.!?,;]{1,40}?\s(?:fuera|fuese|fueran|fuesen)(?!\p{L})/iu,
+  /(?<!\p{L})como si(?!\p{L})/iu,
+  /(?<!\p{L})ni que (?:fuera|fuese|fueran|fuesen|tuviera|tuviese|estuviera|estuviese)(?!\p{L})/iu,
+  /(?<!\p{L})m[aá]s\s+\p{L}+(?:\s+\p{L}+)?\s+que\s+(?:un|una|unos|unas|el|la|los|las|mi|tu|su)\s+\p{L}+/iu,
+  /(?<!\p{L})(?:es|son|sois|eres|soy)\s+(?:el|la|los|las)\s+\p{L}+\s+(?:del|de la|de los|de las|de este|de esta)\s/iu,
+  /(?<!\p{L})parece(?:n|is)?\s+(?:un|una|unos|unas)\s+\p{L}+/iu,
+];
+
+function isMetaphor(text) {
+  const t = String(text || '');
+  return METAPHOR_RES.some((re) => re.test(t));
+}
+
+const METAPHOR_MARK = 'metafora';
+
+const METAPHOR_REASON =
+  'usa otra metáfora o comparación y ya salió una en este stream; di la idea directa, tal cual pasa';
+
+// Marcas de este texto para `markStructure`: estructura, día de la semana, "Entre…", metáfora y palabras largas
 function streamMarks(text, game = '') {
   const marks = [];
   const s = structureKey(text);
   if (s) marks.push(s);
   if (WEEKDAY_RE.test(text)) marks.push('dia-semana');
   if (ENTRE_RE.test(text)) marks.push('entre-x-y');
+  if (isMetaphor(text)) marks.push(METAPHOR_MARK);
   for (const w of notableWords(text, game)) marks.push(`w:${w}`);
   const closing = closingMark(text);
   if (closing) marks.push(closing);
@@ -121,6 +143,7 @@ function repeatedInStream(text, used = new Set(), game = '') {
     return 'repite el día de la semana, que ya se dijo en este stream; habla del momento sin nombrarlo';
   if (used.has('entre-x-y') && ENTRE_RE.test(text))
     return 'repite la estructura «Entre X y Y…» de este stream; empieza de otra forma';
+  if (used.has(METAPHOR_MARK) && isMetaphor(text)) return METAPHOR_REASON;
   for (const w of notableWords(text, game))
     if (used.has(`w:${w}`)) return `repite la palabra «${w}», que ya se usó en este stream; usa otra`;
   return '';
@@ -199,4 +222,7 @@ module.exports = {
   closingMark,
   repeatsClosing,
   repeatedClosing,
+  isMetaphor,
+  METAPHOR_MARK,
+  METAPHOR_REASON,
 };
