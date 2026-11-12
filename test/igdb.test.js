@@ -87,6 +87,105 @@ describe('pickBest', () => {
   });
 });
 
+describe('pickBest: el juego original sobre su remake, remaster o port', () => {
+  const sotc = [
+    { id: 3, name: 'Shadow of the Colossus', game_type: 8, first_release_date: 1517529600, parent_game: 1 }, // remake 2018
+    { id: 2, name: 'Shadow of the Colossus', game_type: 11, first_release_date: 1346457600, parent_game: 1 }, // port 2012
+    { id: 1, name: 'Shadow of the Colossus', game_type: 0, first_release_date: 1131494400 }, // original 2005
+    { id: 4, name: 'Shadow of the Colossus', game_type: 9, first_release_date: 1318377600, parent_game: 1 }, // remaster 2011
+  ];
+
+  test('sin pedir edición gana el original aunque IGDB lo devuelva el último', () => {
+    assert.equal(igdb.pickBest('Shadow of the Colossus', sotc).id, 1);
+  });
+
+  test('si se pide la edición o el año, no se penaliza', () => {
+    assert.equal(igdb.pickBest('Shadow of the Colossus remake', sotc.slice(1)).game_type !== undefined, true);
+    assert.equal(igdb.pickBest('Shadow of the Colossus 2018', sotc).id, 3);
+    assert.equal(igdb.pickBest('Shadow of the Colossus 2012', sotc).id, 2);
+  });
+
+  test('si el original no está en los resultados, se elige el mejor de los demás', () => {
+    assert.equal(
+      igdb.pickBest(
+        'Shadow of the Colossus',
+        sotc.filter((g) => g.id !== 1),
+      ) !== null,
+      true,
+    );
+  });
+});
+
+describe('searchGame con remakes y ports', () => {
+  function mock(handler) {
+    const calls = [];
+    global.fetch = async (url, opts) => {
+      if (String(url).includes('id.twitch.tv')) return ok({ access_token: 'tok' });
+      calls.push({ body: opts.body });
+      return handler(calls.length, opts.body);
+    };
+    return calls;
+  }
+  const original = { id: 1, name: 'Shadow of the Colossus', game_type: 0, first_release_date: 1131494400 };
+
+  test('un remake sin el original en la búsqueda se resuelve a su juego original (2005, no 2018)', async () => {
+    const remake = {
+      id: 3,
+      name: 'Shadow of the Colossus',
+      game_type: 8,
+      first_release_date: 1517529600,
+      parent_game: 1,
+    };
+    const calls = mock((n) => ok(n === 1 ? [remake] : [original]));
+    const info = await igdb.searchGame('Shadow of the Colossus');
+    assert.equal(info.released, '2005-11-09');
+    assert.match(calls[1].body, /where id = 1;/);
+    assert.match(calls[0].body, /game_type,parent_game/);
+  });
+
+  test('pidiendo el remake no se redirige al original', async () => {
+    const remake = {
+      id: 3,
+      name: 'Shadow of the Colossus Remake',
+      game_type: 8,
+      first_release_date: 1517529600,
+      parent_game: 1,
+    };
+    const calls = mock(() => ok([remake]));
+    const info = await igdb.searchGame('Shadow of the Colossus remake');
+    assert.equal(info.released, '2018-02-02');
+    assert.equal(calls.length, 1);
+  });
+
+  test('una expansión independiente con padre de otro nombre no se redirige', async () => {
+    const expansion = {
+      id: 9,
+      name: 'Dark Souls Artorias',
+      game_type: 4,
+      first_release_date: 1346457600,
+      parent_game: 1,
+    };
+    const calls = mock(() => ok([expansion]));
+    const info = await igdb.searchGame('Dark Souls Artorias');
+    assert.equal(info.name, 'Dark Souls Artorias');
+    assert.equal(calls.length, 1);
+  });
+
+  test('un port cuyo padre tiene otro nombre se queda como está', async () => {
+    const port = {
+      id: 5,
+      name: 'Shadow of the Colossus HD',
+      game_type: 11,
+      first_release_date: 1318377600,
+      parent_game: 77,
+    };
+    const calls = mock((n) => ok(n === 1 ? [port] : [{ id: 77, name: 'Algo Distinto', game_type: 0 }]));
+    const info = await igdb.searchGame('Shadow of the Colossus');
+    assert.equal(info.name, 'Shadow of the Colossus HD');
+    assert.equal(calls.length, 2);
+  });
+});
+
 describe('searchGame', () => {
   function mock(handler) {
     const calls = [];

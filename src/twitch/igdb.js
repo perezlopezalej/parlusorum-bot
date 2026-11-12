@@ -9,9 +9,10 @@ const IGDB_TIMEOUT_MS = 8000;
 const MIN_GAP_MS = 260;
 const ATTRIBUTION = 'Datos: IGDB.com';
 
-// summary y no storyline (spoilers). version_parent: las ediciones apuntan a su juego base.
+// summary y no storyline (spoilers). version_parent: las ediciones apuntan a su juego base; game_type y parent_game distinguen
+// el juego original (0) de su remake (8), remaster (9) o port (11), que suelen llevar el mismo nombre.
 const FIELDS =
-  'name,summary,genres.name,first_release_date,version_parent,involved_companies.developer,involved_companies.publisher,involved_companies.company.name,involved_companies.company.country';
+  'name,summary,genres.name,first_release_date,version_parent,game_type,parent_game,involved_companies.developer,involved_companies.publisher,involved_companies.company.name,involved_companies.company.country';
 // Juego base, expansión independiente, remake, remaster, edición ampliada y port: sin DLC, packs ni bundles
 const MAIN_TYPES = '(0,4,8,9,10,11)';
 
@@ -152,9 +153,19 @@ function mapGame(game, detail) {
   };
 }
 
-// Mejor candidato: coincidencia de nombre > parecido del nombre completo > juego base sobre edición > orden de IGDB
+// Mejor candidato: coincidencia de nombre > parecido del nombre completo > juego original sobre su remake, remaster o port
+// (mismo nombre: «Shadow of the Colossus» 2005 y 2018) > juego base sobre edición > orden de IGDB.
+// Si lo buscado pide una edición («remastered», «remake», un año), no se penaliza ninguna y el año pedido suma.
 const LEVEL = { match: 2, maybe: 1, none: 0 };
+const RE_RELEASE_TYPES = new Set([8, 9, 10, 11]); // remake, remaster, versión ampliada, port
+const EDITION_HINT_RE =
+  /\b(?:remaster\w*|remake|reimagin\w*|hd|definitive|complete|deluxe|goty|edition|collection|(?:19|20)\d\d)\b/i;
+const wantsEdition = (name) => EDITION_HINT_RE.test(String(name || ''));
+const releaseYear = (g) => (g.first_release_date ? new Date(g.first_release_date * 1000).getUTCFullYear() : 0);
+
 function pickBest(name, games) {
+  const edition = wantsEdition(name);
+  const askedYear = Number((String(name).match(/\b(?:19|20)\d\d\b/) || [])[0]) || 0;
   return (
     games
       .map((g, i) => ({
@@ -163,6 +174,8 @@ function pickBest(name, games) {
           LEVEL[classifyGameMatch(name, g.name)] * 100 +
           nameSimilarity(name, g.name) * 20 +
           (g.version_parent ? 0 : 5) -
+          (!edition && RE_RELEASE_TYPES.has(g.game_type) ? 8 : 0) +
+          (askedYear && releaseYear(g) === askedYear ? 15 : 0) -
           i * 0.1,
       }))
       .sort((a, b) => b.score - a.score)[0]?.g || null
@@ -203,10 +216,14 @@ function nameVariants(name) {
 async function searchOnce(query) {
   const games = await igdbQuery(`search "${query}"; fields ${FIELDS}; where game_type = ${MAIN_TYPES}; limit 8;`);
   let best = pickBest(query, games);
-  // "phantom blade 0" solo encuentra la edición: se usan los datos del juego base
-  if (best?.version_parent) {
-    const parent = (await igdbQuery(`fields ${FIELDS}; where id = ${Number(best.version_parent)}; limit 1;`))[0];
-    if (parent) best = parent;
+  // "phantom blade 0" solo encuentra la edición: se usan los datos del juego base. Un remake, remaster o port con el mismo
+  // nombre que su juego original (y sin pedir la edición) también se resuelve al original: año, estudio y ficha son los suyos.
+  const reRelease =
+    !wantsEdition(query) && best?.parent_game && RE_RELEASE_TYPES.has(best.game_type) && !best.version_parent;
+  const upId = best?.version_parent || (reRelease ? best.parent_game : null);
+  if (upId) {
+    const parent = (await igdbQuery(`fields ${FIELDS}; where id = ${Number(upId)}; limit 1;`))[0];
+    if (parent && (best.version_parent || classifyGameMatch(best.name, parent.name) === 'match')) best = parent;
   }
   return best;
 }

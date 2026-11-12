@@ -51,6 +51,24 @@ const HOOK_FACTS_WINDOW_MS = 45 * 60 * 1000;
 
 const gameHookCache = new Map(); // juego → { ok, at }
 
+const GAME_HOOK_MARK = 'hook-juego'; // marca por stream: ya salió un hook fijo sobre el juego
+
+// Elige un hook fijo: sin repetir los ya dichos y, tras uno de juego, solo genéricos. → { hook, isGame, reset }
+function pickStaticHook({
+  gameHooks = [],
+  genericHooks = [],
+  used = new Set(),
+  gameHookUsed = false,
+  rng = Math.random,
+}) {
+  const games = gameHookUsed ? [] : gameHooks;
+  let pool = [...games, ...genericHooks].filter((h) => !used.has(h));
+  const reset = !pool.length;
+  if (reset) pool = [...games, ...genericHooks];
+  const hook = pool[Math.floor(rng() * pool.length)];
+  return { hook, isGame: games.includes(hook), reset };
+}
+
 async function gameHooksAllowed(game) {
   const cached = gameHookCache.get(game);
   if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return cached.ok;
@@ -169,15 +187,17 @@ async function checkChatHook(client, channel) {
     '¡Usad !chiste para que cuente un chiste! 😂',
   ];
 
+  // Un solo hook de juego por stream («¿Alguien lo conocía ya?», «¿Alguien lo ha jugado?»…)
+  const gameHookUsed = getUsedStructures().has(GAME_HOOK_MARK);
   let gameHooks = [];
-  if (game && (await gameHooksAllowed(game))) {
+  if (game && !gameHookUsed && (await gameHooksAllowed(game))) {
     try {
       const gi = await getGameInfo(game, { detail: true }); // misma clave de caché que la ficha precalentada del juego actual
       const genres = translateGenres(gi?.genres);
       if (genres) {
         const year = gi.released?.slice(0, 4) || '';
         gameHooks = [
-          `🎮 ${channelConfig.streamer} jugando a ${game} (${genres}${year ? ', ' + year : ''}). ¿Alguien lo ha jugado?`,
+          `🎮 ${channelConfig.streamer} juega a ${game}: ${genres}${year ? `, de ${year}` : ''}. ¿Alguien lo ha jugado?`,
           `¿Qué os parece ${game} hasta ahora? Género: ${genres} 🎮`,
           `${game}: ${genres}${year ? `, de ${year}` : ''}. ¿Alguien lo conocía ya? 🤔`,
         ];
@@ -189,15 +209,12 @@ async function checkChatHook(client, channel) {
     }
   }
 
-  // Sin repetir en este stream: se descartan los ya usados; si se agotan, se vuelve a empezar
-  let allHooks = [...gameHooks, ...genericHooks].filter((h) => !usedStaticHooks.has(h));
-  if (!allHooks.length) {
-    usedStaticHooks.clear();
-    allHooks = [...gameHooks, ...genericHooks];
-  }
-  const hook = allHooks[Math.floor(Math.random() * allHooks.length)];
-  usedStaticHooks.add(hook);
-  client.say(channel, hook, { origin: 'hook' });
+  // Sin repetir en este stream: se descartan los ya usados; si se agotan, se vuelve a empezar (sin hooks de juego si ya salió uno)
+  const picked = pickStaticHook({ gameHooks, genericHooks, used: usedStaticHooks, gameHookUsed });
+  if (picked.reset) usedStaticHooks.clear();
+  usedStaticHooks.add(picked.hook);
+  if (picked.isGame) markStructure(GAME_HOOK_MARK);
+  client.say(channel, picked.hook, { origin: 'hook' });
 }
 
-module.exports = { recentHooks, usedStaticHooks, checkChatHook };
+module.exports = { recentHooks, usedStaticHooks, checkChatHook, pickStaticHook, GAME_HOOK_MARK };
