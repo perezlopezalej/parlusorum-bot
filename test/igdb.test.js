@@ -168,7 +168,7 @@ describe('formatJuegoLine (!juego)', () => {
     const line = formatJuegoLine('Phantom Blade Zero', 'Primer directo', info);
     assert.equal(
       line,
-      '🎮 Phantom Blade Zero (2026) — Rol, Acción — Desarrolladora: S-Game | "Primer directo" · Datos: IGDB.com',
+      '🎮 Phantom Blade Zero (2026): Rol, Acción, Desarrolladora: S-Game. Título del directo: Primer directo. Datos: IGDB.com',
     );
     assert.doesNotMatch(line, /⭐|\/5/);
   });

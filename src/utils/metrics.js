@@ -1,3 +1,5 @@
+const { spokenDuration } = require('../ai/quality');
+
 // Métricas básicas de actividad del chat
 const metrics = {
   messagesPerHour: [],
@@ -52,7 +54,7 @@ function getSummary() {
   const hours = Math.floor(uptime / 60);
   const mins = uptime % 60;
   return {
-    uptime: hours > 0 ? `${hours}h ${mins}m` : `${mins}m`,
+    uptime: spokenDuration(hours * 60 + mins),
     messagesLastHour: getMessagesPerHour(),
     totalMessages: metrics.streamMessageCount,
     peakViewers: metrics.peakViewers,

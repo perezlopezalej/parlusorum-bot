@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const logger = require('./utils/logger');
 const channelConfig = require('../config/channel.json');
 const { truncate } = require('./utils/groq-utils');
+const { spokenDuration } = require('./ai/quality');
 const { template } = require('./utils/plantillas');
 const {
   restoreOpenSession,
@@ -94,7 +95,7 @@ function getStreamUptime() {
   const mins = Math.floor((Date.now() - streamStartedAt) / 60000);
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return spokenDuration(h * 60 + m);
 }
 
 function isLiveViaEventSub() {
@@ -778,7 +779,7 @@ function createEventSubHandler(client, channel, deps) {
 
       if (type === 'channel.prediction.begin') {
         const { title, outcomes } = event || {};
-        const opcionesTexto = (outcomes || []).map((o, i) => `${i + 1}) ${o.title}`).join(' | ');
+        const opcionesTexto = (outcomes || []).map((o, i) => `${i + 1}) ${o.title}`).join(', ');
         setActivePrediction({ title, outcomes });
         logger.info(`🔮 Predicción comenzada: "${title}"`);
         throttleSay(client, channel, truncate(template('prediction_begin', { title, options: opcionesTexto })));

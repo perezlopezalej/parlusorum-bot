@@ -10,9 +10,9 @@ function formatJuegoLine(game, title, info) {
   const dev = info.developers ? `Desarrolladora: ${info.developers}` : '';
   const facts = [genres, dev].filter(Boolean);
   if (!year && !facts.length) return null;
-  const extra = title ? ` | "${title}"` : '';
-  const credit = info.source === 'igdb' ? ` · ${ATTRIBUTION}` : '';
-  return `🎮 ${game}${year ? ` (${year})` : ''}${facts.length ? ` — ${facts.join(' — ')}` : ''}${extra}${credit}`;
+  const extra = title ? `. Título del directo: ${title}` : '';
+  const credit = info.source === 'igdb' ? `. ${ATTRIBUTION}` : '';
+  return `🎮 ${game}${year ? ` (${year})` : ''}${facts.length ? `: ${facts.join(', ')}` : ''}${extra}${credit}`;
 }
 
 module.exports = { formatJuegoLine };

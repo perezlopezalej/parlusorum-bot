@@ -7,6 +7,7 @@ const factcheck = require('./factcheck');
 const { buildGameTemplate } = require('./game-template');
 const { buildGameSheet, leaksSheetRaw } = require('./game-sheet');
 const quality = require('./quality');
+const { spokenSeconds } = quality;
 const { sanitizeForAI } = require('../utils/filter');
 const { classifyGameMatch, recoverTruncatedName } = require('../utils/game-match');
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
@@ -51,7 +52,7 @@ function handleChiste(client, channel, tags) {
   const key = `chiste-${userId}`;
   const now = Date.now();
   if (chisteCooldowns.has(key) && now < chisteCooldowns.get(key)) {
-    client.say(channel, `@${username} espera ${Math.ceil((chisteCooldowns.get(key) - now) / 1000)}s.`);
+    client.say(channel, `@${username} espera ${spokenSeconds(Math.ceil((chisteCooldowns.get(key) - now) / 1000))}.`);
     return;
   }
   let index,
@@ -124,7 +125,10 @@ async function handleQuestion(client, channel, tags, args) {
   const now = Date.now();
 
   if (questionCooldowns.has(userId) && now < questionCooldowns.get(userId)) {
-    client.say(channel, `@${username} espera ${Math.ceil((questionCooldowns.get(userId) - now) / 1000)}s.`);
+    client.say(
+      channel,
+      `@${username} espera ${spokenSeconds(Math.ceil((questionCooldowns.get(userId) - now) / 1000))}.`,
+    );
     return;
   }
 

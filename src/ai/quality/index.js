@@ -2,6 +2,9 @@
 // Fachada: los consumidores hacen require('./quality'); cada módulo vive en este directorio.
 const {
   oneLine,
+  speakable,
+  spokenDuration,
+  spokenSeconds,
   stripFillers,
   limitFillers,
   hasLusorums,
@@ -118,6 +121,9 @@ const { inventedQuote, unsupportedAttributes, inventedCompany } = require('./fac
 
 module.exports = {
   oneLine,
+  speakable,
+  spokenDuration,
+  spokenSeconds,
   stripFillers,
   limitFillers,
   hasLusorums,

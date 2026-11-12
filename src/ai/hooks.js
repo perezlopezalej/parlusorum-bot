@@ -179,7 +179,7 @@ async function checkChatHook(client, channel) {
         gameHooks = [
           `🎮 ${channelConfig.streamer} jugando a ${game} (${genres}${year ? ', ' + year : ''}). ¿Alguien lo ha jugado?`,
           `¿Qué os parece ${game} hasta ahora? Género: ${genres} 🎮`,
-          `${game} - ${genres}${year ? ', ' + year : ''}. ¿Alguien lo conocía ya? 🤔`,
+          `${game}: ${genres}${year ? `, de ${year}` : ''}. ¿Alguien lo conocía ya? 🤔`,
         ];
       } else {
         gameHooks = [`¿Qué os parece ${game} hasta ahora? 🎮`, `¿Alguien ha jugado ${game} antes? ¿Es difícil? 🤔`];

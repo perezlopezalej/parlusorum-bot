@@ -13,6 +13,74 @@ function oneLine(text) {
     .trim();
 }
 
+// --- Lectura en voz alta: el canal usa un lector (TTS) que lee todo lo que escribe el bot ---
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const joinSpoken = (parts) =>
+  parts.length > 1 ? `${parts.slice(0, -1).join(', ')} y ${parts.at(-1)}` : parts[0] || '';
+
+// Minutos → «2 horas y 49 minutos», «1 hora», «49 minutos» (nunca «2h 49m»)
+function spokenDuration(totalMinutes) {
+  const mins = Math.max(0, Math.floor(Number(totalMinutes) || 0));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const parts = [];
+  if (h) parts.push(plural(h, 'hora', 'horas'));
+  if (m) parts.push(plural(m, 'minuto', 'minutos'));
+  return parts.length ? joinSpoken(parts) : 'menos de un minuto';
+}
+
+// Segundos → «30 segundos», «1 minuto y 5 segundos»
+function spokenSeconds(totalSeconds) {
+  const secs = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const parts = [];
+  if (h) parts.push(plural(h, 'hora', 'horas'));
+  if (m) parts.push(plural(m, 'minuto', 'minutos'));
+  if (s || !parts.length) parts.push(plural(s, 'segundo', 'segundos'));
+  return joinSpoken(parts);
+}
+
+const NOT_WORD_BEFORE = String.raw`(?<![\p{L}\p{N}_@#])`;
+const NOT_WORD_AFTER = String.raw`(?![\p{L}\p{N}_])`;
+const unitRe = (body) => new RegExp(NOT_WORD_BEFORE + body + NOT_WORD_AFTER, 'giu');
+const SPOKEN_HM_RE = unitRe(String.raw`(\d+)\s*h\s*(?:y\s*)?(\d+)\s*(?:m|min)`);
+const SPOKEN_H_RE = unitRe(String.raw`(\d+)\s*h`);
+const SPOKEN_MIN_RE = unitRe(String.raw`(\d+)\s*(?:m|min|mins)`);
+const SPOKEN_SEC_RE = unitRe(String.raw`(\d+)\s*(?:s|seg)`);
+const SPOKEN_ISIMO_RE = /(?<![\p{L}\p{N}_@])(\p{L}+?)isim([oa]s?)(?![\p{L}\p{N}_])/giu;
+const EMOJI_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}|‍|️|⃣/gu;
+
+// ¿Quitar los emojis? TTS_QUITAR_EMOJIS=1 (desactivado por defecto): para cuando el lector los diga en alto
+const stripEmojiEnabled = () => /^(1|true|si|sí|on)$/i.test(process.env.TTS_QUITAR_EMOJIS || '');
+
+// Última capa antes de enviar: lo que se cuele con formato de pantalla pasa a palabras que el lector dice bien.
+// «2h 49m» → «2 horas y 49 minutos», «30s» → «30 segundos», «#7» → «número 7», «nº» → «número», «+3» → «3 más»,
+// « — », « · », « | » y «→» → coma, «buenisimas» → «buenísimas». No toca @nicks, !comandos ni emotes.
+function speakable(text, { stripEmoji = stripEmojiEnabled() } = {}) {
+  if (typeof text !== 'string') return text;
+  let t = text
+    .replace(SPOKEN_HM_RE, (_, h, m) => spokenDuration(Number(h) * 60 + Number(m)))
+    .replace(SPOKEN_H_RE, (_, h) => plural(Number(h), 'hora', 'horas'))
+    .replace(SPOKEN_MIN_RE, (_, m) => plural(Number(m), 'minuto', 'minutos'))
+    .replace(SPOKEN_SEC_RE, (_, s) => plural(Number(s), 'segundo', 'segundos'))
+    .replace(/(?<![\p{L}\p{N}_@])#(\d+)/gu, 'número $1')
+    .replace(/(?<![\p{L}])n\.?[º°]\s*(?=\d)/giu, 'número ')
+    .replace(/(?<![\p{L}])n\.?[º°](?![\p{L}])|№/giu, 'número')
+    .replace(/(?<![\p{L}\p{N}_])\+(\d+)/gu, '$1 más')
+    .replace(/\s*[—–·|→➜➡]+\s*/gu, ', ')
+    .replace(SPOKEN_ISIMO_RE, (_, stem, end) => `${stem}ísim${end}`);
+  if (stripEmoji) t = t.replace(EMOJI_RE, '');
+  return t
+    .replace(/^[\s,]+/, '')
+    .replace(/\s+,/g, ',')
+    .replace(/,(?:\s*,)+/g, ',')
+    .replace(/,\s*([.!?…])/g, '$1')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+}
+
 // Último «¡FUA!» de cierre: solo en una de cada tres menciones (recentFlags = si cerraron así las últimas)
 const TRAILING_FUA_RE = /[\s,;]*¡?\bFUA\b!*[\s.]*$/i;
 
@@ -158,6 +226,9 @@ function limitLusorums(text, recentFlags = []) {
 
 module.exports = {
   oneLine,
+  speakable,
+  spokenDuration,
+  spokenSeconds,
   stripFillers,
   limitFillers,
   hasLusorums,

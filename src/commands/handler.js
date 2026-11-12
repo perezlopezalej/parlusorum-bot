@@ -48,6 +48,7 @@ const { sanitizeForAI } = require('../utils/filter');
 const { persistBotState } = require('../utils/bot-state');
 const { parseMinutes, parseMode, clockMadrid, MAX_MUTE_MIN } = require('../utils/bot-control');
 const { truncate } = require('../utils/groq-utils');
+const { spokenDuration, spokenSeconds } = require('../ai/quality');
 const { template } = require('../utils/plantillas');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
@@ -90,7 +91,7 @@ async function handle(client, channel, tags, command, args, config) {
     const key = `${command}-${userId}`;
     const now = Date.now();
     if (cooldowns.has(key) && now < cooldowns.get(key)) {
-      client.say(channel, `@${username} espera ${Math.ceil((cooldowns.get(key) - now) / 1000)}s.`);
+      client.say(channel, `@${username} espera ${spokenSeconds(Math.ceil((cooldowns.get(key) - now) / 1000))}.`);
       return;
     }
     cooldowns.set(key, now + cmd.cooldown * 1000);
@@ -231,7 +232,7 @@ function handleUptime(client, channel) {
     const h = Math.floor(e / 3600000),
       m = Math.floor((e % 3600000) / 60000),
       s = Math.floor((e % 60000) / 1000);
-    client.say(channel, `⏱️ Bot activo: ${h > 0 ? h + 'h ' : ''}${m > 0 ? m + 'm ' : ''}${s}s (canal offline)`);
+    client.say(channel, `⏱️ Bot activo: ${spokenSeconds(h * 3600 + m * 60 + s)} (canal offline)`);
   }
 }
 
@@ -248,7 +249,7 @@ async function handleJuego(client, channel) {
       return;
     }
   } catch {}
-  client.say(channel, `🎮 ${g.game}${g.title ? ` — "${g.title}"` : ''}`);
+  client.say(channel, `🎮 ${g.game}${g.title ? `: ${g.title}` : ''}`);
 }
 
 async function handleEstadisticas(client, channel) {
@@ -265,9 +266,9 @@ async function handleEstadisticas(client, channel) {
       if (viewers !== null) parts.push(`👁️ ${viewers} viewers`);
       parts.push(`👥 ${followers ?? '?'} seguidores`);
       if (uptime) parts.push(`⏱️ ${uptime}`);
-      client.say(channel, `📊 ${parts.join(' | ')}`);
+      client.say(channel, `📊 ${parts.join(', ')}`);
     } else {
-      client.say(channel, `📊 Canal offline 😴 | 👥 ${followers ?? '?'} seguidores. ¡Vuelve pronto! 💜`);
+      client.say(channel, `📊 Canal offline 😴, 👥 ${followers ?? '?'} seguidores. ¡Vuelve pronto! 💜`);
     }
   } catch (err) {
     logger.error(`!estadisticas: ${err.message}`);
@@ -338,7 +339,9 @@ async function handleBoss(client, channel, args = [], isMod = false, username = 
   incrementChannelStat('total_wins', cmd.n).catch(() => {});
   addNarrativeEvent(
     'boss',
-    cmd.n === 1 ? `Jefe derrotado (#${wins} de este stream)` : `${cmd.n} jefes más derrotados (${wins} en este stream)`,
+    cmd.n === 1
+      ? `Jefe número ${wins} derrotado en este stream`
+      : `${cmd.n} jefes más derrotados (${wins} en este stream)`,
     cmd.n,
   );
   client.say(
@@ -351,9 +354,9 @@ async function handleBoss(client, channel, args = [], isMod = false, username = 
 
 async function handleScore(client, channel) {
   const stats = await getChannelStats().catch(() => null);
-  const session = `💀 Bosses: ${getBossCount()} | Muertes: ${getDeathCount()}`;
+  const session = `💀 Jefes: ${getBossCount()}. Muertes: ${getDeathCount()}`;
   if (stats) {
-    client.say(channel, `${session} | All-time: ${stats.total_wins} bosses`);
+    client.say(channel, `${session}. En total, ${stats.total_wins} jefes`);
   } else {
     client.say(channel, session);
   }
@@ -375,14 +378,14 @@ async function handleMuertes(client, channel, args, isMod, username) {
     addNarrativeEvent(
       'death',
       cmd.n === 1
-        ? `Muerte #${total} del streamer en este stream`
+        ? `Muerte número ${total} del streamer en este stream`
         : `${cmd.n} muertes más del streamer (${total} en este stream)`,
       cmd.n,
     );
     client.say(
       channel,
       cmd.n === 1
-        ? `💀 Muerte #${total} en este stream 😅`
+        ? `💀 Muerte número ${total} en este stream 😅`
         : truncate(muertesMsgs.added.replace('{n}', cmd.n).replace('{total}', total)),
     );
   } else if (cmd.type === 'reset') {
@@ -453,7 +456,7 @@ function handleBrb(client, channel, username) {
     const mins = getBrbDuration();
     setBrbMode(false, null, null);
     persistBotState();
-    client.say(channel, `🔙 ¡@${username} ha vuelto después de ${mins} min! 🎉`);
+    client.say(channel, `🔙 ¡@${username} ha vuelto después de ${spokenDuration(mins)}! 🎉`);
   } else {
     setBrbMode(true, client, `#${process.env.CHANNEL}`);
     persistBotState();
@@ -488,7 +491,7 @@ function handleCallate(client, channel, username, args) {
     channel,
     truncate(
       msgs.callate_on
-        .replace('{minutes}', minutes)
+        .replace('{minutes}', spokenDuration(minutes))
         .replace('{username}', username)
         .replace('{time}', clockMadrid(until)),
     ),
@@ -554,8 +557,8 @@ async function handleResumen(client, channel) {
     const uptime = getStreamUptime() || s.uptime;
     const gameInfo = await getCurrentGame().catch(() => null);
     const game = gameInfo?.game ? `🎮 ${gameInfo.game}` : '';
-    const parts = [`📊 ${uptime}`, `💬 ${s.messagesLastHour} msg/h`, game].filter(Boolean);
-    client.say(channel, parts.join(' | '));
+    const parts = [`📊 ${uptime}`, `💬 ${s.messagesLastHour} mensajes por hora`, game].filter(Boolean);
+    client.say(channel, parts.join(', '));
   } catch (err) {
     logger.error(`!resumen: ${err.message}`);
     client.say(channel, 'No pude generar el resumen.');
@@ -570,8 +573,8 @@ async function handleLore(client, channel, username, args) {
       const { active, pending } = await getLoreOverview();
       if (!active.length && !pending.length) return say(loreMsgs.empty);
       const parts = [];
-      if (active.length) parts.push(loreMsgs.active_prefix + active.join(' | '));
-      if (pending.length) parts.push(loreMsgs.pending_prefix + pending.join(' | '));
+      if (active.length) parts.push(loreMsgs.active_prefix + active.join(', '));
+      if (pending.length) parts.push(loreMsgs.pending_prefix + pending.join(', '));
       return say(parts.join('  '));
     }
     if (sub !== 'aprobar' && sub !== 'borrar') return say(loreMsgs.usage.replace('{username}', username));
@@ -591,7 +594,7 @@ function handleComandos(client, channel, username, userId, isMod) {
   const key = `comandos-${userId}`;
   const now = Date.now();
   if (cooldowns.has(key) && now < cooldowns.get(key)) {
-    client.say(channel, `@${username} espera ${Math.ceil((cooldowns.get(key) - now) / 1000)}s.`);
+    client.say(channel, `@${username} espera ${spokenSeconds(Math.ceil((cooldowns.get(key) - now) / 1000))}.`);
     return;
   }
   cooldowns.set(key, now + 10 * 1000);

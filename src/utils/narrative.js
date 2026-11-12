@@ -39,7 +39,7 @@ function restoreNarrative(raw, max = MAX_NARRATIVE_EVENTS) {
 
 function relativeTime(ts, now) {
   const mins = Math.max(0, Math.round((now - ts) / 60000));
-  return mins < 1 ? 'ahora' : `hace ${mins}min`;
+  return mins < 1 ? 'ahora' : `hace ${mins} ${mins === 1 ? 'minuto' : 'minutos'}`;
 }
 
 // Bloque <stream_story> para los prompts; '' si no hay eventos

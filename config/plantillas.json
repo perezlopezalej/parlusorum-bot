@@ -40,10 +40,10 @@
     "¡Se ha activado el modo mayúsculas! 🎉"
   ],
   "prediction_begin": [
-    "🔮 ¡PREDICCIÓN! \"{title}\" — {options} — ¡Apuesta tus puntos! 🎯",
+    "🔮 ¡PREDICCIÓN! \"{title}\", {options}. ¡Apuesta tus puntos! 🎯",
     "🔮 Nueva predicción: \"{title}\". Opciones: {options}. ¡A apostar! 💜",
-    "🎯 ¡Se abre la predicción! \"{title}\" — {options}. ¿Con quién vais? 🔥",
-    "🔮 El FUA lo ve difícil: \"{title}\" — {options}. ¡Elegid y apostad! 💪"
+    "🎯 ¡Se abre la predicción! \"{title}\", {options}. ¿Con quién vais? 🔥",
+    "🔮 El FUA lo ve difícil: \"{title}\", {options}. ¡Elegid y apostad! 💪"
   ],
   "prediction_lock": [
     "🔒 ¡Predicción cerrada! Ya no se pueden hacer apuestas en \"{title}\". ¡A esperar el resultado! 👀",
@@ -56,10 +56,10 @@
     "🎉 ¡Y el ganador es \"{winner}\"! {winners} 🔥"
   ],
   "poll_begin": [
-    "📊 ¡ENCUESTA! \"{title}\" — {options} — ¡Vota en el chat!",
+    "📊 ¡ENCUESTA! \"{title}\", {options}. ¡Vota en el chat!",
     "📊 Nueva encuesta: \"{title}\". Opciones: {options}. ¡Vuestro voto cuenta! 💜",
-    "🗳️ ¡Se abre la votación! \"{title}\" — {options}. ¡A votar! 🔥",
-    "📊 El canal pregunta: \"{title}\" — {options}. ¡Elegid! 💪"
+    "🗳️ ¡Se abre la votación! \"{title}\", {options}. ¡A votar! 🔥",
+    "📊 El canal pregunta: \"{title}\", {options}. ¡Elegid! 💪"
   ],
   "poll_end": [
     "📊 Encuesta terminada: ganó \"{winner}\" con {pct}% de los votos. ¡FUA! 💜",

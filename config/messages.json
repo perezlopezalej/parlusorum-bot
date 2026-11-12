@@ -7,13 +7,13 @@
     ],
     "error": [
       "El FUA me ha dejado sin palabras por un momento 🤫",
-      "Error en el sistema del FUA — pero el carácter sigue intacto 💪",
+      "Error en el sistema del FUA, pero el carácter sigue intacto 💪",
       "Algo falló por aquí, pero el FUA no muere 🔥"
     ],
     "ratelimit": [
-      "Demasiado chat en poco tiempo — el FUA necesita aire 🌬️",
+      "Demasiado chat en poco tiempo, el FUA necesita aire 🌬️",
       "Tantas preguntas que hasta el FUA necesita pausa ⏳",
-      "El servidor del FUA respira — vuelve en un momento 💨"
+      "El servidor del FUA respira, vuelve en un momento 💨"
     ],
     "cohost": ["parlus1Esteeselrollo", "💪 FUA", "parlus1PORELPODERDELFUAAAAA"]
   },
@@ -47,24 +47,24 @@
   "warmup_fallback": "¡El stream acaba de empezar! Bienvenidos 🔥 ¡FUA!",
   "quemeperdi": {
     "offline": "@{username} no hay stream en directo ahora mismo 😴",
-    "cooldown": "@{username} espera {seconds}s para otro resumen.",
+    "cooldown": "@{username} espera {seconds} para otro resumen.",
     "nothing_yet": "@{username} el stream acaba de arrancar, aún no hay nada que contar 👀 ¡FUA!",
-    "fallback": "📜 Llevamos {minutes} min de {game} con {deaths}. El FUA sigue vivo, el streamer no tanto 💀"
+    "fallback": "📜 Llevamos {minutes} de {game} con {deaths}. El FUA sigue vivo, el streamer no tanto 💀"
   },
   "muertes": {
     "total": "💀 Muertes en {game}: {total} en {streams} stream(s) (incluye el de hoy)",
-    "added": "💀 +{n} muertes: {total} en este stream 😅",
-    "bad_format": "💀 Uso: !muertes +N (N de 1 a {max}) | !muertes reset | !muertes <juego> (total de un juego que ya hayamos jugado)",
+    "added": "💀 {n} muertes más: {total} en este stream 😅",
+    "bad_format": "💀 Uso: !muertes seguido de un número de 1 a {max} para sumar, !muertes reset para borrar, o !muertes y el nombre de un juego para ver su total",
     "mods_only": "@{username} solo mods pueden sumar muertes. Mira el total de un juego con !muertes <juego>"
   },
   "boss": {
     "show": "👹 Llevamos {total} en este stream",
-    "added": "👹 +{n} jefes: {total} en este stream 💀",
+    "added": "👹 {n} jefes más: {total} en este stream 💀",
     "corrected": "💀 Marcador corregido: {total} en este stream",
     "none_to_remove": "💀 No hay jefes que restar: el marcador está en 0",
     "reset": "👹 Contador de jefes a 0.",
     "total": "👹 Jefes en {game}: {total} en {streams} stream(s), desde que llevo la cuenta (incluye el de hoy)",
-    "bad_format": "👹 Uso: !boss (ver) | !boss +N / -N (N de 1 a {max}, mods) | !boss reset (mods) | !boss <juego> (total de un juego que ya hayamos jugado)",
+    "bad_format": "👹 Uso: !boss para ver el marcador. Los mods suman o restan con !boss y un número de 1 a {max}, o ponen a cero con !boss reset. !boss y el nombre de un juego da su total",
     "mods_only": "@{username} solo mods pueden sumar o restar jefes. Mira el total de un juego con !boss <juego>"
   },
   "tiempo": {
@@ -89,13 +89,13 @@
     "win": "🎉 ¡@{username} ha acertado! ¡Enhorabuena! 🏆",
     "win_champion": "🎉 ¡@{username} ha acertado! 👑 Es el campeón del chat con {wins}.",
     "win_streak": "🎉 ¡@{username} ha acertado! 🔥 Racha de {streak} seguidas ({wins} en total).",
-    "win_position": "🎉 ¡@{username} ha acertado! 🏆 Ya es el nº {position} del ranking con {wins}.",
+    "win_position": "🎉 ¡@{username} ha acertado! 🏆 Ya es el número {position} del ranking con {wins}.",
     "win_total": "🎉 ¡@{username} ha acertado! 🏆 Lleva {wins} en total.",
     "top_title": "🏆 Top trivia: ",
     "top_empty": "🏆 Aún no hay ranking de trivia. ¡Prueba con !trivia!"
   },
   "privacidad": {
-    "summary": "🔒 Privacidad: guardo el chat 24 h y un registro de calidad con nombres anónimos 30 días. Los datos útiles (contadores, rachas) van por tu ID de Twitch y caducan tras 90 días sin actividad (los contadores, 1 año). La IA usa Groq (EE. UU., sin retención de datos). Borra todo lo tuyo con !fua_olvidame.",
+    "summary": "🔒 Privacidad: guardo el chat 24 horas y un registro de calidad con nombres anónimos 30 días. Los datos útiles (contadores, rachas) van por tu ID de Twitch y caducan tras 90 días sin actividad (los contadores, 1 año). La IA usa Groq (Estados Unidos, sin retención de datos). Borra todo lo tuyo con !fua_olvidame.",
     "forgot_me": "@{username} listo: he borrado todos tus datos (chat, registro de calidad, estadísticas, memoria y lore que te mencione). Si sigues escribiendo, empiezo de cero. 💜",
     "forgot_user": "@{username} hecho: he borrado todos los datos de @{target}.",
     "forgot_error": "@{username} no he podido borrar todo ahora mismo. Inténtalo de nuevo en un rato o avisa a un mod.",
@@ -106,13 +106,13 @@
   },
   "lore": {
     "mods_only": "@{username} solo mods.",
-    "usage": "@{username} uso: !lore | !lore aprobar <id> | !lore borrar <id>",
+    "usage": "@{username} uso: !lore para ver, !lore aprobar y el número, o !lore borrar y el número",
     "empty": "📖 Aún no hay lore aprendido. El lore manual está en config/lore.json.",
     "active_prefix": "📖 Activo: ",
     "pending_prefix": "⏳ Pendiente de aprobar (* = listo): ",
-    "approved": "✅ Lore #{id} aprobado: \"{term}\".",
-    "deleted": "🗑️ Lore #{id} borrado: \"{term}\".",
-    "not_found": "@{username} no encuentro el lore #{id}.",
+    "approved": "✅ Lore número {id} aprobado: \"{term}\".",
+    "deleted": "🗑️ Lore número {id} borrado: \"{term}\".",
+    "not_found": "@{username} no encuentro el lore número {id}.",
     "error": "@{username} no pude actualizar el lore ahora."
   },
   "shutup_replies": [
@@ -179,11 +179,11 @@
     "El resto te lo dejo a ti: yo solo certifico lo que sé y lo demás es puro FUA 🔥"
   ],
   "control": {
-    "callate_on": "🤫 Me callo {minutes} min por orden de @{username}. Vuelvo a las {time}.",
+    "callate_on": "🤫 Me callo {minutes} por orden de @{username}. Vuelvo a las {time}.",
     "callate_off": "🔊 ¡De vuelta! ¡FUA! 💪",
     "callate_usage": "@{username} uso: !fua_callate <minutos> (1-{max}); !fua_callate 0 me deja hablar otra vez.",
     "modo_reactivo": "🎧 Modo reactivo: solo contesto a menciones y comandos. Lo quita @{username} con !fua_modo normal.",
     "modo_normal": "💬 Modo normal: vuelvo a comentar el directo. ¡FUA!",
-    "modo_usage": "@{username} uso: !fua_modo reactivo | normal. Ahora: {current}."
+    "modo_usage": "@{username} uso: !fua_modo reactivo o !fua_modo normal. Ahora: {current}."
   }
 }

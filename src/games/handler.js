@@ -1,4 +1,5 @@
 const { truncate } = require('../utils/groq-utils');
+const { spokenSeconds } = require('../ai/quality');
 const { aiChat } = require('../utils/ai-router');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
 const { canMakeRequest } = require('../utils/ratelimit');
@@ -400,7 +401,7 @@ async function startTrivia(client, channel) {
   client.say(
     channel,
     truncate(
-      `🧠 TRIVIA: ${q.question} (${totalSecs}s${hasPistas ? ' — habrá pistas si nadie responde' : ' para responder'})`,
+      `🧠 TRIVIA: ${q.question} (${spokenSeconds(totalSecs)}${hasPistas ? ', y habrá pistas si nadie responde' : ' para responder'})`,
     ),
   );
   scheduleNextTriviaPhase(client, channel);
@@ -490,7 +491,7 @@ async function handleTop(client, channel) {
   const medals = ['🥇', '🥈', '🥉', '4º', '5º'];
   client.say(
     channel,
-    truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${winsText(r.count)})`).join(' · ')),
+    truncate(msgs.top_title + top.map((r, i) => `${medals[i]} ${r.username} (${winsText(r.count)})`).join(', ')),
   );
 }
 

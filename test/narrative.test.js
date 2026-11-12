@@ -81,7 +81,7 @@ describe('buildStoryBlock', () => {
     );
     assert.equal(
       block,
-      '\n<stream_story>[hace 8min] [death] Muerte #3 | [ahora] [sub] Ana se suscribió</stream_story>',
+      '\n<stream_story>[hace 8 minutos] [death] Muerte #3 | [ahora] [sub] Ana se suscribió</stream_story>',
     );
   });
 });

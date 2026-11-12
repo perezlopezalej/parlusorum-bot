@@ -16,6 +16,7 @@ const {
 const { buildStoryBlock } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const quality = require('./quality');
+const { spokenDuration, spokenSeconds } = quality;
 const { canMakeRequest, canUserMakeRequest } = require('../utils/ratelimit');
 const { buildQueMePerdiSystem, retryNote } = require('./style');
 const logger = require('../utils/logger');
@@ -51,7 +52,11 @@ async function handleQueMePerdi(client, channel, tags) {
   if (until && now < until) {
     client.say(
       channel,
-      truncate(msgs.cooldown.replace('{username}', username).replace('{seconds}', Math.ceil((until - now) / 1000))),
+      truncate(
+        msgs.cooldown
+          .replace('{username}', username)
+          .replace('{seconds}', spokenSeconds(Math.ceil((until - now) / 1000))),
+      ),
     );
     return;
   }
@@ -75,7 +80,7 @@ async function handleQueMePerdi(client, channel, tags) {
       channel,
       truncate(
         msgs.fallback
-          .replace('{minutes}', minutes)
+          .replace('{minutes}', spokenDuration(minutes))
           .replace('{game}', game || 'directo')
           .replace('{deaths}', quality.countDeaths(deaths)),
       ),
@@ -148,7 +153,7 @@ Cuenta lo ocurrido.`,
       channel,
       truncate(
         msgs.fallback
-          .replace('{minutes}', minutes)
+          .replace('{minutes}', spokenDuration(minutes))
           .replace('{game}', game || 'directo')
           .replace('{deaths}', quality.countDeaths(deaths)),
       ),
