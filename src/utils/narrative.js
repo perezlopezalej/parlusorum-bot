@@ -1,6 +1,6 @@
 // Lógica pura de la narrativa del stream y del disparo del cohost (sin estado ni I/O)
 
-const { approxDuration, hasElongation, cleanChatNoise } = require('../ai/quality');
+const { approxDuration, hasElongation, cleanChatNoise, mentionsEthnicTerms, personalMatch } = require('../ai/quality');
 
 const MAX_NARRATIVE_EVENTS = 12;
 const HOUR_MS = 60 * 60 * 1000;
@@ -354,6 +354,7 @@ function windowFacts(events = [], now = Date.now(), windowMs = 30 * 60 * 1000) {
 }
 
 // Muestra del chat para que la IA cuente el tema: sin nombres, sin comandos, sin risas ni ruido, sin emotes ni @menciones
+// y sin líneas con etnias ni vida personal (pareja, gimnasio, peso...): lo que no se ve no se copia.
 function chatSample(lines = [], { n = 8, minLen = 18, maxLen = 90 } = {}) {
   const out = [];
   for (const { message } of lines) {
@@ -366,6 +367,7 @@ function chatSample(lines = [], { n = 8, minLen = 18, maxLen = 90 } = {}) {
     );
     if (text.startsWith('!') || text.length < minLen) continue;
     if (/^(?:(?:ja|je|ji|jo|ju|ha|he)+\W*)+$/i.test(text)) continue;
+    if (mentionsEthnicTerms(text) || personalMatch(text)) continue;
     out.push(text.slice(0, maxLen));
   }
   return [...new Set(out)].slice(-n);

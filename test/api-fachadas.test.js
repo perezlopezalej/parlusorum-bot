@@ -58,6 +58,7 @@ const QUALITY = [
   'madridDay',
   'malformedNumber',
   'matchesFormula',
+  'mentionsEthnicTerms',
   'mentionsGame',
   'mentionsGenre',
   'mentionsMechanics',

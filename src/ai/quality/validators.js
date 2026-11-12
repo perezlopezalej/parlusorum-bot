@@ -259,6 +259,7 @@ function validateHook(
 
 function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '' } = {}) {
   if (fuaGender(text)) return '"el FUA" va siempre en masculino';
+  if (ETHNIC_RE.test(String(text || ''))) return 'usa una expresión con etnias o pueblos; cuéntalo sin ellas';
   const junk = junkProblem(text);
   if (junk) return junk.reason;
   if (achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';

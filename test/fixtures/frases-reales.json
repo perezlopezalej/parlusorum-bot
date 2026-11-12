@@ -458,5 +458,41 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "f-gitano-desgastado",
+    "filter": "timer_ia",
+    "input": "Manu sufriendo con un coloso que el chat jura que es un \"gitano desgastado\" y que castiga más.",
+    "note": "Frase real del directo (11-11): copia una expresión con etnias del chat.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-gordi-pillao",
+    "filter": "cohost",
+    "input": "¿Quién necesita un coloso cuando el lore dice que la gordi se queda pillao y nos salva a todos? 🤔",
+    "note": "Frase real del directo (11-11): la pareja de un usuario, vida personal copiada del chat.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-banca-110kg",
+    "filter": "cohost",
+    "input": "El ritmo del directo está más intenso que una banca de 110kg en plena noche, ¡y el FUA lo siente hasta en los huesos!",
+    "note": "Frase real del directo (11-11): gimnasio y kilos de un usuario.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-control-caida-coloso",
+    "filter": "cohost",
+    "input": "¡Una caída y seguimos a tope, Manu no se rinde!",
+    "note": "Control (11-11): frase real que no debe rechazarse.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

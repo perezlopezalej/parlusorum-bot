@@ -17,6 +17,7 @@ const {
 } = require('./rewrite');
 const {
   personalMatch,
+  mentionsEthnicTerms,
   LATAM_RE,
   ROBOT_REFUSAL_RE,
   FORMULAS,
@@ -123,6 +124,7 @@ module.exports = {
   limitLusorums,
   limitTrailingFua,
   personalMatch,
+  mentionsEthnicTerms,
   hasElongation,
   cleanChatNoise,
   oddCaps,

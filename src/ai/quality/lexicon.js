@@ -129,9 +129,37 @@ function selfHelp(text) {
   return SELF_HELP_RE.test(String(text || ''));
 }
 
-// Expresiones con etnias o pueblos (la broma no va por ahí)
-const ETHNIC_RE =
-  /\b(payos?|payas?|gitanada|gitaner[ií]a|judiada|sudacas?|negratas?|hacer el indio|trabajar como un negro)\b/i;
+// Expresiones con etnias o pueblos (la broma no va por ahí). «gitano/a» y derivados se vetan siempre (el 11-11 el resumen de
+// media hora repitió «gitano desgastado»); !dios_fua solo puede nombrarlos si la pregunta del usuario los trae (mentionsEthnicTerms).
+const ETHNIC_RE = new RegExp(
+  '\\b(?:' +
+    [
+      'payos?',
+      'payas?',
+      'gitan\\p{L}*',
+      'judiadas?',
+      'jud[ií]os? de mierda',
+      'como un jud[ií]o',
+      'sudacas?',
+      'negratas?',
+      'moracos?',
+      'moros? de mierda',
+      'panchit[oa]s?',
+      'charnegos?',
+      'maketos?',
+      'chinos? de mierda',
+      '(?:trabaj\\p{L}+|curr\\p{L}+) como un (?:negro|chino)',
+      'hacer el indio',
+      'gypsy|gypsies',
+    ].join('|') +
+    ')(?![\\p{L}\\p{N}_])',
+  'iu',
+);
+
+// ¿El texto nombra una etnia o pueblo vetado? (!dios_fua lo compara también con la pregunta)
+function mentionsEthnicTerms(text) {
+  return ETHNIC_RE.test(String(text || ''));
+}
 
 // Juzgar el ambiente del chat ("el chat está quieto/dormilón") no es un comentario, es relleno
 const MOOD_JUDGING_RE =
@@ -150,8 +178,14 @@ const PERSONAL_RE =
 const FAMILY_GREETING_RE =
   /\b(?:gran |nuestra |toda la |querida |esta |mi |la )?familia\b(?!\s+(?:de|del)\s+(?!lusorums?\b|fua\b|los lusorums\b)\p{L})/giu;
 
+// Pareja, gimnasio, peso y kilos (11-11: «la gordi», «una banca de 110kg»). Siempre con posesivo o en expresiones completas:
+// «peso pesado», «la mujer del cuadro» o «el peso del juego» no cuentan.
+const PERSONAL_BODY_RE =
+  /\b(?:gordis?|(?:mi|tu|su|nuestra) (?:mujer|se[ñn]ora|pareja|parienta|churri|costilla|chica|chico|ex)|parienta|churri|esposo|gimnasio|gym|pesas|mancuernas?|crossfit|culturismo|press de banca|banca de \d+|(?:en|de) banca|kilos?|kgs?|\d+\s*kg|pes(?:o|aba|abas|ar) \d+|peso corporal|b[aá]scula|dieta|engord\p{L}*|adelgaz\p{L}*|metabolismo|calor[ií]as)(?![\p{L}\p{N}_])/iu;
+
 function personalMatch(text) {
-  return PERSONAL_RE.test(String(text || '').replace(FAMILY_GREETING_RE, ' '));
+  const t = String(text || '').replace(FAMILY_GREETING_RE, ' ');
+  return PERSONAL_RE.test(t) || PERSONAL_BODY_RE.test(t);
 }
 
 // Insultos y groserías del chat: el bot no las repite
@@ -280,6 +314,7 @@ module.exports = {
   citesGameScore,
   disparagesGame,
   ETHNIC_RE,
+  mentionsEthnicTerms,
   personalMatch,
   PROFANITY_RE,
   BOT_SELF_RE,

@@ -4,10 +4,12 @@
  *
  *  - eco: el bot no repite literalmente lo que escribió un usuario
  *  - ofensivo: términos de filter.js (sin las frases de inyección, que solo valen para la entrada)
+ *  - etnia: expresiones con etnias o pueblos («gitano»…); solo !dios_fua las dice si el usuario las nombró
  *  - URL: ningún enlace salvo dominios de confianza (twitch.tv, igdb.com)
  *  - directo: sin directo, solo hablan las respuestas a comandos (y el cierre del stream, con margen)
  */
 const { containsOffensive } = require('./filter');
+const { mentionsEthnicTerms } = require('../ai/quality/lexicon');
 
 const ALLOWED_HOSTS = ['twitch.tv', 'igdb.com'];
 
@@ -114,13 +116,21 @@ function canSpeak({ origin, live, graceUntil = 0, now = Date.now() }) {
   return DIRECT_ORIGINS.has(origin);
 }
 
-// → { ok: true } | { ok: false, reason: 'offline' | 'ofensivo' | 'url' | 'eco' }
+// Etnias o pueblos (p. ej. «gitano»): nunca salen, salvo en una respuesta de !dios_fua a quien las nombró hace poco
+function blockedEthnic(text, origin, recent, now) {
+  if (!mentionsEthnicTerms(text)) return false;
+  if (origin !== 'dios_fua') return true;
+  return !(recent || []).some((r) => now - r.at <= ECHO_WINDOW_MS && mentionsEthnicTerms(r.text));
+}
+
+// → { ok: true } | { ok: false, reason: 'offline' | 'ofensivo' | 'etnia' | 'url' | 'eco' }
 function checkOutbound(
   text,
   { origin = 'otro', live = true, graceUntil = 0, recent = [], names = [], now = Date.now() } = {},
 ) {
   if (!canSpeak({ origin, live, graceUntil, now })) return { ok: false, reason: 'offline' };
   if (containsOffensive(text)) return { ok: false, reason: 'ofensivo' };
+  if (blockedEthnic(text, origin, recent, now)) return { ok: false, reason: 'etnia' };
   if (findDisallowedUrl(text)) return { ok: false, reason: 'url' };
   if (!ECHO_EXEMPT_ORIGINS.has(origin) && findEcho(text, recent, now, names)) return { ok: false, reason: 'eco' };
   return { ok: true };

@@ -248,7 +248,18 @@ async function handleQuestion(client, channel, tags, args) {
       const fix = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
       answer = fix.choices[0].message.content;
     }
-    const ownerClaim = quality.claimsChannelOwner(answer);
+    // Etnias o pueblos (p. ej. «gitano»): solo si la pregunta del usuario las nombra; si no, un reintento y, si repite, se descarta
+    const askedEthnic = quality.mentionsEthnicTerms(question);
+    if (!askedEthnic && quality.mentionsEthnicTerms(answer)) {
+      messages.push({
+        role: 'user',
+        content: 'Responde otra vez sin nombrar etnias ni pueblos; haz la ocurrencia sobre el tema de la pregunta.',
+      });
+      const fix = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
+      answer = fix.choices[0].message.content;
+    }
+    const ethnicClaim = !askedEthnic && quality.mentionsEthnicTerms(answer);
+    const blockedClaim = quality.claimsChannelOwner(answer) || ethnicClaim; // atribuir el canal a vlxj97 o etnias: no se envía
     const qMaxChars = qModeConfig.max_chars ?? TWITCH_MAX_LENGTH;
     // Datos del juego: solo los que devolvió buscar_juego (IGDB); si afirma algo más, no se envía.
     // Solo si hablan de videojuegos: la cultura general se responde con el conocimiento del modelo.
@@ -256,7 +267,7 @@ async function handleQuestion(client, channel, tags, args) {
       quality.isGameQuestion(question) ||
       quality.talksAboutGames(`${question} ${answer}`) ||
       ((prefetched || !!toolCalls?.length) && gameText.length > 0 && !gameText.startsWith('SIN DATOS'));
-    const techLeak = quality.leaksTech(answer) || ownerClaim;
+    const techLeak = quality.leaksTech(answer) || blockedClaim;
     let discard = techLeak;
     if (!techLeak && gameTopic) ({ discard } = await factcheck.evaluate(answer, gameText, { source: 'juego' }));
     // País, nacionalidad, personas y cifras solo valen si están en los datos de IGDB (el verificador de IA a veces los deja pasar)

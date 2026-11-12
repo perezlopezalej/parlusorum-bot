@@ -21,6 +21,7 @@ function summaryProblem(text) {
   if (quality.achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
   if (quality.genderedParlusorum(text)) return 'pone género a ParLusorum';
   if (quality.fuaGender(text)) return '"el FUA" va siempre en masculino';
+  if (quality.mentionsEthnicTerms(text)) return 'usa una expresión con etnias o pueblos; cuéntalo sin ellas';
   if (quality.summaryPersonalLife(text))
     return 'habla de vida personal o charla ajena al stream (comida, clima, calor...); habla solo del juego, el stream y el ambiente del chat';
   const junk = quality.junkProblem(text, { minWords: 1 });
@@ -73,7 +74,7 @@ async function generateStreamMemory(streamStats, chatSample) {
     // Los momentos y frases también entran luego en los prompts: sin vida personal ni charla ajena al stream
     const keep = (list) =>
       (Array.isArray(list) ? list : []).filter(
-        (item) => typeof item === 'string' && !quality.summaryPersonalLife(item),
+        (item) => typeof item === 'string' && !quality.summaryPersonalLife(item) && !quality.mentionsEthnicTerms(item),
       );
 
     // Lo que perdura entre streams no lleva nicks: se sustituyen por «un espectador»
