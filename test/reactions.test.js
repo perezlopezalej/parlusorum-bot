@@ -133,3 +133,31 @@ describe('chat_log: reply_parent_login', () => {
     assert.equal(buildRow({ username: 'b', message: 'x', isBot: true, replyTo: 'z' }).reply_parent_login, null);
   });
 });
+
+describe('las reacciones solo sirven para revisión humana', () => {
+  test('el resumen ya no dice «Gustaron» y avisa de que puede ser risa por un fallo', () => {
+    const text = R.formatSummary({
+      total: 1,
+      baseline: 1,
+      positive: 1,
+      reacted: 1,
+      negative: 0,
+      ignored: 0,
+      byOrigin: {},
+      best: [],
+      worst: [],
+    });
+    assert.doesNotMatch(text, /Gustaron/);
+    assert.match(text, /Con más reacción \(revisar a mano: puede ser risa por un fallo\)/);
+  });
+
+  test('ni los prompts ni los ejemplos de estilo cargan reactions ni quality-log', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', 'ai', f), 'utf8');
+    for (const file of ['style.js', 'prompt-context.js', 'cohost.js', 'moment-facts.js', 'mentions.js'])
+      assert.doesNotMatch(src(file), /require([^)]*(?:reactions|quality-log)[^)]*)/, file);
+    const examples = fs.readFileSync(path.join(__dirname, '..', 'config', 'style-examples.json'), 'utf8');
+    assert.match(examples, /Con más reacción/);
+  });
+});

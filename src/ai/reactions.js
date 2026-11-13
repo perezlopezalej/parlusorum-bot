@@ -137,13 +137,15 @@ function summarize({ baseline, scored }) {
   };
 }
 
+// Ojo: `best` (y `liked` en quality_log) es solo para revisión humana. Una risa o una reacción alta puede ser por un fallo
+// del bot, así que nunca se usa como ejemplo de estilo ni entra en los prompts.
 function formatSummary(sum) {
   const origins = Object.entries(sum.byOrigin)
     .map(([k, o]) => `${k} ${o.positive}+/${o.reacted} con reacción/${o.negative}-/${o.ignored} ign de ${o.sent}`)
     .join(', ');
   const best = sum.best.map((b) => `[${b.origin}] "${b.message.slice(0, 80)}" (${b.score})`).join(' | ') || 'ninguno';
   const worst = sum.worst.map((b) => `"${b.message.slice(0, 60)}" [${b.negUsers.join(',')}]`).join(' | ') || 'ninguno';
-  return `Reacciones (${sum.total} mensajes IA, risa base ${sum.baseline}): ${sum.positive} bien, ${sum.reacted} con reacción, ${sum.negative} mal, ${sum.ignored} ignorados. Por origen: ${origins || '-'}. Gustaron: ${best}. Negativos: ${worst}`;
+  return `Reacciones (${sum.total} mensajes IA, risa base ${sum.baseline}): ${sum.positive} bien, ${sum.reacted} con reacción, ${sum.negative} mal, ${sum.ignored} ignorados. Por origen: ${origins || '-'}. Con más reacción (revisar a mano: puede ser risa por un fallo): ${best}. Negativos: ${worst}`;
 }
 
 module.exports = {

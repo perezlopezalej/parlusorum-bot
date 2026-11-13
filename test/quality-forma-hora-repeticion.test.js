@@ -304,6 +304,12 @@ describe('selector con IA', () => {
       models.join(),
     );
   });
+  test('el prompt del selector pide corrección y no gracia', () => {
+    const { SYSTEM } = require('../src/ai/pick-best');
+    assert.match(SYSTEM, /MÁS CORRECTO, no el más gracioso/);
+    assert.match(SYSTEM, /sin fijarte en cuál hace más gracia/);
+    assert.doesNotMatch(SYSTEM, /el más divertido|el que más gracia|más ingenioso/i);
+  });
   test('pickBest: elegido, ninguno y error', async () => {
     stubModels(() => text('{"mejor": 2}'));
     assert.deepEqual(await pickBest(['a b c d', 'e f g h'], { order: [0, 1] }), { status: 'ok', index: 1 });

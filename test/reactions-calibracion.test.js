@@ -75,7 +75,7 @@ describe('reglas nuevas de reacción', () => {
     const rows = [bot('Frase buena'), u(5, 'a', 'jajaja')];
     const sum = R.summarize(R.scoreSession(rows));
     assert.equal(sum.best.length, 1);
-    assert.match(R.formatSummary(sum), /Gustaron: \[cohost\] "Frase buena"/);
+    assert.match(R.formatSummary(sum), /Con más reacción \(revisar a mano[^)]*\): \[cohost\] "Frase buena"/);
     assert.match(R.formatSummary(sum), /con reacción/);
   });
 });

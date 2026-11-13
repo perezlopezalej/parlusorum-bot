@@ -154,6 +154,7 @@ function buildQualityLog(
         ignored: sum.ignored,
         baseline: sum.baseline,
         byOrigin: sum.byOrigin,
+        // solo para revisión humana: no alimenta ejemplos ni prompts (ver reactions.js)
         liked: sum.best.map((b) => ({ origin: b.origin, text: pseudo.text(b.message), score: b.score })),
       },
       metrics: metrics || null,
