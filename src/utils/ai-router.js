@@ -5,8 +5,8 @@
 //   names: nicks extra a seudonimizar; generator: modelo que generó el texto (solo 'pick': el selector es de otra familia)
 //
 // Reparto por defecto. Se cambia con AI_CHAIN_<TIPO>=groq:modelo,…
-//   120b → 20b → qwen: los que necesitan más gracia (cohost, diosfua, quemeperdi)
-//   20b → 120b → qwen:  menciones y provocaciones (mucho volumen, respuestas cortas)
+//   120b → 20b → qwen: los que necesitan más gracia (cohost, diosfua, quemeperdi, menciones y provocaciones; las menciones
+//   pasaron del 20b al 120b tras el directo del 11-11: sus respuestas repetían estructura y no pillaban los juegos de palabras)
 //   qwen → 20b → 120b:  alert, timer, hook, endstream, trivia, command
 //   Cada modelo tiene su cupo propio (8.000 tokens/min, 200.000/día): el reparto equilibra un directo de 6 horas (ver PROGRESS.md)
 //   review (factcheck): 20b → reservas → 120b
@@ -33,8 +33,8 @@ const GROUP = {
   diosfua: 'groq',
   quemeperdi: 'groq',
   cohost: 'groq',
-  mention: 'mid',
-  provocation: 'mid',
+  mention: 'groq',
+  provocation: 'groq',
   timer: 'light',
   hook: 'light',
   alert: 'light',

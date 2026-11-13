@@ -68,7 +68,7 @@ describe('cabeceras x-ratelimit de Groq', () => {
       return ok();
     });
     await ask('mention');
-    assert.equal(state.getGroqLimits('groq:openai/gpt-oss-20b').remainingTokens, 123);
+    assert.equal(state.getGroqLimits('groq:openai/gpt-oss-120b').remainingTokens, 123);
   });
 });
 
@@ -120,7 +120,7 @@ describe('callar si no hay cupo (solo lo espontáneo)', () => {
     for (const k of ['diosfua', 'mention', 'provocation', 'command', 'alert'])
       assert.ok(!router.SILENT_KINDS.has(k), k);
     fake((p) => {
-      if (/20b/.test(p.model)) throw quota();
+      if (/120b/.test(p.model)) throw quota();
       return ok();
     });
     const r = await ask('mention');

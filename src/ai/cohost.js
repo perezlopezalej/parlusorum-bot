@@ -77,7 +77,7 @@ const COHOST_MAX_PER_HOUR = parseInt(process.env.COHOST_MAX_PER_HOUR || String(E
 
 const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000', 10);
 
-const COHOST_CANDIDATES = parseInt(process.env.COHOST_CANDIDATES || '2', 10) === 3 ? 3 : 2; // candidatos por llamada del cohost (2 por defecto: en la prueba 2 bastan y gastan menos tokens)
+const COHOST_CANDIDATES = parseInt(process.env.COHOST_CANDIDATES || '3', 10) === 2 ? 2 : 3; // candidatos por llamada del cohost (3 por defecto; 2 gasta menos tokens)
 
 // --- Co-host ---
 let cohostRunning = false;

@@ -52,8 +52,15 @@ describe('cadenas por tipo de llamada', () => {
     }
   });
 
-  test('menciones y provocaciones (mucho volumen) empiezan por el 20b', () => {
-    for (const k of ['mention', 'provocation']) assert.match(router.getChain(k)[0].model, /gpt-oss-20b/, k);
+  test('menciones y provocaciones empiezan por el 120b, con el 20b de reserva', () => {
+    for (const k of ['mention', 'provocation']) {
+      const models = router.getChain(k).map((l) => l.model);
+      assert.match(models[0], /gpt-oss-120b/, k);
+      assert.ok(
+        models.some((m) => /gpt-oss-20b/.test(m)),
+        `${k}: el 20b de reserva`,
+      );
+    }
   });
 
   test('alertas, timer IA, hooks, fin de stream, trivia y comandos empiezan por qwen (cupo propio) y el 120b queda de reserva', () => {

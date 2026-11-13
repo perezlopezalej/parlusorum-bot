@@ -344,7 +344,7 @@ describe('selector con IA', () => {
     assert.match(prompt, /Mensajes en el chat en los últimos 5 minutos: [1-9]\d*/);
     assert.match(prompt, /<hechos>\nh1\. /); // los mismos hechos que el generador
     assert.doesNotMatch(prompt, /<chat>|gangar79|user\d+:|Jajaja otra vez ese jefe/); // ninguna línea del chat
-    assert.match(prompt, /1\) .*\n2\) /); // 2 candidatos por defecto
+    assert.match(prompt, /1\) .*\n2\) /); // candidatos por defecto
   });
   test('cohost: si el selector dice que ninguno vale, reintenta una vez con la corrección y se calla', async () => {
     stubModels((p, sel) => (sel ? text('{"mejor": 0}') : json(A, B, C)));
