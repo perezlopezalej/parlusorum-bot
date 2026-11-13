@@ -11,6 +11,11 @@
  *
  * Casos con "filter": "pick" (candidates, chat, activity, expect.pick = número 1-based o 'none') prueban el selector con IA de src/ai/pick-best.js.
  *
+ * Casos con "gen": "cohost" | "timer" (chat, game, deaths, minutes, moment, events, usedStructures, expect.matchNone, expect.mayStaySilent)
+ * ejecutan la generación de punta a punta con la IA real (hechos, candidatos, selector, revisor) y comprueban el mensaje enviado.
+ * Casos con "turns" (menciones en cadena del mismo usuario, lastBot opcional) comprueban que no repiten arranque ni cierre.
+ * Casos con "igdb" (nombre) y expect.year comprueban la ficha real de IGDB.
+ *
  * Uso: npm run eval [-- --only id1,id2] [-- --verbose] [-- --repeat N]
  * Sale con código 1 si algún caso no cumple lo esperado.
  */
@@ -105,6 +110,12 @@ chatlogMod.noteAiCall = (model, ms, ...rest) => {
   aiCalls.push({ model, ms });
   return origNoteAi.call(chatlogMod, model, ms, ...rest);
 };
+
+// El juego actual lo fija cada caso (evalGame); sin él, el de siempre. Se parchea ANTES de cargar los handlers.
+const twitchApi = require('../src/twitch/api');
+let evalGame = null;
+const realGetCurrentGame = twitchApi.getCurrentGame;
+twitchApi.getCurrentGame = async (...a) => (evalGame ? { game: evalGame } : realGetCurrentGame(...a));
 
 const state = require('../src/utils/state');
 const messagesConfig = require('../config/messages.json');
@@ -240,6 +251,152 @@ async function runFilterCase(c) {
   };
 }
 
+const wordsOf = (t) =>
+  String(t)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9ñ ]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+const closingOf = (t) => {
+  const m = /[.!?…]\s+¡?([^.!?…]*)!+\s*\S{0,12}$/u.exec(String(t).trim());
+  return m ? wordsOf(m[1]).join(' ') : '';
+};
+
+function resetEvalStream(c) {
+  const { chatHistory } = require('../src/ai/chat-memory');
+  chatHistory.length = 0;
+  state.resetBotHistory(); // también las marcas del stream
+  state.resetNamedUsers();
+  state.resetStreamNarrative();
+  state.resetCohostStats();
+  state.setStreamIsLive(true);
+  state.setStreamStartedAt(Date.now() - (c.minutes ?? 110) * 60000);
+  state.setDeathCount(c.deaths ?? 0);
+  for (const key of c.usedStructures || []) state.markStructure(key);
+  for (const [user, message] of c.chat || []) ai.addToHistory(user, message);
+  for (const e of c.events || []) state.addNarrativeEvent(e.type, e.description, e.n || 1);
+  evalGame = c.game || 'Shadow of the Colossus';
+}
+
+// Caso de generación de punta a punta: cohost libre o por suceso, resumen de media hora
+async function runGenCase(c) {
+  const started = realNow();
+  const n429 = state.getCohostStats().groq429;
+  resetEvalStream(c);
+  const said = [];
+  const client = { say: (_ch, text) => said.push(String(text)) };
+  let outcome;
+  if (c.gen === 'cohost') {
+    outcome = await ai.runCohost(client, '#eval', c.moment || null);
+  } else if (c.gen === 'timer') {
+    const timers = require('../src/timers/handler');
+    const sent = await timers.runTimerIA(client);
+    timers.stop();
+    if (sent) said.push(sent);
+    outcome = sent ? 'sent' : 'dropped';
+  } else throw new Error(`gen desconocido: ${c.gen}`);
+  const reply = said[said.length - 1] || '';
+  const exp = c.expect || {};
+  const failures = [];
+  if (!reply && !exp.mayStaySilent) failures.push('no hubo mensaje (el caso no permite callar)');
+  if (reply) {
+    for (const p of exp.matchNone || []) if (new RegExp(p, 'iu').test(reply)) failures.push(`contiene /${p}/`);
+    for (const p of exp.matchAll || []) if (!new RegExp(p, 'iu').test(reply)) failures.push(`falta /${p}/`);
+  }
+  for (const p of exp.logNone || [])
+    if (currentLogs.some((l) => new RegExp(p, 'iu').test(l))) failures.push(`el log contiene /${p}/`);
+  return {
+    c,
+    kind: `gen ${c.gen} (${outcome})`,
+    reply,
+    answer: reply,
+    tool: null,
+    discarded: reply
+      ? null
+      : {
+          by: currentLogs.filter((l) => /descartado|sin hechos|sin tema/i.test(l)).slice(-1)[0] || 'silencio',
+          original: '',
+        },
+    retried: [],
+    failures,
+    ms: realNow() - started,
+    calls: aiCalls.map((a) => a.model.split('/').pop() + ' ' + (a.ms / 1000).toFixed(1) + 's'),
+    rate429: state.getCohostStats().groq429 - n429,
+    logs: currentLogs.slice(),
+  };
+}
+
+// Menciones en cadena del mismo usuario: cada respuesta con otro arranque y otro cierre; sigue la broma si se pide
+async function runTurnsCase(c, i, rep) {
+  const started = realNow();
+  resetEvalStream(c);
+  if (c.lastBot) state.addBotMessage(c.lastBot);
+  const tags = fakeTags(i, rep);
+  const replies = [];
+  for (const text of c.turns) {
+    const said = [];
+    const client = { say: (_ch, t) => said.push(String(t)) };
+    await ai.checkPatternMatch(client, '#eval', tags, text);
+    replies.push(stripMention(said[said.length - 1] || ''));
+    skewMs += 60 * 1000;
+  }
+  const exp = c.expect || {};
+  const failures = [];
+  replies.forEach((r, n) => {
+    if (!r) return failures.push(`turno ${n + 1}: sin respuesta`);
+    for (const p of exp.matchNone || [])
+      if (new RegExp(p, 'iu').test(r)) failures.push(`turno ${n + 1}: contiene /${p}/`);
+  });
+  const got = replies.filter(Boolean);
+  const openings = got.map((r) => wordsOf(r).slice(0, 2).join(' '));
+  if (new Set(openings).size < openings.length) failures.push(`arranques repetidos: ${openings.join(' | ')}`);
+  const closings = got.map(closingOf).filter(Boolean);
+  if (new Set(closings).size < closings.length) failures.push(`cierres repetidos: ${closings.join(' | ')}`);
+  if (exp.matchAnyLast && got.length && !exp.matchAnyLast.some((p) => new RegExp(p, 'iu').test(got[got.length - 1])))
+    failures.push(`la última respuesta no cumple ninguno de: ${exp.matchAnyLast.join(' | ')}`);
+  return {
+    c,
+    kind: 'menciones en cadena',
+    reply: replies.map((r, n) => `[${n + 1}] ${r || '(nada)'}`).join('\n             '),
+    answer: '',
+    tool: null,
+    discarded: null,
+    retried: [],
+    failures,
+    ms: realNow() - started,
+    calls: aiCalls.map((a) => a.model.split('/').pop() + ' ' + (a.ms / 1000).toFixed(1) + 's'),
+    rate429: 0,
+    logs: currentLogs.slice(),
+  };
+}
+
+// Ficha real de IGDB: el juego original y no su remake
+async function runIgdbCase(c) {
+  const started = realNow();
+  const { searchGame } = require('../src/twitch/igdb');
+  const info = await searchGame(c.igdb, { detail: false });
+  const failures = [];
+  if (!info) failures.push('IGDB no devolvió el juego');
+  else if (c.expect?.year && !String(info.released || '').startsWith(String(c.expect.year)))
+    failures.push(`esperaba el año ${c.expect.year} y salió ${info.released} (${info.name})`);
+  return {
+    c,
+    kind: 'igdb',
+    reply: info ? `${info.name} · ${info.released} · ${info.developers || '?'}` : '(sin ficha)',
+    answer: '',
+    tool: null,
+    discarded: null,
+    retried: [],
+    failures,
+    ms: realNow() - started,
+    calls: [],
+    rate429: 0,
+    logs: currentLogs.slice(),
+  };
+}
+
 async function runCase(c, i, rep = 0) {
   events = [];
   currentLogs = [];
@@ -247,6 +404,10 @@ async function runCase(c, i, rep = 0) {
   // freshState: salta una hora para que ningún cooldown global ni tope de menciones de casos anteriores descarte este caso
   if (c.freshState) skewMs += 60 * 60 * 1000;
   if (c.filter) return runFilterCase(c);
+  if (c.gen) return runGenCase(c);
+  if (c.turns) return runTurnsCase(c, i, rep);
+  if (c.igdb) return runIgdbCase(c);
+  evalGame = null;
   const n429 = state.getCohostStats().groq429;
   const said = [];
   const client = {

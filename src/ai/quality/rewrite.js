@@ -77,6 +77,7 @@ function speakable(text, { stripEmoji = stripEmojiEnabled() } = {}) {
     .replace(/\s+,/g, ',')
     .replace(/,(?:\s*,)+/g, ',')
     .replace(/,\s*([.!?…])/g, '$1')
+    .replace(/([!?])\.(?!\.)/g, '$1') // «¡FUA!.» y «¿…?.»: el modelo los deja a veces antes de un emote
     .replace(/ {2,}/g, ' ')
     .trim();
 }

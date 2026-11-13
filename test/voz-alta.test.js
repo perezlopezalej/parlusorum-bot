@@ -105,3 +105,15 @@ describe('textos fijos de config/', () => {
     });
   }
 });
+
+test('speakable: no deja «!.» ni «?.» pero respeta los puntos suspensivos', () => {
+  assert.equal(
+    quality.speakable('¡Cinco caídas, FUA!. parlus1Kelokekelowa'),
+    '¡Cinco caídas, FUA! parlus1Kelokekelowa',
+  );
+  assert.equal(
+    quality.speakable('¿Le quitamos el hierro?. parlus1Alataqueel'),
+    '¿Le quitamos el hierro? parlus1Alataqueel',
+  );
+  assert.equal(quality.speakable('Vaya... ¿en serio?...'), 'Vaya... ¿en serio?...');
+});
