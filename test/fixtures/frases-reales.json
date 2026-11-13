@@ -617,5 +617,83 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "f-colosales-vivos",
+    "filter": "timer_ia",
+    "game": "Shadow of the Colossus",
+    "allowed": [
+      "Manu lleva cinco caídas hoy",
+      "Juegan a Shadow of the Colossus y juega Manu",
+      "El chat le está dando consejos a Manu",
+      "Llevan casi dos horas de directo"
+    ],
+    "input": "Manu se cae y se levanta mientras el chat da consejos, y seguimos vivos aquí en las Colosales.",
+    "note": "Frase real del eval (13-11, resumen de media hora): inventa un lugar, «las Colosales».",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-costra-saltar",
+    "filter": "timer_ia",
+    "game": "Shadow of the Colossus",
+    "allowed": [
+      "Manu lleva cinco caídas hoy",
+      "Juegan a Shadow of the Colossus y juega Manu",
+      "El chat le está dando consejos a Manu",
+      "Llevan casi dos horas de directo"
+    ],
+    "input": "Manu sigue buscando esa costra para saltar de nuevo, con el chat dando consejos.",
+    "note": "Frase real del eval (13-11, resumen de media hora): inventa un objeto, «esa costra».",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-control-resumen-hechos",
+    "filter": "timer_ia",
+    "game": "Shadow of the Colossus",
+    "allowed": [
+      "Manu lleva cinco caídas hoy",
+      "Juegan a Shadow of the Colossus y juega Manu",
+      "El chat le está dando consejos a Manu",
+      "Llevan casi dos horas de directo"
+    ],
+    "input": "Manu se cae y se levanta mientras el chat da consejos, y el FUA sigue con él en el coloso.",
+    "note": "Control: solo habla de los hechos y de una palabra del juego (coloso).",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f-shadow-abreviado",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "input": "¡Manu y Shadow, vaya pareja de baile, FUA!",
+    "note": "Frase real del eval (13-11): abrevia el nombre del juego («Shadow»).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f-control-juego-completo",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "input": "¡Manu y Shadow of the Colossus, vaya pareja de baile, FUA!",
+    "note": "Control: el título completo sí vale.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f-control-boton-reinicio",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "input": "¡Cinco caídas y todavía no hemos encontrado el botón de reinicio, Manu!",
+    "note": "Frase real del eval (13-11): «botón» no es «el bot»; no debe descartarse.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

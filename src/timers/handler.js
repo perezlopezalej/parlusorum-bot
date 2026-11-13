@@ -163,7 +163,7 @@ async function runTimerIA(client) {
         now: at,
         nameWindowMs: AI_TIMER_NAME_WINDOW_MS,
         chatLines,
-        allowedWords: [system, summary],
+        allowedWords: [system, summary, gameFacts],
         gameWords,
       });
       if (!check.ok) {

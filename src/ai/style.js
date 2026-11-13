@@ -138,7 +138,7 @@ function buildCohostSystem({
     IDENTITY,
     block(
       'forma',
-      'Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. Cada comentario parte de uno de los <hechos> y le da un giro propio: «hecho» es el número del hecho elegido, «giro» la idea de la broma en tres o cuatro palabras y «frase» lo que se dice en el chat, con tus propias palabras.',
+      'Una frase de menos de 140 caracteres que termina en punto, ! o ?, con una sola idea y palabras sencillas. Cada comentario parte de uno de los <hechos> y le da un giro propio: «hecho» es el número del hecho elegido, «giro» la idea de la broma en tres o cuatro palabras y «frase» lo que se dice en el chat, con tus propias palabras. Solo cuentas lo que dicen los hechos, sin añadir lugares ni objetos; el juego, con su título completo.',
     ),
     renderExamples(examples),
     block('stream', stream),
@@ -311,7 +311,7 @@ function buildTimerSystem({
     IDENTITY,
     block(
       'forma',
-      'Una sola frase natural de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen> y con tus propias palabras. Del chat cuentas como mucho la idea general que da el resumen («el chat dando consejos»). Sin cifras entre paréntesis ni formato de informe, y sin citar la hora ni el día.',
+      'Una sola frase natural de menos de 200 caracteres que cuenta con gracia lo más destacado de la última media hora, usando solo lo que aparece en <resumen> y con tus propias palabras, sin añadir lugares, personajes ni objetos del juego; si nombras el juego, escribe su título completo. Del chat cuentas como mucho la idea general que da el resumen («el chat dando consejos»). Sin cifras entre paréntesis ni formato de informe, y sin citar la hora ni el día.',
     ),
     renderExamples(examples),
     block(
@@ -472,11 +472,15 @@ const FIX_BY_RULE = {
   comparacion: 'Di la idea directa, tal cual pasa.',
   metafora: 'Di la idea directa, tal cual pasa.',
   modismo: 'Dilo con palabras llanas.',
+  inventado: 'Cuenta solo lo que dicen los hechos, con palabras sencillas.',
+  juego_nombre: 'Si nombras el juego, escribe su título completo.',
 };
 // Para los motivos que solo traen texto (hook, timer, resumen…): se reconoce el tipo por palabras clave
 const FIX_BY_REASON = [
   [/met[aá]fora/i, 'metafora'],
   [/frase hecha/i, 'modismo'],
+  [/abrevia el nombre del juego/i, 'juego_nombre'],
+  [/no sale de los hechos/i, 'inventado'],
   [/copia del chat/i, 'copia'],
   [/coletilla/i, 'cierre'],
   [/minutos exactos/i, 'minutos'],

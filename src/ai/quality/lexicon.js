@@ -178,6 +178,24 @@ function mentionsEthnicTerms(text) {
   return ETHNIC_RE.test(String(text || ''));
 }
 
+// El juego se nombra con su título completo: «Shadow» a secas por «Shadow of the Colossus» confunde a quien lo oye.
+// → la palabra del título que aparece sin el título entero, o '' si no hay abreviatura (títulos de una sola palabra: nunca)
+const TITLE_STOP = new Set(['the', 'of', 'and', 'para', 'del', 'con', 'las', 'los', 'una', 'what', 'from', 'with']);
+function abbreviatedGame(text, game = '') {
+  const title = norm(String(game).replace(/\(.*?\)/g, ' '))
+    .replace(/[^a-z0-9ñ ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const parts = title.split(' ').filter(Boolean);
+  if (parts.length < 2 || title === 'desconocido') return '';
+  const t = norm(text)
+    .replace(/[^a-z0-9ñ ]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  if ((' ' + t + ' ').includes(' ' + title + ' ')) return '';
+  const hit = parts.find((w) => w.length >= 5 && !TITLE_STOP.has(w) && (' ' + t + ' ').includes(' ' + w + ' '));
+  return hit || '';
+}
+
 // Juzgar el ambiente del chat ("el chat está quieto/dormilón") no es un comentario, es relleno
 const MOOD_JUDGING_RE =
   /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?|mud[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
@@ -210,7 +228,8 @@ const PROFANITY_RE =
   /\b(put[oa]s?|joder|jod\w+|co[ñn]o|co[ñn]azo|mierda|cabr[oó]n\w*|gilipoll\w+|subnormal\w*|imb[eé]cil\w*|idiota\w*|cag\w+|polla|capull\w+|zorra|maric[oó]n\w*|hostia\w*|retrasad[oa]s?)\b/i;
 
 // El bot no habla de sí mismo en tercera persona
-const BOT_SELF_RE = /\b(?:el|este|ese) bot\b/i;
+// Palabra completa: «botón», «bota», «bote» y «robot» no cuentan
+const BOT_SELF_RE = /(?<![\p{L}\p{N}_])(?:el|este|ese|un) bot(?![\p{L}\p{N}_])/iu;
 
 // "el FUA" siempre en masculino
 const FUA_GENDER_RE = /\b(?:la|una|esa|esta|mi|tu|su|nuestra|vuestra|otra|toda la|la gran)\s+fua\b/i;
@@ -365,6 +384,7 @@ module.exports = {
   mentionsGroups,
   selfHelp,
   mentionsOtherGame,
+  abbreviatedGame,
   MECHANICS_RE,
   leaksTech,
   TIPS_RE,

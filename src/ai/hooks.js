@@ -144,6 +144,7 @@ async function checkChatHook(client, channel) {
           requireQuestion: true,
           extraDeathNumbers: [hookFacts.deaths, hookFacts.streak],
           usedStructures: getUsedStructures(), // una metáfora por stream entre cohost, hook y resumen de media hora
+          game,
         });
         if (!check.ok) {
           feedback = check.reason;

@@ -180,8 +180,9 @@ describe('regla `copia`: palabras del chat que no vienen de los hechos', () => {
   test('wordRank: frecuentes delante, poco comunes fuera de la lista', () => {
     assert.ok(q.wordRank('de') < 10);
     assert.ok(q.wordRank('caída') < 5000);
-    assert.equal(q.wordRank('chupar'), Infinity);
-    assert.equal(q.wordRank('bozal'), Infinity);
+    assert.ok(q.wordRank('chupar') >= 5000, 'chupar es poco común');
+    assert.equal(q.wordRank('colosales'), Infinity);
+    assert.equal(q.wordRank('pitorreo'), Infinity);
   });
 
   test('validateCohost y validateTimerIA la aplican', () => {
@@ -481,4 +482,116 @@ describe('runCohost con hechos', () => {
       'solo llega al selector el que parte del suceso',
     );
   });
+});
+
+describe('ajustes del eval del 13-11', () => {
+  test('«el bot» solo como palabra completa: botón, bota, bote y robot no cuentan', () => {
+    for (const t of ['el botón de reinicio', 'una bota vieja', 'el bote salvavidas', 'un robot', 'esa bota'])
+      assert.notEqual(q.styleProblem(`Cinco caídas y ${t} en la partida, Manu.`)?.rule, 'bot', t);
+    for (const t of ['el bot', 'este bot', 'un bot'])
+      assert.equal(q.styleProblem(`Cinco caídas y ${t} en la partida, Manu.`)?.rule, 'bot', t);
+    assert.equal(q.styleProblem('Soy el bot del canal de Manu y Pao, FUA.')?.rule, undefined);
+  });
+
+  test('inventedDetail: nombres y palabras poco comunes que no salen de los hechos', () => {
+    const ctx = {
+      allowed: ['Manu lleva cinco caídas hoy', 'Juegan a Shadow of the Colossus y juega Manu'],
+      gameWords: ['shadow', 'colossus'],
+      names: ['gangar79'],
+    };
+    assert.equal(q.inventedDetail('Seguimos vivos aquí en las Colosales.', ctx), 'Colosales');
+    assert.equal(q.inventedDetail('Manu mira el colosal.', ctx), '');
+    assert.equal(q.inventedDetail('Manu sigue buscando esa costra para saltar.', ctx), 'costra');
+    assert.equal(q.inventedDetail('Menudo pitorreo se ha montado hoy.', ctx), 'pitorreo');
+    assert.equal(q.inventedDetail('El FUA aprieta y Manu se acuerda de Valisthea.', ctx), 'Valisthea');
+    // lo que sí vale: hechos, el juego (también «colosos»), canal, nicks, mayúscula al abrir frase y palabras comunes
+    assert.equal(q.inventedDetail('Manu y los colosos, cinco caídas y el chat con el FUA.', ctx), '');
+    assert.equal(q.inventedDetail('Gangar79 y los Lusorums animan; Pao mira. Streamer atento.', ctx), '');
+    assert.equal(q.inventedDetail('Manu aguanta, se levanta y sigue peleando con ganas.', ctx), '');
+  });
+
+  test('con la regla `inventado` activa solo si el llamador da el vocabulario permitido', () => {
+    const t = 'Manu sigue buscando esa costra para saltar de nuevo.';
+    assert.equal(q.validateCohost(t, { deathCount: 5 }).rule, undefined);
+    assert.equal(q.validateCohost(t, { deathCount: 5, allowedWords: ['Manu cae'] }).rule, 'inventado');
+    assert.equal(q.validateTimerIA(t, { deathCount: 5, allowedWords: ['Manu cae'] }).ok, false);
+    assert.equal(style.positiveFix('inventado'), 'Cuenta solo lo que dicen los hechos, con palabras sencillas.');
+  });
+
+  test('abbreviatedGame: el título se escribe completo', () => {
+    const G = 'Shadow of the Colossus';
+    assert.equal(q.abbreviatedGame('Manu y Shadow, vaya pareja', G), 'shadow');
+    assert.equal(q.abbreviatedGame('Cada Colossus es un reto', G), 'colossus');
+    assert.equal(q.abbreviatedGame('Manu y Shadow of the Colossus, vaya pareja', G), '');
+    assert.equal(q.abbreviatedGame('Manu y los colosos', G), '');
+    assert.equal(q.abbreviatedGame('Hades es otra cosa', 'Hades'), '', 'un título de una palabra no se abrevia');
+    assert.equal(q.abbreviatedGame('algo', ''), '');
+    const rule = q.validateCohost('¡Manu y Shadow, vaya pareja de baile, FUA!', { deathCount: 3, game: G });
+    assert.equal(rule.rule, 'juego_nombre');
+    assert.equal(q.validateHook('¿Qué os parece Shadow, Lusorums?', { deathCount: 3, game: G }).ok, false);
+    assert.equal(style.positiveFix(rule.reason), 'Si nombras el juego, escribe su título completo.');
+  });
+
+  test('speakable quita el punto suelto tras un emoji', () => {
+    assert.equal(
+      q.speakable('Manu sigue firme como un roble! 😂. parlus1X'),
+      'Manu sigue firme como un roble! 😂 parlus1X',
+    );
+    assert.equal(q.speakable('Qué grande ❤️. FUA'), 'Qué grande ❤️ FUA');
+    assert.equal(q.speakable('Y así... 😂...'), 'Y así... 😂...');
+  });
+});
+
+describe('plurales y vocabulario del directo', () => {
+  const ctx = { allowed: ['Manu lleva cinco caídas hoy'], gameWords: ['shadow', 'colossus'], names: [] };
+
+  test('«tropiezos» y otros plurales se comprueban en singular', () => {
+    for (const t of [
+      'Cinco tropiezos seguidos.',
+      'Dos rachas largas y tres jefes.',
+      'Los esquives de Manu y sus combos.',
+    ])
+      assert.equal(q.inventedDetail(t, ctx), '', t);
+    assert.equal(
+      q.validateCohost('Cinco tropiezos y Manu sigue en pie, FUA.', { deathCount: 5, allowedWords: ['Manu cae'] }).rule,
+      undefined,
+    );
+    // lo inventado sigue cayendo
+    assert.equal(q.inventedDetail('Manu busca esa costra otra vez.', ctx), 'costra');
+  });
+
+  test('el vocabulario del directo (data/vocabulario-directo.txt) siempre vale, también en plural', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const file = path.join(__dirname, '..', 'src', 'ai', 'quality', 'data', 'vocabulario-directo.txt');
+    const words = fs
+      .readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim() && !l.startsWith('#'));
+    for (const w of [
+      'caida',
+      'tropiezo',
+      'racha',
+      'jefe',
+      'combo',
+      'esquiva',
+      'partida',
+      'directo',
+      'stream',
+      'intento',
+      'revancha',
+    ])
+      assert.ok(words.includes(w), w);
+    for (const w of ['revancha', 'revanchas', 'esquiva', 'esquivas', 'checkpoints', 'speedruns'])
+      assert.equal(q.inventedDetail(`Manu y sus ${w} de hoy.`, ctx), '', w);
+  });
+});
+
+test('speakable: «..» pasa a «.» sin tocar «...» ni «…»', () => {
+  assert.equal(
+    q.speakable('Sigue sin saber dónde está el botón de salto.. parlus1X'),
+    'Sigue sin saber dónde está el botón de salto. parlus1X',
+  );
+  assert.equal(q.speakable('Vaya... qué cosa… ¿no?'), 'Vaya... qué cosa… ¿no?');
+  assert.equal(q.speakable('Pues no.... ni así'), 'Pues no.... ni así');
 });

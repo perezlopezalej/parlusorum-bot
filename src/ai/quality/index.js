@@ -36,6 +36,7 @@ const {
   negativeSummary,
   summaryPersonalLife,
   mentionsOtherGame,
+  abbreviatedGame,
   claimsEnemyKills,
   mentionsGenre,
   forcedComparison,
@@ -136,7 +137,7 @@ const {
   factProblem,
   giroProblem,
 } = require('./facts');
-const { copiedFromChat, wordRank } = require('./copy');
+const { copiedFromChat, inventedDetail, wordRank } = require('./copy');
 
 module.exports = {
   oneLine,
@@ -258,5 +259,7 @@ module.exports = {
   factProblem,
   giroProblem,
   copiedFromChat,
+  inventedDetail,
+  abbreviatedGame,
   wordRank,
 };

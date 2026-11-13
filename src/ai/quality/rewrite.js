@@ -78,6 +78,8 @@ function speakable(text, { stripEmoji = stripEmojiEnabled() } = {}) {
     .replace(/,(?:\s*,)+/g, ',')
     .replace(/,\s*([.!?…])/g, '$1')
     .replace(/([!?])\.(?!\.)/g, '$1') // «¡FUA!.» y «¿…?.»: el modelo los deja a veces antes de un emote
+    .replace(/(?<![.\u2026])\.\.(?![.\u2026])/g, '.') // \u00ABsalto..\u00BB (no toca \u00AB...\u00BB ni \u00AB\u2026\u00BB)
+    .replace(/(\p{Extended_Pictographic}\uFE0F?)\.(?!\.)/gu, '$1') // «como un roble! 😂.»
     .replace(/ {2,}/g, ' ')
     .trim();
 }

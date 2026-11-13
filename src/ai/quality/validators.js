@@ -24,13 +24,14 @@ const {
   matchesFormula,
   mentionsGenre,
   mentionsMechanics,
+  abbreviatedGame,
   mentionsOtherGame,
   mirrorsUser,
   misusedIdiom,
   personalMatch,
   selfHelp,
 } = require('./lexicon');
-const { copiedFromChat } = require('./copy');
+const { copiedFromChat, inventedDetail } = require('./copy');
 const { factProblem, giroProblem, inventedQuote, unsupportedAttributes } = require('./facts');
 const {
   WORD_LIST_RE,
@@ -149,6 +150,12 @@ function validateAuto(text) {
   return { ok: true };
 }
 
+const INVENTED_REASON = (w) =>
+  `usa «${w}», un nombre o una palabra poco común que no sale de los hechos, del juego ni del canal; cuenta solo lo que está en los hechos`;
+
+const ABBREVIATED_REASON = (w, game) =>
+  `abrevia el nombre del juego («${w}»); si lo nombras, escribe el título completo («${game}»)`;
+
 const EXACT_MINUTES_REASON =
   'cita los minutos exactos del directo; usa una expresión aproximada («casi dos horas», «un buen rato»)';
 
@@ -205,6 +212,16 @@ function validateCohost(
       rule: 'copia',
       reason: `copia del chat «${copied}»; cuenta el hecho con tus propias palabras`,
     };
+  const invented = allowedWords.length
+    ? inventedDetail(text, {
+        allowed: [...facts.map((f) => f.texto), ...allowedWords, game],
+        gameWords,
+        names: chatLines.map((l) => l.username),
+      })
+    : '';
+  if (invented) return { ok: false, rule: 'inventado', reason: INVENTED_REASON(invented) };
+  const abbreviated = abbreviatedGame(text, game);
+  if (abbreviated) return { ok: false, rule: 'juego_nombre', reason: ABBREVIATED_REASON(abbreviated, game) };
   if (lastCitedDeaths && citesDeathCount(text, deathCount))
     return { ok: false, rule: 'contador', reason: DEATH_REPEAT_REASON };
   const gameProblem = gameTalkProblem(text);
@@ -291,6 +308,7 @@ function validateHook(
     extraDeathNumbers = [],
     now = Date.now(),
     usedStructures = new Set(),
+    game = '',
   } = {},
 ) {
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
@@ -307,8 +325,10 @@ function validateHook(
   if (usedStructures.has(METAPHOR_MARK) && isMetaphor(text)) return { ok: false, reason: METAPHOR_REASON };
   const style = styleProblem(text, { player, now: new Date(now) });
   if (style) return { ok: false, reason: style.reason };
-  const game = gameTalkProblem(text);
-  if (game) return { ok: false, reason: game };
+  const abbreviated = abbreviatedGame(text, game);
+  if (abbreviated) return { ok: false, reason: ABBREVIATED_REASON(abbreviated, game) };
+  const talk = gameTalkProblem(text);
+  if (talk) return { ok: false, reason: talk };
   return { ok: true };
 }
 
@@ -405,6 +425,16 @@ function validateTimerIA(
     numbers: [deathCount, ...extraDeathNumbers],
   });
   if (copied) return { ok: false, reason: `copia del chat «${copied}»; cuenta la idea con tus propias palabras` };
+  const invented = allowedWords.length
+    ? inventedDetail(text, {
+        allowed: [...allowedWords, currentGame],
+        gameWords,
+        names: chatLines.map((l) => l.username),
+      })
+    : '';
+  if (invented) return { ok: false, reason: INVENTED_REASON(invented) };
+  const abbreviated = abbreviatedGame(text, currentGame);
+  if (abbreviated) return { ok: false, reason: ABBREVIATED_REASON(abbreviated, currentGame) };
   if (matchesFormula(text) && repeatsFormula(text, recent))
     return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent, 0.5))

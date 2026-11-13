@@ -27,6 +27,8 @@ function verdict(c) {
     player: c.player || 'manu',
     // chat: líneas del chat de ese momento (regla `copia`); el vocabulario del juego sale de su nombre
     chatLines: c.chat || [],
+    // allowed: textos legítimos (hechos del momento): activa la regla `inventado`
+    allowedWords: c.allowed || [],
     gameWords: gameVocabulary(c.game || ''),
   };
   switch (c.filter) {

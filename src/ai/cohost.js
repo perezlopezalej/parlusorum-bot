@@ -385,7 +385,7 @@ async function runCohost(client, channel, moment = null) {
       const attemptCtx = {
         ...validateCtx,
         facts: moment ? momentFacts.slice(0, 1) : momentFacts,
-        allowedWords: [system, user],
+        allowedWords: [system, user, gameFacts],
       };
       const response = await aiChat('cohost', {
         max_tokens: COHOST_CANDIDATES === 3 ? 450 : 320, // cada candidato es un objeto { hecho, giro, frase }
