@@ -64,8 +64,10 @@ describe('Lusorums (comunidad)', () => {
     assert.deepEqual(out, ['¡Vamos, Lusorums!', 'Qué racha.', 'Ánimo.', '¡Fuerza!', '¡Otra vez, Lusorums!']);
   });
 
-  test('nunca en un mensaje dirigido a una persona', () => {
-    assert.equal(q.limitLusorums('@pepe vamos, Lusorums, que se puede', []).text, '@pepe vamos, que se puede');
+  test('«Lusorum» a una persona al contestarle con @usuario vale, con el mismo límite de 1 de cada 4', () => {
+    const first = q.limitLusorums('@pepe vamos, Lusorum, que se puede', []);
+    assert.deepEqual(first, { text: '@pepe vamos, Lusorum, que se puede', had: true });
+    assert.equal(q.limitLusorums('@pepe vamos, Lusorum, que se puede', [true]).text, '@pepe vamos, que se puede');
   });
 
   test('no toca "parlusorum"', () => {

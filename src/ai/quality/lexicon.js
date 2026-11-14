@@ -61,6 +61,12 @@ function disparagesGame(text) {
 const GAME_FACT_RE =
   /\b(niveles?|mapa|personajes?|finales?|secuela|dlc|logros?|trofeos?|lanzamiento|desarrolladora|g[eé]nero|campa[ñn]a|argumento|historia del juego|multijugador|cooperativo|a[ñn]o de salida)\b/i;
 
+// ¿Afirma algo del juego más allá de nombrarlo (mecánicas, niveles, personajes, finales…)? Nombrarlo a secas no es un dato.
+function mentionsGameFacts(text) {
+  const t = String(text || '');
+  return mentionsMechanics(t) || GAME_FACT_RE.test(t);
+}
+
 function mentionsGame(text, game = '') {
   const t = String(text || '');
   if (mentionsMechanics(t) || GAME_FACT_RE.test(t)) return true;
@@ -84,6 +90,15 @@ function leaksTech(text) {
   return TECH_LEAK_RE.test(String(text || ''));
 }
 
+// «Ficha» y «datos» son términos internos (la ficha de IGDB que lee el bot): en el chat se dice «no sé», «de eso ni idea».
+// Aparte de leaksTech para que !dios_fua pueda reintentar en vez de caer a la respuesta de reserva.
+const SHEET_TERM_RE =
+  /(?<![\p{L}\p{N}])(?:fichas?(?: t[eé]cnica)?|datos (?:del juego|que (?:tengo|manejo|me constan))|mi base de datos)(?![\p{L}\p{N}])/iu;
+
+function mentionsSheet(text) {
+  return SHEET_TERM_RE.test(String(text || ''));
+}
+
 function mentionsGameName(t, game = '') {
   const g = norm(game)
     .replace(/\(.*?\)/g, '')
@@ -95,8 +110,58 @@ function mentionsGameName(t, game = '') {
   return false;
 }
 
+// «Ustedes» al chat: en España se tutea en plural (vosotros). Se detecta la palabra «ustedes» y, cuando la frase se dirige al
+// chat («Lusorums, ¿cuántos colosos creen…?», «¿Qué piensan, chat?»), las formas verbales de ustedes (creen, piensan, quieren…).
+const CHAT_ADDRESS_START_RE = /^[\s¡¿"“«(\-—]*(?:lusorums?|chat|gente|chicos|chavales|familia)\s*[,:]/iu;
+const CHAT_ADDRESS_END_RE = /[,]\s*(?:lusorums?|chat|gente|chicos|chavales|familia)\s*[?!.…]*\s*$/iu;
+const USTEDES_VERB_RE = new RegExp(
+  '(?<![\\p{L}\\p{N}])(?:' +
+    [
+      'cre(?:en|an)',
+      'piens(?:an|en)',
+      'opin(?:an|en)',
+      'quier(?:en|an)',
+      'prefier(?:en|an)',
+      'esper(?:an|en)',
+      'apuest(?:an|en)',
+      'sab(?:en)',
+      'pued(?:en|an)',
+      'necesit(?:an|en)',
+      'sient(?:en|an)',
+      'recuerd(?:an|en)',
+      'imagin(?:an|en)',
+      'dic(?:en)',
+      'dig(?:an)',
+      'ti(?:enen)',
+      'ten(?:gan)',
+      'vean',
+      'mir(?:an|en)',
+      'veng(?:an)',
+      'hac(?:en)',
+      'hag(?:an)',
+      'quer(?:ían)',
+      'cre(?:erían)',
+      'respond(?:en|an)',
+      'cuent(?:an|en)',
+      'animan',
+      'animen',
+    ].join('|') +
+    ')(?![\\p{L}\\p{N}])',
+  'iu',
+);
+function ustedesForm(text) {
+  const t = String(text || '');
+  if (/(?<![\p{L}\p{N}])ustedes(?![\p{L}\p{N}])/iu.test(t)) return 'ustedes';
+  for (const sentence of t.split(/(?<=[.!?…])\s+/)) {
+    if (!CHAT_ADDRESS_START_RE.test(sentence) && !CHAT_ADDRESS_END_RE.test(sentence)) continue;
+    const m = USTEDES_VERB_RE.exec(sentence);
+    if (m) return m[0];
+  }
+  return '';
+}
+
 function hasLatam(text) {
-  return LATAM_RE.test(text);
+  return LATAM_RE.test(text) || !!ustedesForm(text);
 }
 
 function isRobotRefusal(text) {
@@ -453,6 +518,8 @@ module.exports = {
   abbreviatedGame,
   MECHANICS_RE,
   leaksTech,
+  mentionsSheet,
+  mentionsGameFacts,
   TIPS_RE,
   REDIRECT_RE,
   genderedParlusorum,

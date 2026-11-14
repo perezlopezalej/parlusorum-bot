@@ -325,6 +325,11 @@ async function handleQuestion(client, channel, tags, args) {
       logger.info(`!dios_fua: detalle que no está en la ficha («${inventedName}»)`);
     }
     // Anglicismos («lads», «power»): como en el resto de textos del bot, salvo los de la pregunta o el título del juego
+    // «Ficha» y «datos» son términos internos: se contesta «no sé» o «de eso ni idea», sin nombrarlos (reintento)
+    if (!techLeak && !discard && quality.mentionsSheet(answer)) {
+      discard = true;
+      logger.info('!dios_fua: la respuesta habla de la ficha o de los datos');
+    }
     const english = !techLeak && !discard ? quality.anglicism(answer, detailCtx.allowed) : null;
     if (english) {
       discard = true;
@@ -343,7 +348,7 @@ async function handleQuestion(client, channel, tags, args) {
       messages.push({
         role: 'user',
         content:
-          'Responde otra vez en español y con tus palabras, en una o dos frases, contestando directamente a lo que pregunta con la ficha; para lo que la ficha no diga, di con humor que no tienes ni idea.',
+          'Responde otra vez en español y con tus palabras, en una o dos frases, contestando directamente a lo que pregunta con lo que sabes; de lo que no sepas, di con humor «de eso no tengo ni idea», sin explicar por qué.',
       });
       const retry = await aiChat('diosfua', { max_tokens: qMaxTokens, messages });
       const retryAnswer = retry.choices[0].message.content;
@@ -354,6 +359,7 @@ async function handleQuestion(client, channel, tags, args) {
         !quality.unsupportedAttributes(retryAnswer, gameText) &&
         !quality.inventedDetail(retryAnswer, detailCtx) &&
         !quality.anglicism(retryAnswer, detailCtx.allowed) &&
+        !quality.mentionsSheet(retryAnswer) &&
         !(await factcheck.shouldDiscard(retryAnswer, gameText, { source: 'juego' }))
       ) {
         answer = retryAnswer;

@@ -216,8 +216,8 @@ function stripFillers(text, re = FILLER_RE) {
 
 const limitFillers = (text) => (typeof text === 'string' ? stripFillers(text) : text);
 
-// "Lusorums" (la comunidad): solo al chat en general, en 1 de cada 4 mensajes del bot (como el emote, por
-// ventana de los últimos 3) y nunca en un mensaje dirigido a una persona (empieza por @usuario).
+// "Lusorums" (la comunidad) y "Lusorum" (cada miembro, también al contestar a alguien con @usuario): como mucho en 1 de
+// cada 4 mensajes del bot (como el emote, por ventana de los últimos 3).
 const LUSORUMS_RE = /(,\s*)?(?<![\p{L}\p{N}_@])lusorums?(?![\p{L}\p{N}_])(\s*,)?/giu;
 
 const hasLusorums = (text) => {
@@ -227,7 +227,7 @@ const hasLusorums = (text) => {
 
 function limitLusorums(text, recentFlags = []) {
   if (typeof text !== 'string' || !hasLusorums(text)) return { text, had: false };
-  if (!/^\s*@/.test(text) && !recentFlags.slice(-3).some(Boolean)) return { text, had: true };
+  if (!recentFlags.slice(-3).some(Boolean)) return { text, had: true };
   return { text: stripFillers(text, LUSORUMS_RE), had: false };
 }
 

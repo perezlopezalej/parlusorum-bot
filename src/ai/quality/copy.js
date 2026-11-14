@@ -205,6 +205,15 @@ function isCommonVerbForm(k) {
   return verbLemmas(k).some((l) => ranks.has(l));
 }
 
+// Forma verbal regular de terminación inequívoca (infinitivo, gerundio, 1.ª plural, pretérito, imperfecto en -aba, futuro y
+// condicional): el modelo puede usar un verbo normal que la lista de frecuencia no trae («domar», «amansar»), y un verbo así
+// no es un dato inventado del juego (los nombres propios y los sustantivos no acaban así). Los participios y las
+// terminaciones -an/-en/-a/-o son ambiguos con sustantivos («costra», «pitorreo») y no cuentan.
+const REGULAR_VERB_RE = new RegExp(
+  '^[a-zñ]{3,}(?:[aei]r|ando|iendo|yendo|amos|emos|imos|aron|ieron|aban|abas|aba|[aei]remos)$',
+);
+const looksLikeVerb = (k) => REGULAR_VERB_RE.test(k);
+
 // Distancia de edición (Levenshtein) entre dos palabras cortas
 function editDistance(a, b) {
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -251,7 +260,8 @@ function inventedDetail(text, { allowed = [], gameWords = [], names = [] } = {})
       k.length >= 5 &&
       rank >= INVENTED_RANK &&
       !hasListPrefix(k.slice(0, Math.max(5, k.length - 2))) &&
-      !isCommonVerbForm(k);
+      !isCommonVerbForm(k) &&
+      (proper || !looksLikeVerb(k));
     if (!proper && !uncommon) continue;
     // un nombre propio solo vale exacto; una palabra poco común, también si es variante cercana de una permitida
     if (

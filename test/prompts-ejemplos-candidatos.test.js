@@ -245,7 +245,10 @@ describe('cohost con tres candidatos', () => {
     assert.equal(sent.length, 0);
     assert.equal(prompts.length, 2, 'un intento y un reintento');
     const retrySys = prompts[1][0].content;
-    assert.match(retrySys, /<correccion>Escríbelo como lo diría alguien de Madrid\.<\/correccion>/);
+    assert.match(
+      retrySys,
+      /<correccion>Escríbelo como lo diría alguien de Madrid; al chat se le habla de vosotros[^<]*<\/correccion>/,
+    );
     assert.doesNotMatch(retrySys, /pucha|ahorita|órale|wey|chido/i);
   });
 

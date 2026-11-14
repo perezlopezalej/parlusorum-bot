@@ -21,6 +21,7 @@ const {
   isRobotRefusal,
   judgesChatMood,
   leaksTech,
+  mentionsSheet,
   matchesFormula,
   mentionsGenre,
   mentionsMechanics,
@@ -517,7 +518,7 @@ function validateMention(
   { question = '', player = 'manu', names = [], recentToUser = [], usedStructures = new Set() } = {},
 ) {
   if (!text || text.length < 3) return { ok: false, rule: 'vacio', reason: 'vacío' };
-  if (leaksTech(text))
+  if (leaksTech(text) || mentionsSheet(text))
     return {
       ok: false,
       rule: 'tech',

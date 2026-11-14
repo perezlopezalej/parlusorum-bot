@@ -221,7 +221,7 @@ function buildQuestionSystem({
     IDENTITY,
     block(
       'forma',
-      'Una o dos frases cortas en español de España. Si el mensaje nombra un videojuego (para pedir datos o tu opinión) y trae una <ficha_igdb>, cuentas solo lo que diga la ficha; si no la trae, lo primero es llamar a la herramienta buscar_juego, y después cuentas solo lo que devuelva (género, ambientación, descripción, fecha, estudio), y con tus palabras y en español (fechas como «octubre de 2026», sin copiar los campos de la ficha ni frases en inglés); si los datos no dicen algo, reconócelo con humor («de eso no tengo ni idea»). En cultura general, explica primero con claridad lo que sabes y, si dudas, dilo con humor; el toque del FUA va en una frase final aparte. Si la pregunta es concreta (un país, una fecha, un estudio, «¿X o Y?»), lo primero es contestarla directamente con el dato de la ficha. Todo en una sola línea de texto, con tu personalidad, como uno más del chat.',
+      'Una o dos frases cortas en español de España. Si el mensaje nombra un videojuego (para pedir datos o tu opinión) y trae una <ficha_igdb>, cuentas solo lo que diga la ficha; si no la trae, lo primero es llamar a la herramienta buscar_juego, y después cuentas solo lo que devuelva (género, ambientación, descripción, fecha, estudio), y con tus palabras y en español (fechas como «octubre de 2026», sin copiar los campos de la ficha ni frases en inglés); lo que no sepas, reconócelo con humor («de eso no tengo ni idea»). En cultura general, explica primero con claridad lo que sabes y, si dudas, dilo con humor; el toque del FUA va en una frase final aparte. Si la pregunta es concreta (un país, una fecha, un estudio, «¿X o Y?»), lo primero es contestarla directamente con el dato de la ficha. Todo en una sola línea de texto, con tu personalidad, como uno más del chat.',
     ),
     renderExamples(examples),
     block('contexto', context),
@@ -433,7 +433,7 @@ function rankCandidates(candidates, { validate, recent = [], groupOf = null }) {
 // --- Reintentos: solo la corrección, en positivo ---
 const FIX_BY_RULE = {
   vacio: 'Escribe una frase completa con una ocurrencia propia de Dios Fua.',
-  latam: 'Escríbelo como lo diría alguien de Madrid.',
+  latam: 'Escríbelo como lo diría alguien de Madrid; al chat se le habla de vosotros («creéis», «queréis»).',
   robot: 'Responde con una ocurrencia propia de Dios Fua.',
   muertes: 'Habla de la partida y del chat, sin cifras de caídas.',
   cortada: 'Termina la frase con una idea completa y sencilla.',
@@ -493,7 +493,7 @@ const FIX_BY_RULE = {
   chat_ajeno: 'Habla del chat del canal, los Lusorums, y de lo que dicen los hechos.',
   duracion: 'Di la duración que dan los hechos, con sus mismas palabras.',
   anglicismo: 'Escríbelo todo en español de España, con palabras españolas.',
-  ficha: 'Cuenta solo lo que dice la ficha y, de lo demás, di con humor que no lo sabes.',
+  ficha: 'Cuenta solo lo que sabes y, de lo demás, di con humor que no lo sabes.',
 };
 // Para los motivos que solo traen texto (hook, timer, resumen…): se reconoce el tipo por palabras clave
 const FIX_BY_REASON = [

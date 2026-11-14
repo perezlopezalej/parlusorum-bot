@@ -4,8 +4,15 @@ const { norm } = require('./text');
 const DEATH_WORDS_RE =
   /\b(muert[eoa]s?|muri[oó]|morir|mori|ca[ií]das?|ca[ey]ó|caer|cae|caen|caerá|cay[oó]|fallece|palm[oó])\b/i;
 
-// Muertes: con contador a 0 no se habla de muertes/caídas; si se cita una cifra debe ser la del contador
+// Frases que dan por hecho que el streamer ha muerto sin decir «muerte» («el FUA sigue vivo, el streamer no tanto»): con el
+// contador a cero contradicen los datos
+const IMPLIED_DEATH_RE =
+  /(?<![\p{L}\p{N}])(?:no tanto|resucit\p{L}*|reviv\p{L}*|sobreviv\p{L}*|fantasma|ata[uú]d|funeral(?:es)?|cementerio|en paz descanse)(?![\p{L}\p{N}])/iu;
+
+// Muertes: con contador a 0 no se habla de muertes/caídas ni se da a entender que las hubo; si se cita una cifra debe ser la
+// del contador
 function mentionsUnrecordedDeaths(text, deathCount, extraNumbers = []) {
+  if (!deathCount && IMPLIED_DEATH_RE.test(text)) return true;
   if (!DEATH_WORDS_RE.test(text)) return false;
   if (!deathCount) return true;
   const nums = [

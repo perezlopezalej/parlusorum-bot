@@ -30,6 +30,7 @@ function summaryProblem(text, recap = null) {
     return 'habla de vida personal o charla ajena al stream (comida, clima, calor...); habla solo del juego, el stream y el ambiente del chat';
   const junk = quality.junkProblem(text, { minWords: 1 });
   if (junk) return junk.reason;
+  if (quality.hasLatam(text)) return 'usa expresiones latinoamericanas (ustedes, creen…); escribe español de España';
   const english = quality.anglicism(text, [recap?.game]);
   if (english) return quality.ANGLICISM_REASON(english);
   if (recap) {

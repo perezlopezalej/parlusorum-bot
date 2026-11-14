@@ -18,8 +18,12 @@
  * Casos con "turns" (menciones en cadena del mismo usuario, lastBot opcional) comprueban que no repiten arranque ni cierre.
  * Casos con "igdb" (nombre) y expect.year comprueban la ficha real de IGDB.
  *
- * Uso: npm run eval [-- --only id1,id2] [-- --verbose] [-- --repeat N]
- * Sale con código 1 si algún caso no cumple lo esperado.
+ * Un silencio o una respuesta de reserva causados por un 429 de Groq (cupo agotado) o por un fallo de la IA NO cuentan como OK:
+ * el caso sale como «NO EVAL» (no evaluado) y hay que repetirlo. Los casos de cohost con "runs" exigen que se envíe al menos un
+ * comentario, aunque admitan callar. Para no agotar el cupo por minuto: --pause SEGUNDOS espera ese rato tras cada 2 casos.
+ *
+ * Uso: npm run eval [-- --only id1,id2] [-- --verbose] [-- --repeat N] [-- --pause SEGUNDOS]
+ * Sale con código 1 si algún caso no cumple lo esperado o no se pudo evaluar.
  */
 
 require('dotenv').config({ quiet: true });
@@ -31,6 +35,8 @@ const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
 const repeatIdx = args.indexOf('--repeat');
 const repeat = repeatIdx >= 0 ? Math.max(1, parseInt(args[repeatIdx + 1], 10) || 1) : 1;
+const pauseIdx = args.indexOf('--pause');
+const pauseSeconds = pauseIdx >= 0 ? Math.max(0, parseInt(args[pauseIdx + 1], 10) || 0) : 0;
 const onlyIdx = args.indexOf('--only');
 const only =
   onlyIdx >= 0
@@ -143,6 +149,15 @@ function flattenPool(key) {
   return [];
 }
 
+// ¿Falló la IA por cupo (429, sin cupo) o por un error durante este caso? Las líneas «cupo agotado, probando otro modelo» son un
+// salto a un modelo de reserva que funcionó y no cuentan. Solo importa cuando el resultado es un silencio o una reserva.
+const QUOTA_TROUBLE_RE =
+  /429|Rate limit reached|[Ss]in cupo|Revisión del mensaje falló|Comprobación de datos del juego falló|Selector falló|Co-host: |Pattern matcher: |falló:/;
+function quotaTrouble() {
+  return currentLogs.some((l) => QUOTA_TROUBLE_RE.test(l) && !/probando/.test(l));
+}
+const reservePool = () => [...(messagesConfig.errors?.ratelimit || []), ...(messagesConfig.errors?.generic || [])];
+
 const stripMention = (s) => String(s || '').replace(/^@\S+\s*/, '');
 
 // Caso de selector: candidatos reales (buenos y malos) y el contexto; el selector con IA debe elegir el bueno o callar (pick: 'none').
@@ -235,10 +250,15 @@ async function runFilterCase(c) {
     else if (r.nonsense) rejectedBy = 'revisión de sentido (IA)';
   }
   const failures = [];
-  if (c.expect?.rejected === true && !rejectedBy) failures.push('la frase mala pasó todos los filtros');
+  // una revisión por IA que falló por cupo no es una frase rechazada: no se evaluó
+  const notEvaluated = !!rejectedBy && !/^regla/.test(rejectedBy) && quotaTrouble();
+  if (notEvaluated) rejectedBy = null;
+  if (c.expect?.rejected === true && !rejectedBy && !notEvaluated)
+    failures.push('la frase mala pasó todos los filtros');
   if (c.expect?.rejected === false && rejectedBy) failures.push(`una frase buena se descartó (${rejectedBy})`);
   return {
     c,
+    notEvaluated,
     kind: `filtro ${c.filter}`,
     reply: rejectedBy ? `(descartada por ${rejectedBy})` : '(pasa los filtros)',
     answer: '',
@@ -342,7 +362,14 @@ async function runGenCase(c) {
   const reply = many ? said.join(' ⏎ ') : said[said.length - 1] || '';
   const exp = c.expect || {};
   const failures = [];
-  if (!reply && !exp.mayStaySilent) failures.push('no hubo mensaje (el caso no permite callar)');
+  // Sin ningún mensaje y con la IA fallando por cupo: no se evaluó. Con "runs" hay que enviar al menos un comentario aunque
+  // el caso admita callar (un silencio total no demuestra nada)
+  const notEvaluated = !reply && quotaTrouble();
+  if (!notEvaluated) {
+    if (!reply && !exp.mayStaySilent) failures.push('no hubo mensaje (el caso no permite callar)');
+    if (!reply && many)
+      failures.push(`ninguno de los ${c.runs} comentarios se envió (con "runs" hace falta al menos uno)`);
+  }
   if (reply) {
     for (const p of exp.matchNone || []) if (new RegExp(p, 'iu').test(reply)) failures.push(`contiene /${p}/`);
     for (const p of exp.matchAll || []) if (!new RegExp(p, 'iu').test(reply)) failures.push(`falta /${p}/`);
@@ -356,6 +383,7 @@ async function runGenCase(c) {
     if (currentLogs.some((l) => new RegExp(p, 'iu').test(l))) failures.push(`el log contiene /${p}/`);
   return {
     c,
+    notEvaluated,
     kind: `gen ${c.gen} (${outcome})`,
     reply,
     answer: reply,
@@ -507,7 +535,24 @@ async function runCase(c, i, rep = 0) {
   const retried = !discarded ? hits.map((e) => `${e.filter}${e.reason ? ` — ${e.reason}` : ''}`) : [];
 
   const failures = check(c.expect || {}, { kind, tool, reply, answer, discarded, ret });
-  return { c, kind, reply, answer, tool, discarded, retried, failures, ms, calls, rate429, logs: currentLogs.slice() };
+  // Una respuesta de reserva de error («demasiado chat…») o un silencio con la IA fallando por cupo no evalúan nada
+  const reserve = !!reply && reservePool().includes(answer);
+  const notEvaluated = reserve || ((!reply || !!discarded) && (quotaTrouble() || rate429 > 0));
+  return {
+    c,
+    notEvaluated,
+    kind,
+    reply,
+    answer,
+    tool,
+    discarded,
+    retried,
+    failures: notEvaluated ? [] : failures,
+    ms,
+    calls,
+    rate429,
+    logs: currentLogs.slice(),
+  };
 }
 
 // ─── Comprobación de lo esperado ───
@@ -563,10 +608,12 @@ function check(exp, r) {
     console.log(s);
   };
   let failed = 0;
+  let notEvaluatedCases = 0;
 
   const stability = [];
   for (let i = 0; i < cases.length; i++) {
     let passes = 0;
+    let unevaluated = 0;
     for (let n = 1; n <= repeat; n++) {
       let r;
       try {
@@ -587,11 +634,15 @@ function check(exp, r) {
       }
       skewMs += 15 * 60 * 1000;
 
-      const ok = r.failures.length === 0;
+      const ne = !!r.notEvaluated;
+      const ok = !ne && r.failures.length === 0;
       if (ok) passes++;
+      if (ne) unevaluated++;
       log(
-        `\n[${i + 1}/${cases.length}${repeat > 1 ? ` · ${n}/${repeat}` : ''}] ${ok ? 'OK  ' : r.c.informativo ? 'AVISO' : 'FALLA'} ${r.c.id} — ${r.c.input}`,
+        `\n[${i + 1}/${cases.length}${repeat > 1 ? ` · ${n}/${repeat}` : ''}] ${ne ? 'NO EVAL' : ok ? 'OK  ' : r.c.informativo ? 'AVISO' : 'FALLA'} ${r.c.id} — ${r.c.input}`,
       );
+      if (ne)
+        log('  ⚠ no evaluado: silencio o respuesta de reserva con la IA fallando (429 / cupo); repetir con --pause');
       log(`  esperado : ${r.c.note || '(sin nota)'}`);
       log(
         `  ruta     : ${r.kind || 'ninguna'} · ${(r.ms / 1000).toFixed(1)} s${r.tool ? ` · buscar_juego("${r.tool.query}") → ${r.tool.result}` : ''}`,
@@ -608,15 +659,20 @@ function check(exp, r) {
       for (const msg of r.failures) log(`  ✘ ${msg}`);
       if (verbose) for (const l of r.logs) log(`    · ${l}`);
     }
-    if (passes < repeat && !cases[i].informativo) failed++;
+    if (passes + unevaluated < repeat && !cases[i].informativo) failed++;
+    if (unevaluated && !cases[i].informativo) notEvaluatedCases++;
+    if (pauseSeconds && (i + 1) % 2 === 0 && i + 1 < cases.length) {
+      console.log(`  (pausa de ${pauseSeconds} s para no agotar el cupo por minuto)`);
+      await new Promise((r) => setTimeout(r, pauseSeconds * 1000));
+    }
     stability.push(
-      `${passes === repeat ? 'estable  ' : cases[i].informativo ? 'AVISO    ' : passes === 0 ? 'FALLA    ' : 'INESTABLE'} ${cases[i].id}: ${passes}/${repeat}${cases[i].informativo ? ' (informativo, no cuenta)' : ''}`,
+      `${unevaluated ? 'NO EVAL  ' : passes === repeat ? 'estable  ' : cases[i].informativo ? 'AVISO    ' : passes === 0 ? 'FALLA    ' : 'INESTABLE'} ${cases[i].id}: ${passes}/${repeat}${cases[i].informativo ? ' (informativo, no cuenta)' : ''}`,
     );
   }
   if (repeat > 1) log(`\nRepeticiones por caso:\n  ${stability.join('\n  ')}`);
 
   log(
-    `\n${total - failed}/${total} casos cumplen lo esperado (sin contar los informativos)${repeat > 1 ? ` en las ${repeat} repeticiones` : ''}.${blockedWrites.size ? ` (escrituras Supabase bloqueadas: ${[...blockedWrites].join(', ')})` : ''}`,
+    `\n${total - failed - notEvaluatedCases}/${total} casos cumplen lo esperado (sin contar los informativos)${repeat > 1 ? ` en las ${repeat} repeticiones` : ''}.${notEvaluatedCases ? ` ${notEvaluatedCases} NO EVALUADOS por cupo o fallo de la IA: repetirlos con --pause.` : ''}${blockedWrites.size ? ` (escrituras Supabase bloqueadas: ${[...blockedWrites].join(', ')})` : ''}`,
   );
   try {
     const dir = path.join(__dirname, '../logs');
@@ -625,5 +681,5 @@ function check(exp, r) {
   } catch {
     /* el informe ya salió por consola */
   }
-  process.exit(failed ? 1 : 0);
+  process.exit(failed || notEvaluatedCases ? 1 : 0);
 })();
