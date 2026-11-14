@@ -184,6 +184,22 @@ function mentionsEthnicTerms(text) {
 // Una palabra del título que también es corriente en español («final» en «FINAL FANTASY XVI») no delata nada: «al final del directo».
 const TITLE_COMMON_RANK = 5000;
 const TITLE_STOP = new Set(['the', 'of', 'and', 'para', 'del', 'con', 'las', 'los', 'una', 'what', 'from', 'with']);
+// Siglas de un título («FINAL FANTASY XVI» → ff; «Grand Theft Auto V» → gta; «Shadow of the Colossus» → sotc y sc): las
+// iniciales de sus palabras sin contar la numeración, con y sin las palabras vacías. «FF XVI» por el título entero (13-11).
+const TITLE_NUMERAL_RE = /^(?:\d+|[ivxlc]+)$/;
+function titleAcronyms(parts) {
+  const words = parts.filter((w) => !TITLE_NUMERAL_RE.test(w));
+  const initials = (list) => list.map((w) => w[0]).join('');
+  return [...new Set([initials(words), initials(words.filter((w) => !TITLE_STOP.has(w)))])].filter(
+    (a) => a.length >= 2,
+  );
+}
+// La sigla como palabra suelta. Las de dos letras y las que también son una palabra («sos») solo cuentan en mayúsculas
+// («FF», «RE»), para no chocar con «re» o «de»
+function acronymIn(text, acronym) {
+  const flags = acronym.length >= 3 && wordRank(acronym) === Infinity ? 'iu' : 'u';
+  return new RegExp(`(?<![\\p{L}\\p{N}])${acronym.toUpperCase()}(?![\\p{L}\\p{N}])`, flags).test(String(text || ''));
+}
 function abbreviatedGame(text, game = '') {
   const title = norm(String(game).replace(/\(.*?\)/g, ' '))
     .replace(/[^a-z0-9ñ ]+/g, ' ')
@@ -195,6 +211,8 @@ function abbreviatedGame(text, game = '') {
     .replace(/[^a-z0-9ñ ]+/g, ' ')
     .replace(/\s+/g, ' ');
   if ((' ' + t + ' ').includes(' ' + title + ' ')) return '';
+  const acronym = titleAcronyms(parts).find((a) => acronymIn(text, a));
+  if (acronym) return acronym.toUpperCase();
   const hit = parts.find(
     (w) =>
       w.length >= 5 &&

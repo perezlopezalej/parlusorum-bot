@@ -179,6 +179,12 @@ async function buildGameSheet(info, { summary = summarizeGameEs } = {}) {
   ].join('\n');
 }
 
+// Resumen en español ya generado para este juego ('' si no hay o ha caducado): no llama a la IA
+function cachedSummaryEs(name) {
+  const hit = summaryCache.get(String(name || '').toLowerCase());
+  return hit && Date.now() - hit.ts < SUMMARY_TTL_MS ? hit.text : '';
+}
+
 function resetSummaryCache() {
   summaryCache.clear();
   inFlight.clear();
@@ -189,6 +195,7 @@ module.exports = {
   englishFragment,
   leaksSheetRaw,
   summarizeGameEs,
+  cachedSummaryEs,
   buildGameSheet,
   resetSummaryCache,
 };

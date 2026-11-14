@@ -214,6 +214,27 @@ function approxDuration(minutes) {
   return `casi ${hours(h + 1)}`;
 }
 
+// ¿El texto habla de cuánto dura el directo? («Dos horas y media y seguimos aquí», «media hora de directo», «¿quién sigue
+// aquí desde el principio?»). El 13-11, 9 de 25 comentarios del cohost fueron de esto: ahora sale como mucho una vez por hora.
+const HOURS_WORD = '(?:una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|\\d+)';
+const STREAM_TIME_RE = new RegExp(
+  '(?<![\\p{L}\\p{N}])(?:' +
+    [
+      `${HOURS_WORD}\\s+horas?`,
+      'media\\s+hora',
+      'horas?\\s+y\\s+(?:media|pico)',
+      'cuartos?\\s+de\\s+hora',
+      '(?:horas?|minutos|rato|tiempo)\\s+de\\s+(?:directo|stream)',
+      '(?:tanto|cu[aá]nto)\\s+(?:rato|tiempo)',
+      'desde\\s+el\\s+(?:principio|inicio|minuto\\s+uno)',
+    ].join('|') +
+    ')(?![\\p{L}\\p{N}])',
+  'iu',
+);
+function talksStreamTime(text) {
+  return STREAM_TIME_RE.test(String(text || ''));
+}
+
 // Cifras de viewers: el bot no las cita (los de una raid son visitantes, no los viewers del canal)
 function citesViewers(text) {
   return /\b\d+\s+(?:viewers?|espectadores)\b/i.test(String(text || ''));
@@ -244,6 +265,7 @@ module.exports = {
   mentionsUnrecordedDeaths,
   citesDeathCount,
   exactMinutes,
+  talksStreamTime,
   citesViewers,
   achievesDeaths,
   approxDuration,

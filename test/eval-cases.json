@@ -882,5 +882,40 @@
         "\\d{3} minutos"
       ]
     }
+  },
+  {
+    "id": "d13-cohost-movil-sentido",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "deaths": 0,
+    "input": "Cuatro horas y media y seguimos aquí, ¿qué no se les ha caído el móvil?",
+    "note": "Cohost del 13-11 (22:51): la pregunta no tiene sentido. Sin el contexto de hechos las reglas no la paran: la debe descartar el revisor de sentido.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-tiempo-una-vez",
+    "gen": "cohost",
+    "runs": 10,
+    "game": "Shadow of the Colossus",
+    "deaths": 0,
+    "minutes": 130,
+    "chat": [
+      ["markosssx", "buenas tardes gente"],
+      ["gangar79", "aquí andamos"],
+      ["stewar32", "hola a todos"]
+    ],
+    "note": "Tarde del 13-11: sin sucesos ni charla sobre la partida, 10 comentarios libres seguidos (50 min). Como mucho uno habla del rato de directo, sin moldes («¿quién sigue aquí/despierto?»), sin siglas del juego. Puede callar.",
+    "expect": {
+      "mayStaySilent": true,
+      "matchNone": ["qui[eé]n(es)? siguen? (aqu[ií]|ah[ií]|despiert)", "\\bSOTC\\b", "bucle"],
+      "maxMatches": [
+        {
+          "pattern": "(una|dos|tres|cuatro|cinco|\\d+) horas?|media hora|hora y (media|pico)|desde el principio|(horas?|rato|tiempo) de (directo|stream)",
+          "max": 1
+        }
+      ]
+    }
   }
 ]

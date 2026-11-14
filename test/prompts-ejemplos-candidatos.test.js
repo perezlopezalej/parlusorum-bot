@@ -226,7 +226,8 @@ describe('cohost con tres candidatos', () => {
     assert.match(sys, /<example><hecho>[^<]+<\/hecho><giro>[^<]+<\/giro><frase>[^<]+<\/frase><\/example>/);
     // el modelo recibe hechos escritos por el código, no líneas del chat
     assert.match(prompts[0][1].content, /<hechos>\nh1\. /);
-    assert.match(prompts[0][1].content, /Comenta el hecho h1/);
+    assert.match(prompts[0][1].content, /Cada comentario parte de un hecho distinto de la lista/);
+    assert.match(sys, /el primero parte del hecho h1 y el segundo parte del hecho h2/);
     assert.doesNotMatch(prompts[0][1].content, /<chat>|<resumen_chat>|<stream_story>|<tema>/);
     assert.doesNotMatch(prompts[0][1].content, /Jajaja otra vez|no te rindas|pasárselo|user\d/);
     for (const re of FORBIDDEN_IN_PROMPT) assert.doesNotMatch(sys, re);

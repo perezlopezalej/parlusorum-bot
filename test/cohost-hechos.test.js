@@ -93,12 +93,12 @@ describe('regla `hecho`: cada comentario parte de un hecho de la lista', () => {
 
   test('las frases que parten de su hecho pasan', () => {
     assert.equal(rule('Tres seguidas, Manu. A la cuarta sale, que lo dice el FUA.', id('suceso')), undefined);
-    assert.equal(rule('Casi dos horas ya. ¿Quién sigue aquí desde el principio?', id('tiempo')), undefined);
+    assert.equal(rule('Casi dos horas de directo y el FUA pidiendo horas extra.', id('tiempo')), undefined);
     assert.equal(rule('Chat, ¿esos consejos los habéis probado vosotros alguna vez?', id('chat')), undefined);
   });
 
   test('sin hecho declarado vale el que toque la frase; si no toca ninguno, se rechaza', () => {
-    assert.equal(rule('Casi dos horas ya. ¿Quién sigue aquí desde el principio?', ''), undefined);
+    assert.equal(rule('Casi dos horas de directo y el FUA pidiendo horas extra.', ''), undefined);
     assert.equal(rule('El FUA hoy viene con ganas de fiesta y de ruido.', ''), 'hecho');
     assert.equal(q.factFor('Casi dos horas ya.', facts).tipo, 'tiempo');
   });
@@ -433,10 +433,10 @@ describe('runCohost con hechos', () => {
       const frase = /caídas/.test(heads.at(-1))
         ? 'Cinco caídas y Manu sigue en pie, eso es tener FUA.'
         : /consejos/.test(heads.at(-1))
-          ? 'Chat, ¿esos consejos los habéis probado vosotros alguna vez?'
+          ? 'Chat, menudos consejos le dais a Manu, ¿vosotros los seguís?'
           : /Juegan/.test(heads.at(-1))
             ? 'Menuda partida se está marcando Manu, que conste en acta.'
-            : 'Casi dos horas ya. ¿Quién sigue aquí desde el principio?';
+            : 'Casi dos horas de directo y Manu sin soltar el mando.';
       return text(JSON.stringify({ candidatos: [{ hecho: 'h1', giro: 'guasa', frase }] }));
     });
     for (let i = 0; i < 4; i++) {
@@ -447,13 +447,13 @@ describe('runCohost con hechos', () => {
   });
 
   test('suceso: es el hecho h1 y un candidato que declara otro hecho se descarta', async () => {
-    const GOOD = '¡Jefe fuera! Yo no he hecho nada, pero me lo apunto.';
+    const GOOD = '¡Jefe fuera! Manu lo tumba y el FUA lo celebra a gritos.';
     stubModels((p, sel) => {
       if (sel) return choose(p, 'Jefe fuera');
       return text(
         JSON.stringify({
           candidatos: [
-            { hecho: 'h2', giro: 'el rato', frase: 'Casi dos horas ya. ¿Quién sigue aquí desde el principio?' },
+            { hecho: 'h2', giro: 'el rato', frase: 'Casi dos horas de directo y Manu sin soltar el mando.' },
             { hecho: 'h1', giro: 'presumir sin mérito', frase: GOOD },
           ],
         }),
@@ -477,7 +477,7 @@ describe('runCohost con hechos', () => {
     assert.match(user, /^<hechos>\nh1\. Jefe derrotado, el primero de este stream\n/);
     assert.match(user, /Comenta el suceso, que es el hecho h1/);
     assert.equal(
-      selectorCalls()[0].messages[1].content.includes('Casi dos horas'),
+      selectorCalls()[0].messages[1].content.includes('sin soltar el mando'),
       false,
       'solo llega al selector el que parte del suceso',
     );

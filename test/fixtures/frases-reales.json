@@ -845,5 +845,137 @@
     "expect": {
       "rejected": true
     }
+  },
+  {
+    "id": "d13-cohost-sigue-despierto",
+    "filter": "cohost",
+    "game": "FINAL FANTASY XVI",
+    "deaths": 1,
+    "timeOffered": true,
+    "input": "Una hora ya, ¿quién sigue despierto?",
+    "note": "Cohost del 13-11 (12:58): pregunta de relleno gastada. Regla `molde`, aunque el rato de directo esté ofrecido.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-sigue-aqui-principio",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "deaths": 0,
+    "timeOffered": true,
+    "examples": true,
+    "input": "Una hora y pico ya. ¿Quién sigue aquí desde el principio?",
+    "note": "Cohost del 13-11 (19:26): casi una copia del ejemplo del prompt de entonces. Regla `molde`.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-bucle-celestial",
+    "filter": "cohost",
+    "game": "FINAL FANTASY XVI",
+    "deaths": 1,
+    "timeOffered": false,
+    "input": "¡Dos horas en el stream y yo sigo aquí, como si el tiempo fuera un bucle celestial!",
+    "note": "Cohost del 13-11 (14:03): habla del rato de directo sin que ese hecho esté ofrecido (ya salió en la última hora). Regla `tiempo`.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-bucle-celestial-metafora",
+    "filter": "cohost",
+    "game": "FINAL FANTASY XVI",
+    "deaths": 1,
+    "timeOffered": true,
+    "usedStructures": ["metafora"],
+    "input": "¡Dos horas en el stream y yo sigo aquí, como si el tiempo fuera un bucle celestial!",
+    "note": "La misma frase con el tiempo ofrecido: es una metáfora y ya salió una en el stream. Regla `metafora`.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-ff-xvi",
+    "filter": "cohost",
+    "game": "FINAL FANTASY XVI",
+    "deaths": 1,
+    "input": "Manu en FF XVI, ¿será él el héroe o el villano que nos hace perder la partida?",
+    "note": "Cohost del 13-11 (14:22): «FF XVI» por el título entero. Regla `juego_nombre` (siglas de sagas).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-tiempo-sin-hecho",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "deaths": 0,
+    "timeOffered": false,
+    "input": "Dos horas y media y todavía no se han cansado, ¿o será que el FUA les da energía infinita?",
+    "note": "Cohost del 13-11 (20:42): tercer comentario de tiempo en hora y media. Sin el hecho de tiempo ofrecido, regla `tiempo`.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-movil-sin-hecho",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "deaths": 0,
+    "timeOffered": false,
+    "input": "Cuatro horas y media y seguimos aquí, ¿qué no se les ha caído el móvil?",
+    "note": "Cohost del 13-11 (22:51): frase sin sentido y otra vez de tiempo. Por reglas cae por `tiempo`; el sinsentido lo juzga el revisor (eval-cases).",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-copia-ejemplo",
+    "filter": "cohost",
+    "deaths": 5,
+    "examples": true,
+    "input": "Chat, ¿esos consejos los habéis probado vosotros alguna vez?",
+    "note": "Copia literal de un ejemplo de config/style-examples.json. Regla `ejemplo`.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-control-tiempo-ofrecido",
+    "filter": "cohost",
+    "game": "Shadow of the Colossus",
+    "deaths": 0,
+    "timeOffered": true,
+    "examples": true,
+    "input": "Dos horas y media y todavía no se han cansado, ¿o será que el FUA les da energía infinita?",
+    "note": "Control: con el hecho de tiempo ofrecido (una vez por hora), un comentario de tiempo propio sí vale.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "d13-control-ff-completo",
+    "filter": "cohost",
+    "game": "FINAL FANTASY XVI",
+    "deaths": 1,
+    "input": "Manu en Final Fantasy XVI, ¿será él quien salve la partida?",
+    "note": "Control: el título completo sí vale.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "d13-control-frase-propia",
+    "filter": "cohost",
+    "deaths": 5,
+    "examples": true,
+    "timeOffered": false,
+    "input": "Chat, menudos consejos le dais a Manu, ¿vosotros los seguís?",
+    "note": "Control: mismo tema que un ejemplo pero frase propia; pasa.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

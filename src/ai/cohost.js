@@ -29,6 +29,8 @@ const {
   onNarrativeEvent,
   addCohostText,
   getCohostTexts,
+  markFactUse,
+  getFactUse,
 } = require('../utils/state');
 const { mergeBossMoments, bossInBatch, BOSS_SETTLE_MS } = require('../utils/narrative');
 const {
@@ -48,11 +50,20 @@ const {
   hourlyCapReached,
 } = require('../utils/narrative');
 const factcheck = require('./factcheck');
-const { buildMomentFacts, gameVocabulary, properNouns, renderFacts } = require('./moment-facts');
+const { cachedSummaryEs } = require('./game-sheet');
+const { buildMomentFacts, factDue, gameQuestion, gameVocabulary, properNouns, renderFacts } = require('./moment-facts');
 const { pickBest } = require('./pick-best');
 const quality = require('./quality');
 const { canMakeRequest } = require('../utils/ratelimit');
-const { dayLine, pickCohostForm, buildCohostSystem, parseCandidates, rankCandidates, retryNote } = require('./style');
+const {
+  dayLine,
+  pickCohostForm,
+  buildCohostSystem,
+  loadExamples,
+  parseCandidates,
+  rankCandidates,
+  retryNote,
+} = require('./style');
 const { getRecentSessionDeaths } = require('../utils/supabase');
 const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
@@ -288,6 +299,12 @@ async function runCohost(client, channel, moment = null) {
       .filter((m) => m.ts > now - 5 * 60 * 1000 && !isDirectedElsewhere(m.message))
       .slice(-25)
       .map((m) => ({ username: m.username, message: m.message }));
+    // El rato de directo y la pregunta sobre el juego se ofrecen como mucho una vez por hora (13-11: 9 de 25 comentarios
+    // hablaban del tiempo). La pregunta sale de la ficha de IGDB y solo entra si no hay sucesos ni charla que contar.
+    const offerTime = factDue(getFactUse('tiempo').at, now);
+    const question = factDue(getFactUse('pregunta').at, now)
+      ? gameQuestion(sheet, { game, used: getFactUse('pregunta').count, premise: cachedSummaryEs(game) })
+      : null;
     const factsAvoiding = (avoid) =>
       buildMomentFacts({
         game,
@@ -302,6 +319,8 @@ async function runCohost(client, channel, moment = null) {
         avoid,
         moment,
         citeDeaths: !lastCitedDeaths,
+        offerTime,
+        question,
       });
     let momentFacts = factsAvoiding(recentFactTypes);
     if (!momentFacts.length) {
@@ -325,6 +344,7 @@ async function runCohost(client, channel, moment = null) {
       channelGames: channelConfig.games_played || [],
       chatLines,
       gameWords,
+      examples: (loadExamples().cohost || []).map((e) => (typeof e === 'string' ? e : e.texto)).filter(Boolean),
     };
     // Revisión en una llamada: datos del juego (si habla de él) y sentido/redacción
     let generatorModel; // modelo que escribió los candidatos: el selector es de otra familia
@@ -375,17 +395,22 @@ async function runCohost(client, channel, moment = null) {
           event: !!moment,
           weekday: !getUsedStructures().has('dia-semana'),
           plain: getUsedStructures().has('metafora'), // ya salió la metáfora del stream: frases directas
+          facts: moment ? [] : momentFacts,
         }) + retryNote(fixKey);
       const user = `${renderFacts(momentFacts)}\n${
         moment
           ? 'Comenta el suceso, que es el hecho h1; los demás hechos son solo contexto.'
-          : 'Comenta el hecho h1; los demás hechos son contexto y también valen si dan más juego.'
+          : momentFacts.length > 1
+            ? 'Cada comentario parte de un hecho distinto de la lista, en orden: h1, h2…'
+            : 'Comenta el hecho h1.'
       }`;
       // Un suceso solo se comenta a sí mismo; lo que el modelo ha leído (prompt y hechos) no cuenta como copia del chat
       const attemptCtx = {
         ...validateCtx,
         facts: moment ? momentFacts.slice(0, 1) : momentFacts,
         allowedWords: [system, user, gameFacts],
+        // el rato de directo solo se comenta si está entre los hechos ofrecidos (o si el propio suceso habla de él)
+        timeOffered: momentFacts.some((f) => f.tipo === 'tiempo' || quality.talksStreamTime(f.texto)),
       };
       const response = await aiChat('cohost', {
         max_tokens: COHOST_CANDIDATES === 3 ? 450 : 320, // cada candidato es un objeto { hecho, giro, frase }
@@ -420,6 +445,11 @@ async function runCohost(client, channel, moment = null) {
         {
           validate: (t, c) => quality.validateCohost(t, { ...attemptCtx, hecho: c.hecho, giro: c.giro }),
           recent: recentBot,
+          // comentario libre con varios hechos: como mucho un candidato por hecho, y uno solo que hable del rato de directo
+          groupOf:
+            moment || momentFacts.length < 2
+              ? null
+              : (c) => (quality.talksStreamTime(c.text) ? 'tiempo' : c.hecho || ''),
         },
       );
       for (const f of failures) logger.info(`Co-host descartado (${f.reason}): ${f.text.slice(0, 80)}`);
@@ -476,11 +506,11 @@ async function runCohost(client, channel, moment = null) {
       recordCohostDiscard(reason);
       return 'dropped';
     } // los candidatos fallaron: se calla
-    if (!moment) {
-      // el tipo de hecho comentado pasa al final de la rotación
-      const type = (quality.factFor(reply, momentFacts, replyFact) || momentFacts[0]).tipo;
-      recentFactTypes = [...recentFactTypes.filter((t) => t !== type), type].slice(-3);
-    }
+    const sentType = (quality.factFor(reply, momentFacts, replyFact) || momentFacts[0]).tipo;
+    // el tipo de hecho comentado pasa al final de la rotación
+    if (!moment) recentFactTypes = [...recentFactTypes.filter((t) => t !== sentType), sentType].slice(-3);
+    if (sentType === 'tiempo' || quality.talksStreamTime(reply)) markFactUse('tiempo', now);
+    if (sentType === 'pregunta') markFactUse('pregunta', now);
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     addCohostText(kindKey, reply);

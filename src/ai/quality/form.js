@@ -295,6 +295,9 @@ function properNames(extra = []) {
   return set;
 }
 
+// La numeración de un título («Final Fantasy XVI», «Resident Evil VIII») va en mayúsculas y no es un grito
+const ROMAN_NUMERAL_RE = /^X{0,3}(?:IX|IV|V?I{0,3})$/;
+
 function oddCaps(text, names = []) {
   const t = plainWords(text);
   const known = properNames(names);
@@ -309,7 +312,7 @@ function oddCaps(text, names = []) {
   for (const sentence of t.split(/(?<=[.!?…])\s+/)) {
     const caps = [...sentence.matchAll(/\b\p{Lu}{3,}\b/gu)]
       .map((m) => m[0])
-      .filter((w) => !CAPS_OK.has(w) && !/^FU+A+$/.test(w) && !known.has(w.toLowerCase()));
+      .filter((w) => !CAPS_OK.has(w) && !/^FU+A+$/.test(w) && !ROMAN_NUMERAL_RE.test(w) && !known.has(w.toLowerCase()));
     const allCaps = [...sentence.matchAll(/\b\p{Lu}{2,}\b/gu)].length;
     if (caps.length && allCaps < 2) return caps[0]; // una frase entera en mayúsculas es un grito, no un error
   }

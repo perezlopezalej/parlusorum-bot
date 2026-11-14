@@ -66,6 +66,7 @@ const {
 const {
   wrongDayPart,
   exactMinutes,
+  talksStreamTime,
   approxDuration,
   citesViewers,
   mentionsUnrecordedDeaths,
@@ -86,6 +87,8 @@ const {
   namesIn,
   similarity,
   tooSimilar,
+  copiesExample,
+  wornMould,
   repeatsFormula,
   repeatsYear,
   openingKey,
@@ -273,4 +276,7 @@ module.exports = {
   recapProblem,
   mentionsGameName,
   asksBeyondSheet,
+  talksStreamTime,
+  copiesExample,
+  wornMould,
 };

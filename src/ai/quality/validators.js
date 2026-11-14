@@ -32,7 +32,7 @@ const {
   selfHelp,
 } = require('./lexicon');
 const { copiedFromChat, inventedDetail } = require('./copy');
-const { factProblem, giroProblem, inventedQuote, unsupportedAttributes } = require('./facts');
+const { factFor, factProblem, giroProblem, inventedQuote, unsupportedAttributes } = require('./facts');
 const {
   WORD_LIST_RE,
   hasElongation,
@@ -49,12 +49,14 @@ const {
   citesViewers,
   exactMinutes,
   mentionsUnrecordedDeaths,
+  talksStreamTime,
   wrongDayPart,
   wrongWeekday,
 } = require('./numbers');
 const {
   METAPHOR_MARK,
   METAPHOR_REASON,
+  copiesExample,
   isMetaphor,
   recentlyNamedIn,
   repeatedClosing,
@@ -65,6 +67,7 @@ const {
   sameOpening,
   structureKey,
   tooSimilar,
+  wornMould,
 } = require('./repetition');
 const { plainWords } = require('./text');
 const { recapProblem } = require('./recap');
@@ -166,6 +169,8 @@ const VIEWERS_REASON =
 // Validación del cohost. ctx: { deathCount, recent: string[], sameKind: string[], named: Map, now, nameWindowMs }
 // ctx.facts/hecho/giro: hechos del momento, el que declara el candidato y su giro (reglas `hecho` y `giro`).
 // ctx.chatLines/allowedWords/gameWords: regla `copia`. ctx.game/channelGames: sin nombrar otros juegos.
+// ctx.timeOffered: false si el rato de directo no está entre los hechos ofrecidos (regla `tiempo`: como mucho un comentario
+// de tiempo por hora); null no comprueba nada. ctx.examples: textos de los ejemplos del prompt (regla `ejemplo`).
 // Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
 // se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
 function validateCohost(
@@ -188,6 +193,8 @@ function validateCohost(
     chatLines = [],
     allowedWords = [],
     gameWords = [],
+    timeOffered = null,
+    examples = [],
   } = {},
 ) {
   if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
@@ -202,6 +209,28 @@ function validateCohost(
   if (twist) return { ok: false, rule: 'giro', reason: twist };
   const fact = factProblem(text, { facts, hecho });
   if (fact) return { ok: false, rule: 'hecho', reason: fact };
+  if (timeOffered === false && talksStreamTime(text))
+    return {
+      ok: false,
+      rule: 'tiempo',
+      reason: 'habla del rato que llevan de directo, que no está entre los hechos; cuenta otro hecho de la lista',
+    };
+  if (factFor(text, facts, hecho)?.tipo === 'pregunta' && !/\?/.test(text))
+    return { ok: false, rule: 'pregunta', reason: 'el hecho pide una pregunta al chat y no es una pregunta' };
+  const mould = wornMould(text);
+  if (mould)
+    return {
+      ok: false,
+      rule: 'molde',
+      reason: `usa una pregunta de relleno ya gastada («${mould}»); cambia de enfoque con una idea nueva`,
+    };
+  const example = copiesExample(text, examples);
+  if (example)
+    return {
+      ok: false,
+      rule: 'ejemplo',
+      reason: `es casi una copia de un ejemplo del prompt («${example.slice(0, 50)}»); escribe una frase propia`,
+    };
   const copied = copiedFromChat(text, chatLines, {
     allowed: [...facts.map((f) => f.texto), ...allowedWords, game],
     gameWords,

@@ -106,10 +106,40 @@ function buildProvocationSystem({ examples = pickStyleExamples('provocacion', 5)
   );
 }
 
+// Tarea del cohost. Con suceso: varios ángulos del hecho h1. Sin suceso: cada candidato parte de un hecho distinto (el
+// primero de h1, el segundo de h2…), así el selector elige entre temas y no entre tres versiones del mismo (13-11: los tres
+// hablaban del rato de directo). Con un solo hecho, dos ángulos (uno si es el rato de directo).
+const ORDINALS = ['el primero', 'el segundo', 'el tercero'];
+function cohostTask({ event = false, candidates = 3, facts = [] } = {}) {
+  const max = candidates === 2 ? 2 : 3;
+  const shape = (id) => `{"hecho":"${id}","giro":"…","frase":"…"}`;
+  const json = (ids) => `Devuelve solo este JSON: {"candidatos":[${ids.map(shape).join(',')}]}.`;
+  const voice = 'con humor y la voz de Dios Fua';
+  if (event)
+    return `Escribe ${max} comentarios distintos entre sí, todos con esa forma, sobre el suceso (el hecho h1), ${voice}. ${json(Array(max).fill('h1'))}`;
+  const empty = 'devuelve {"candidatos":[]}';
+  const targets = facts.slice(0, max);
+  if (!targets.length)
+    return `Escribe ${max} comentarios distintos entre sí, todos con esa forma, sobre el hecho indicado, ${voice}. ${json(Array(max).fill('h1'))} Si el hecho no da para un comentario sin inventar, ${empty}.`;
+  const question = targets.find((f) => f.tipo === 'pregunta');
+  const questionLine = question
+    ? ` El comentario del hecho ${question.id} es una pregunta al chat sobre ese dato del juego.`
+    : '';
+  if (targets.length === 1) {
+    const [only] = targets;
+    const n = only.tipo === 'tiempo' ? 1 : 2;
+    return `Escribe ${n === 1 ? '1 comentario' : '2 comentarios con giros distintos entre sí'} sobre el hecho ${only.id}, con esa forma, ${voice}.${questionLine} ${json(Array(n).fill(only.id))} Si el hecho no da para un comentario sin inventar, ${empty}.`;
+  }
+  const each = targets.map((f, i) => `${ORDINALS[i]} parte del hecho ${f.id}`);
+  const list = `${each.slice(0, -1).join(', ')} y ${each[each.length - 1]}`;
+  return `Escribe ${targets.length} comentarios, todos con esa forma y cada uno sobre un hecho distinto: ${list}, ${voice}.${questionLine} ${json(targets.map((f) => f.id))} Si un hecho no da para un comentario sin inventar, deja fuera ese candidato; si no da ninguno, ${empty}.`;
+}
+
+// `facts`: hechos ofrecidos ([{ id, tipo }], solo en los comentarios libres): cada candidato parte de uno distinto.
+// El rato de directo no va en <stream>: solo llega como hecho, y como mucho una vez por hora (moment-facts.js).
 function buildCohostSystem({
   now = new Date(),
   game = '',
-  minutes = null,
   deathLine = '',
   player = 'manu',
   mood = '',
@@ -123,15 +153,9 @@ function buildCohostSystem({
   weekday = true,
   candidates = 3,
   plain = false,
+  facts = [],
 }) {
-  const shape = '{"hecho":"h1","giro":"…","frase":"…"}';
-  const stream = [
-    game ? `Juegan a «${game}».` : '',
-    minutes != null ? `Llevan ${quality.approxDuration(minutes)} de directo.` : '',
-    deathLine,
-    playerLine(player),
-    dayLine(now, { weekday }),
-  ]
+  const stream = [game ? `Juegan a «${game}».` : '', deathLine, playerLine(player), dayLine(now, { weekday })]
     .filter(Boolean)
     .join(' ');
   return join(
@@ -152,16 +176,7 @@ function buildCohostSystem({
         ' ',
       ),
     ),
-    block(
-      'tarea',
-      `Escribe ${candidates === 2 ? '2 comentarios distintos' : '3 comentarios distintos'} entre sí, todos con esa forma, sobre ${event ? 'el suceso (el hecho h1)' : 'el hecho indicado'}, con humor y la voz de Dios Fua. Devuelve solo este JSON: {"candidatos":[${Array(
-        candidates === 2 ? 2 : 3,
-      )
-        .fill(shape)
-        .join(
-          ',',
-        )}]}.${event ? '' : ' Si el hecho no da para un comentario sin inventar, devuelve {"candidatos":[]}.'}`,
-    ),
+    block('tarea', cohostTask({ event, candidates, facts })),
   );
 }
 
@@ -380,10 +395,13 @@ function parseCandidates(raw, max = 3) {
 // Entre los candidatos que pasan `validate`, el que menos se parece a los mensajes recientes.
 // Cada candidato es un texto o un objeto con `text` (el resto de campos se conserva: hecho, giro…).
 // validate(text, candidato) → { ok, rule?, reason? }. Devuelve { ranked: [{text, sim, …}], failures: [{text, rule, reason}] }.
-function rankCandidates(candidates, { validate, recent = [] }) {
+// groupOf(candidato) → clave del hecho del que parte: entre los que pasan `validate` se queda como mucho uno por clave (los
+// demás fallan con la regla `mismo_hecho`); una clave vacía no agrupa. Sin groupOf no se agrupa (sucesos: tres ángulos de h1).
+function rankCandidates(candidates, { validate, recent = [], groupOf = null }) {
   const ranked = [];
   const failures = [];
   const seen = new Set();
+  const groups = new Set();
   for (const candidate of candidates) {
     const item = typeof candidate === 'string' ? { text: candidate } : candidate;
     const { text } = item;
@@ -391,8 +409,17 @@ function rankCandidates(candidates, { validate, recent = [] }) {
     if (seen.has(key)) continue;
     seen.add(key);
     const check = validate(text, item);
-    if (check.ok) ranked.push({ ...item, sim: recent.reduce((m, r) => Math.max(m, quality.similarity(text, r)), 0) });
-    else failures.push({ text, rule: check.rule, reason: check.reason });
+    if (!check.ok) {
+      failures.push({ text, rule: check.rule, reason: check.reason });
+      continue;
+    }
+    const group = groupOf ? groupOf(item) : '';
+    if (group && groups.has(group)) {
+      failures.push({ text, rule: 'mismo_hecho', reason: 'parte del mismo hecho que otro candidato' });
+      continue;
+    }
+    if (group) groups.add(group);
+    ranked.push({ ...item, sim: recent.reduce((m, r) => Math.max(m, quality.similarity(text, r)), 0) });
   }
   ranked.sort((a, b) => a.sim - b.sim);
   return { ranked, failures };
@@ -444,6 +471,10 @@ const FIX_BY_RULE = {
   ruido: 'Escribe palabras normales del español, sin letras alargadas.',
   selector: 'Una sola idea que se entienda a la primera y encaje con lo que acaba de pasar.',
   hecho: 'Parte de uno de los hechos de la lista y cuenta eso mismo con tus palabras.',
+  mismo_hecho: 'Cada comentario parte de un hecho distinto de la lista.',
+  tiempo: 'Cuenta otro hecho de la lista: la partida, el chat o quien juega.',
+  molde: 'Cambia de enfoque con una idea nueva y tuya.',
+  ejemplo: 'Escribe una frase propia, con otra idea que la de los ejemplos.',
   giro: 'Lleva la broma a la partida, a Manu o al FUA.',
   copia: 'Cuenta el hecho con tus propias palabras.',
   otro_juego: 'Habla solo del juego de hoy.',

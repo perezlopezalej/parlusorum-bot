@@ -90,6 +90,15 @@ describe('mayúsculas y ortografía', () => {
     ])
       assert.equal(q.oddCaps(t) || q.spellingProblem(t), '', t);
   });
+  test('la numeración romana de un título no es una mayúscula rara', () => {
+    for (const t of [
+      'Manu en Final Fantasy XVI, ¿será él quien salve la partida?',
+      'Otra tarde con Resident Evil VIII, Lusorums.',
+      'Hoy toca Persona III y mucha calma.',
+    ])
+      assert.equal(q.oddCaps(t), '', t);
+    assert.equal(q.oddCaps('Vaya MIX de caídas lleva Manu'), 'MIX');
+  });
   test('letras alargadas del chat ("parrrrrr") se rechazan; los emotes y el FUAAA no', () => {
     assert.equal(q.hasElongation('y el chat grita parrrrrrr sin parar'), true);
     assert.equal(q.hasElongation('FUAAAAA parlus1PORELPODERDELFUAAAAA jajajaja'), false);
@@ -164,11 +173,15 @@ describe('minutos aproximados y repeticiones del stream', () => {
       false,
     );
   });
-  test('el prompt del cohost da el rato en palabras aproximadas', () => {
+  test('el cohost recibe el rato en palabras aproximadas, y solo como hecho (no en <stream>)', () => {
     const p = style.buildCohostSystem({ game: 'Hell Is Us', minutes: 116, form: style.COHOST_FORMS[0] });
-    assert.match(p, /casi dos horas/);
     assert.doesNotMatch(p, /116/);
-    assert.ok(buildMomentFacts({ minutes: 147 }).some((f) => f.texto === 'Llevan dos horas y media de directo'));
+    assert.doesNotMatch(/<stream>[^<]*<\/stream>/.exec(p)[0], /Llevan|horas|directo/);
+    assert.ok(
+      buildMomentFacts({ game: 'Hell Is Us', minutes: 147 }).some(
+        (f) => f.texto === 'Llevan dos horas y media de directo',
+      ),
+    );
   });
   test('día de la semana, "Entre X y Y…" y palabras llamativas: una vez por stream', () => {
     const first = 'Entre Pao y Manu, vaya martes de masterclass y sufrimiento.';

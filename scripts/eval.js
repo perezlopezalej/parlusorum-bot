@@ -13,6 +13,8 @@
  *
  * Casos con "gen": "cohost" | "timer" (chat, game, deaths, minutes, moment, events, usedStructures, expect.matchNone, expect.mayStaySilent)
  * ejecutan la generación de punta a punta con la IA real (hechos, candidatos, selector, revisor) y comprueban el mensaje enviado.
+ * En "cohost", "runs": N lanza N comentarios libres seguidos en el mismo directo y expect.maxMatches ([{ pattern, max }]) limita
+ * cuántos de los enviados pueden casar con un patrón (p. ej. como mucho uno que hable del rato de directo).
  * Casos con "turns" (menciones en cadena del mismo usuario, lastBot opcional) comprueban que no repiten arranque ni cierre.
  * Casos con "igdb" (nombre) y expect.year comprueban la ficha real de IGDB.
  *
@@ -289,7 +291,17 @@ async function runGenCase(c) {
   const client = { say: (_ch, text) => said.push(String(text)) };
   let outcome;
   if (c.gen === 'cohost') {
-    outcome = await ai.runCohost(client, '#eval', c.moment || null);
+    // c.runs: varios comentarios libres seguidos en el mismo directo (cada uno 5 min después, con chat reciente)
+    const runs = Math.max(1, c.runs || 1);
+    const outcomes = [];
+    for (let n = 0; n < runs; n++) {
+      if (n > 0) {
+        skewMs += 5 * 60 * 1000;
+        for (const [user, message] of c.chat || []) ai.addToHistory(user, message);
+      }
+      outcomes.push(await ai.runCohost(client, '#eval', c.moment || null));
+    }
+    outcome = runs > 1 ? `${outcomes.filter((o) => o === 'sent').length}/${runs} enviados` : outcomes[0];
   } else if (c.gen === 'timer') {
     const timers = require('../src/timers/handler');
     const sent = await timers.runTimerIA(client);
@@ -326,13 +338,19 @@ async function runGenCase(c) {
     if (out?.summary) said.push(out.summary);
     outcome = 'sent';
   } else throw new Error(`gen desconocido: ${c.gen}`);
-  const reply = said[said.length - 1] || '';
+  const many = (c.runs || 1) > 1;
+  const reply = many ? said.join(' ⏎ ') : said[said.length - 1] || '';
   const exp = c.expect || {};
   const failures = [];
   if (!reply && !exp.mayStaySilent) failures.push('no hubo mensaje (el caso no permite callar)');
   if (reply) {
     for (const p of exp.matchNone || []) if (new RegExp(p, 'iu').test(reply)) failures.push(`contiene /${p}/`);
     for (const p of exp.matchAll || []) if (!new RegExp(p, 'iu').test(reply)) failures.push(`falta /${p}/`);
+  }
+  // expect.maxMatches: [{ pattern, max }] → como mucho `max` de los mensajes enviados casan con el patrón
+  for (const { pattern, max } of exp.maxMatches || []) {
+    const hits = said.filter((s) => new RegExp(pattern, 'iu').test(s)).length;
+    if (hits > max) failures.push(`${hits} mensajes casan con /${pattern}/ (máximo ${max})`);
   }
   for (const p of exp.logNone || [])
     if (currentLogs.some((l) => new RegExp(p, 'iu').test(l))) failures.push(`el log contiene /${p}/`);

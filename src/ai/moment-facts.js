@@ -2,11 +2,13 @@
 // Así el modelo no recibe líneas literales del chat (jerga, nicks, chistes internos) y no puede copiarlas.
 // Módulo puro: sin estado ni I/O. Lo usan el cohost (lista <hechos>) y el resumen de media hora (tema del chat).
 const { approxDuration, mentionsEthnicTerms, personalMatch } = require('./quality');
+const { translateGenres } = require('../utils/genres');
 
 const MAX_FACTS = 5;
 const MIN_USERS = 2; // una categoría del chat necesita al menos 2 usuarios distintos
 const RECENT_MS = 10 * 60 * 1000;
 const MIN_MINUTES = 20; // antes de eso el rato de directo no es tema
+const FACT_GAP_MS = 60 * 60 * 1000; // el rato de directo y la pregunta sobre el juego se ofrecen como mucho una vez por hora
 
 const strip = (s) =>
   String(s || '')
@@ -162,6 +164,24 @@ const KEYS = {
   risas: ['rie', 'ries', 'reis', 'reir', 'rien', 'riendo', 'risa', 'gracia', 'carcajad', 'chiste'],
   preguntas: ['duda', 'pregunt', 'respuesta', 'entera', 'explic', 'perdid'],
   juego: ['juego', 'coment', 'opina', 'habla'],
+  pregunta: [
+    'jueg',
+    'juga',
+    'jugo',
+    'jugu',
+    'titulo',
+    'genero',
+    'salio',
+    'histori',
+    'conoc',
+    'favorit',
+    'recuerd',
+    'probado',
+    'lusorum',
+    'vosotr',
+    'sois',
+    'habeis',
+  ],
 };
 
 // Palabras significativas de un hecho: lo que un comentario puede citar sin inventar nada
@@ -176,11 +196,38 @@ function unitsOf(e) {
   return Number.isInteger(e.n) && e.n > 0 ? e.n : 1;
 }
 
-// Hechos del momento: lista de {id, tipo, texto, claves}. Tipos: suceso, chat, estado, tiempo.
+// ¿Toca ya ofrecer un hecho que sale como mucho una vez por hora? lastAt: cuándo se comentó por última vez (0 = nunca)
+function factDue(lastAt, now = Date.now(), gapMs = FACT_GAP_MS) {
+  return !lastAt || now - lastAt >= gapMs;
+}
+
+// Dato de la ficha del juego (IGDB) para hacerle una pregunta al chat cuando no hay sucesos ni charla que contar: género, año
+// de salida o premisa (el resumen en español, si ya está en caché). `used`: preguntas ya hechas en el stream (rota el dato).
+// → texto del dato, o null si la ficha no da para preguntar. Nunca inventa: solo usa lo que trae la ficha.
+function gameQuestion(sheet, { game = '', used = 0, premise = '' } = {}) {
+  const name = game || sheet?.name || '';
+  if (!name || !sheet) return null;
+  const data = [];
+  const genres = translateGenres(sheet.genres).toLowerCase();
+  if (genres) data.push(`${name} es un juego de ${genres.replace(/, ([^,]+)$/, ' y $1')}`);
+  const year = /^(\d{4})/.exec(String(sheet.released || ''))?.[1];
+  if (year) data.push(`${name} salió en ${year}`);
+  const story = String(premise || '')
+    .trim()
+    .replace(/[.\s]+$/, '');
+  if (story) data.push(`${name} va de esto: ${story}`);
+  if (!data.length) return null;
+  return data[Math.max(0, Math.floor(used)) % data.length];
+}
+
+// Hechos del momento: lista de {id, tipo, texto, claves}. Tipos: suceso, chat, estado, pregunta, tiempo.
 // `avoid`: tipos de los últimos comentarios, del más antiguo al más reciente; pasan al final en ese orden, así el primer
 // hecho (el que se comenta) va rotando de tipo. `moment`: el suceso en cola que se comenta ({ kind, description }); va el
 // primero, es «abierto» (no exige claves) y sustituye a los hechos de caídas y jefes. `citeDeaths`: false si el mensaje
 // anterior del bot ya dio la cifra de caídas. `player`: «Manu», «Pao» o «Manu y Pao».
+// `offerTime`: false si ya hubo un comentario de tiempo en la última hora (el hecho `tiempo` no se ofrece). `question`: dato de
+// la ficha para preguntar al chat (`gameQuestion`); solo entra si no hay sucesos ni charla que contar.
+// Una lista con el rato de directo como único hecho no da para comentar: se devuelve vacía (el cohost calla).
 // No inventa nada: cada hecho sale de un dato recibido. Puede devolver menos de 2 hechos si no hay datos.
 function buildMomentFacts({
   game,
@@ -195,6 +242,8 @@ function buildMomentFacts({
   avoid = [],
   moment = null,
   citeDeaths = true,
+  offerTime = true,
+  question = null,
 } = {}) {
   const facts = [];
   const push = (tipo, texto, extra = [], more = {}) =>
@@ -203,7 +252,7 @@ function buildMomentFacts({
 
   if (moment?.description) push('suceso', String(moment.description).replace(/[.\s]+$/, ''), [], { abierto: true });
   if (game) push('estado', `Juegan a ${game} y ${many ? 'juegan' : 'juega'} ${player}`, [game, ...KEYS.estado]);
-  if (Number.isFinite(minutes) && minutes >= MIN_MINUTES)
+  if (offerTime && Number.isFinite(minutes) && minutes >= MIN_MINUTES)
     push('tiempo', `Llevan ${approxDuration(minutes)} de directo`, KEYS.tiempo);
 
   const recent = (events || []).filter((e) => now - e.ts <= RECENT_MS);
@@ -228,12 +277,16 @@ function buildMomentFacts({
       categoria: topic.categoria,
     });
 
+  if (question && !facts.some((f) => f.tipo === 'suceso' || f.tipo === 'chat'))
+    push('pregunta', `Para preguntar al chat: ${String(question).replace(/[.\s]+$/, '')}`, KEYS.pregunta);
+
   const rank = (f) => {
     if (f.abierto) return -1;
     const avoided = avoid.lastIndexOf(f.tipo);
-    return (avoided >= 0 ? 10 * (avoided + 1) : 0) + ['suceso', 'chat', 'estado', 'tiempo'].indexOf(f.tipo);
+    return (avoided >= 0 ? 10 * (avoided + 1) : 0) + ['suceso', 'chat', 'estado', 'pregunta', 'tiempo'].indexOf(f.tipo);
   };
   const picked = facts.sort((a, b) => rank(a) - rank(b)).slice(0, MAX_FACTS);
+  if (picked.every((f) => f.tipo === 'tiempo')) return [];
   return picked.map((f, i) => ({ id: `h${i + 1}`, ...f }));
 }
 
@@ -303,6 +356,9 @@ function renderFacts(facts) {
 
 module.exports = {
   buildMomentFacts,
+  factDue,
+  gameQuestion,
+  FACT_GAP_MS,
   buildRecapFacts,
   chatTopic,
   classifyLine,

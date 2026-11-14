@@ -62,6 +62,31 @@ function tooSimilar(text, recent, threshold = 0.6) {
   return recent.some((r) => similarity(text, r) >= threshold);
 }
 
+// Casi una copia de uno de los ejemplos del prompt (config/style-examples.json): la mitad de las palabras de contenido y al
+// menos tres en común. → el ejemplo copiado, o '' («Una hora y pico ya. ¿Quién sigue aquí desde el principio?», 13-11)
+const EXAMPLE_MIN_SHARED = 3;
+function copiesExample(text, examples = [], threshold = 0.5) {
+  const A = contentWords(text);
+  for (const example of examples) {
+    const B = contentWords(example);
+    let shared = 0;
+    for (const w of A) if (B.has(w)) shared++;
+    if (shared >= EXAMPLE_MIN_SHARED && shared / Math.min(A.size, B.size) >= threshold) return String(example);
+  }
+  return '';
+}
+
+// Moldes gastados del cohost: preguntas de relleno que salían en cada comentario de tiempo. Lista corta y editable.
+const MOULD_RES = [
+  /qui[eé]n(?:es)?\s+sigu?en?\s+(?:aqu[ií]|ah[ií]|despiert[oa]s?|viv[oa]s?|en\s+pie|con\s+nosotros|por\s+aqu[ií])/i,
+  /(?:segu[ií]s|siguen|seguimos|sigue)\s+(?:aqu[ií]|ah[ií])\s+desde\s+el\s+principio/i,
+];
+function wornMould(text) {
+  const t = String(text || '');
+  const m = MOULD_RES.map((re) => re.exec(t)).find(Boolean);
+  return m ? m[0] : '';
+}
+
 function repeatsFormula(text, recent) {
   return FORMULAS.some((re) => re.test(text) && recent.some((r) => re.test(r)));
 }
@@ -209,6 +234,8 @@ function structureKey(text) {
 module.exports = {
   recentlyNamedIn,
   tooSimilar,
+  copiesExample,
+  wornMould,
   repeatsFormula,
   repeatedInStream,
   structureKey,

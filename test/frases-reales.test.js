@@ -11,6 +11,7 @@ const { classifyMessage } = require('../src/ai/patterns');
 const { containsBlockedContent } = require('../src/utils/filter');
 const { summaryProblem } = require('../src/memory/handler');
 const { gameVocabulary, buildRecapFacts } = require('../src/ai/moment-facts');
+const { loadExamples } = require('../src/ai/style');
 const cases = require('./fixtures/frases-reales.json');
 
 // Datos del directo de un caso de resumen o de !quemeperdi (game, player, minutes, deaths, bosses, startedAt): los hechos con
@@ -58,7 +59,14 @@ function verdict(c) {
   };
   switch (c.filter) {
     case 'cohost':
-      return quality.validateCohost(c.input, { ...ctx, game: ctx.currentGame }).ok;
+      // timeOffered: si el rato de directo estaba entre los hechos ofrecidos (regla `tiempo`); examples: true compara con
+      // los ejemplos del prompt (regla `ejemplo`)
+      return quality.validateCohost(c.input, {
+        ...ctx,
+        game: ctx.currentGame,
+        timeOffered: c.timeOffered ?? null,
+        examples: c.examples ? loadExamples().cohost.map((e) => e.texto) : [],
+      }).ok;
     case 'timer_ia':
       return quality.validateTimerIA(c.input, ctx).ok;
     case 'hook':

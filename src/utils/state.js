@@ -260,6 +260,7 @@ function resetBotHistory() {
   botMessageHistory = [];
   cohostTextsByKind.clear();
   usedStructures.clear();
+  factUse.clear();
   startAnnounced = false;
   mentionFuaHistory.length = 0;
 }
@@ -271,6 +272,16 @@ function markStructure(key) {
 }
 function getUsedStructures() {
   return new Set(usedStructures);
+}
+
+// Hechos del cohost que salen como mucho una vez por hora ('tiempo', 'pregunta'): cuándo se comentó cada uno por última vez
+// y cuántas veces en este stream. Se reinicia con el stream (resetBotHistory).
+const factUse = new Map();
+function markFactUse(tipo, now = Date.now()) {
+  factUse.set(tipo, { at: now, count: (factUse.get(tipo)?.count || 0) + 1 });
+}
+function getFactUse(tipo) {
+  return { at: 0, count: 0, ...factUse.get(tipo) };
 }
 
 // Textos del cohost de este stream por tipo de momento ('boss', 'first_death', 'free'...): para que un jefe no se comente dos veces igual
@@ -957,6 +968,8 @@ module.exports = {
   resetBotHistory,
   addCohostText,
   getCohostTexts,
+  markFactUse,
+  getFactUse,
   markNamed,
   getNamedUsers,
   resetNamedUsers,
