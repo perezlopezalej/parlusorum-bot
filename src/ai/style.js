@@ -468,7 +468,8 @@ const FIX_BY_RULE = {
   minutos: 'Di el rato de directo aproximado («casi dos horas», «un buen rato») o no lo cuentes.',
   viewers: 'Habla de los raiders como visitantes que llegan de otro canal, sin cifras de viewers.',
   lista: 'Cuenta de qué ha hablado el chat en una idea general, con tus palabras.',
-  repetido: 'Cuenta algo nuevo con palabras que no hayas usado antes en el directo.',
+  repetido:
+    'Empieza de otra forma y usa palabras distintas a las de tus mensajes anteriores, aunque la idea sea la misma.',
   hora: 'Habla del momento sin decir si es de día o de noche.',
   mayusculas: 'Escribe las palabras normales en minúscula; solo el FUA y los nombres propios llevan mayúscula.',
   ortografia: 'Escribe cada palabra con su ortografía y su género correctos.',

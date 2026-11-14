@@ -180,3 +180,16 @@ describe('hooks fijos: config/hooks.json, sin repetir y sin reiniciar', () => {
     assert.match(src, /config\/hooks\.json/);
   });
 });
+
+describe('menciones: si el usuario pide repetir, repetir no es un fallo', () => {
+  const before = ['@Ana ¡Son cuarenta y nueve minutos, no metros! FUA.'];
+  const again = '¡Son cuarenta y nueve minutos, no metros! FUA.';
+  test('«vuelve a decirlo bien» deja pasar la misma idea; sin esa petición, sigue rechazándola', () => {
+    assert.equal(
+      q.validateMention(again, { question: 'dios fua vuelve a decirlo bien', recentToUser: before }).ok,
+      true,
+    );
+    assert.equal(q.validateMention(again, { question: 'repite eso', recentToUser: before }).ok, true);
+    assert.equal(q.validateMention(again, { question: 'y ahora qué opinas', recentToUser: before }).rule, 'repetido');
+  });
+});

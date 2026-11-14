@@ -302,6 +302,7 @@ async function checkPatternMatch(client, channel, tags, message) {
         });
         if (!check.ok) {
           fixKey = check.rule;
+          logger.info(`Mención descartada (${check.reason}): ${raw.slice(0, 80)}`);
           continue;
         }
         const mentionGame = await getCurrentGame().catch(() => null);

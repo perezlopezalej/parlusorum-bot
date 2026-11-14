@@ -503,6 +503,10 @@ function validateTimerIA(
   return { ok: true };
 }
 
+const REPEAT_ASK_RE =
+  /(?<!\p{L})(?:repite|rep[ií]telo|vuelve a (?:decir|contar|explicar)\w*|dilo (?:otra vez|de nuevo)|otra vez|de nuevo)(?!\p{L})/iu;
+const asksToRepeat = (question) => REPEAT_ASK_RE.test(String(question || ''));
+
 // Validación de respuestas a menciones (sin la parte de nombres: se responde al que escribe)
 // ctx.question: lo que escribió el usuario (los consejos y las mecánicas solo valen si él los sacó)
 // ctx.names: nicks que pueden aparecer (quien escribe y el chat); no cuentan como mayúsculas raras
@@ -536,7 +540,12 @@ function validateMention(
       rule: 'espejo',
       reason: 'devuelve al usuario su propia frase («si tuvieras…»); responde con algo tuyo',
     };
-  if (recentToUser.length && (sameOpening(text, recentToUser) || tooSimilar(text, recentToUser, 0.5)))
+  // Si el usuario pide repetir («vuelve a decirlo», «otra vez»), repetir la idea no es un fallo
+  if (
+    recentToUser.length &&
+    !asksToRepeat(question) &&
+    (sameOpening(text, recentToUser) || tooSimilar(text, recentToUser, 0.5))
+  )
     return {
       ok: false,
       rule: 'repetido',

@@ -889,10 +889,11 @@
     "game": "Shadow of the Colossus",
     "deaths": 0,
     "input": "Cuatro horas y media y seguimos aquí, ¿qué no se les ha caído el móvil?",
-    "note": "Cohost del 13-11 (22:51): la pregunta no tiene sentido. Sin el contexto de hechos las reglas no la paran: la debe descartar el revisor de sentido.",
+    "note": "Cohost del 13-11 (22:51): la pregunta no tiene sentido. Sin el contexto de hechos las reglas no la paran: la debe descartar el revisor de sentido. Informativo: lo juzga el revisor de sentido por IA y no lo detecta de forma fiable (eval del 14-11: pasa los filtros).",
     "expect": {
       "rejected": true
-    }
+    },
+    "informativo": true
   },
   {
     "id": "d13-cohost-tiempo-una-vez",
