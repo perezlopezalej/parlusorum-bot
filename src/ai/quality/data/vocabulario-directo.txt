@@ -37,3 +37,13 @@ gamer
 twitch
 twitcher
 speedrun
+
+# Coloquialismos del chat (no son detalles inventados)
+pitorreo
+cachondeo
+guasa
+vacile
+pique
+chufla
+choteo
+jolgorio

@@ -149,6 +149,62 @@ function hasListPrefix(prefix) {
   return lo < sortedWords.length && sortedWords[lo].startsWith(prefix);
 }
 
+// Terminaciones verbales → infinitivos posibles. La lista de frecuencia trae pocas formas conjugadas: una palabra cuyo
+// lema (infinitivo) sí está en la lista es un verbo común («planteando» → plantear), no un detalle inventado.
+const VERB_ENDINGS = [
+  ['ando', ['ar']],
+  ['iendo', ['er', 'ir']],
+  ['yendo', ['er', 'ir']],
+  ['ados', ['ar']],
+  ['adas', ['ar']],
+  ['ado', ['ar']],
+  ['ada', ['ar']],
+  ['idos', ['er', 'ir']],
+  ['idas', ['er', 'ir']],
+  ['ido', ['er', 'ir']],
+  ['ida', ['er', 'ir']],
+  ['amos', ['ar']],
+  ['emos', ['er', 'ar']],
+  ['imos', ['ir']],
+  ['aron', ['ar']],
+  ['ieron', ['er', 'ir']],
+  ['aban', ['ar']],
+  ['abas', ['ar']],
+  ['aba', ['ar']],
+  ['ian', ['er', 'ir']],
+  ['ias', ['er', 'ir']],
+  ['ia', ['er', 'ir']],
+  ['aremos', ['ar']],
+  ['eremos', ['er']],
+  ['iremos', ['ir']],
+  ['aran', ['ar']],
+  ['eran', ['er']],
+  ['iran', ['ir']],
+  ['arian', ['ar']],
+  ['erian', ['er']],
+  ['irian', ['ir']],
+  ['aria', ['ar']],
+  ['eria', ['er']],
+  ['iria', ['ir']],
+  ['an', ['ar']],
+  ['en', ['er', 'ir', 'ar']],
+];
+function verbLemmas(k) {
+  const out = [];
+  for (const [end, infs] of VERB_ENDINGS) {
+    if (!k.endsWith(end) || k.length - end.length < 3) continue;
+    const root = k.slice(0, -end.length);
+    // futuro y condicional conservan el infinitivo entero («pelearemos» → pelear)
+    const keep = /^(a|e|i)r(emos|an|ian|ia)$/.test(end);
+    for (const inf of infs) out.push(keep ? root + end.slice(0, 2) : root + inf);
+  }
+  return out;
+}
+function isCommonVerbForm(k) {
+  const ranks = loadRanks();
+  return verbLemmas(k).some((l) => ranks.has(l));
+}
+
 // Distancia de edición (Levenshtein) entre dos palabras cortas
 function editDistance(a, b) {
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -188,7 +244,11 @@ function inventedDetail(text, { allowed = [], gameWords = [], names = [] } = {})
     const proper = /^\p{Lu}\p{Ll}/u.test(word) && !startsSentence;
     const rank = Math.min(...singulars(k).map(wordRank));
     // formas conjugadas o derivadas («animan», «peleando») cuentan como comunes si empiezan igual que una palabra de la lista
-    const uncommon = k.length >= 5 && rank >= INVENTED_RANK && !hasListPrefix(k.slice(0, Math.max(5, k.length - 2)));
+    const uncommon =
+      k.length >= 5 &&
+      rank >= INVENTED_RANK &&
+      !hasListPrefix(k.slice(0, Math.max(5, k.length - 2))) &&
+      !isCommonVerbForm(k);
     if (!proper && !uncommon) continue;
     // un nombre propio solo vale exacto; una palabra poco común, también si es variante cercana de una permitida
     if (
@@ -203,4 +263,4 @@ function inventedDetail(text, { allowed = [], gameWords = [], names = [] } = {})
   return '';
 }
 
-module.exports = { copiedFromChat, inventedDetail, wordRank };
+module.exports = { copiedFromChat, inventedDetail, wordRank, verbLemmas };

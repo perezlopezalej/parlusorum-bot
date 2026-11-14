@@ -502,7 +502,7 @@ describe('ajustes del eval del 13-11', () => {
     assert.equal(q.inventedDetail('Seguimos vivos aquí en las Colosales.', ctx), 'Colosales');
     assert.equal(q.inventedDetail('Manu mira el colosal.', ctx), '');
     assert.equal(q.inventedDetail('Manu sigue buscando esa costra para saltar.', ctx), 'costra');
-    assert.equal(q.inventedDetail('Menudo pitorreo se ha montado hoy.', ctx), 'pitorreo');
+    assert.equal(q.inventedDetail('Menudo pitorreo se ha montado hoy.', ctx), ''); // coloquialismo del chat, ya no se descarta
     assert.equal(q.inventedDetail('El FUA aprieta y Manu se acuerda de Valisthea.', ctx), 'Valisthea');
     // lo que sí vale: hechos, el juego (también «colosos»), canal, nicks, mayúscula al abrir frase y palabras comunes
     assert.equal(q.inventedDetail('Manu y los colosos, cinco caídas y el chat con el FUA.', ctx), '');
@@ -595,4 +595,31 @@ test('speakable: «..» pasa a «.» sin tocar «...» ni «…»', () => {
   );
   assert.equal(q.speakable('Vaya... qué cosa… ¿no?'), 'Vaya... qué cosa… ¿no?');
   assert.equal(q.speakable('Pues no.... ni así'), 'Pues no.... ni así');
+});
+
+describe('formas verbales y coloquialismos en la regla `inventado`', () => {
+  const ctx = { allowed: ['Manu lleva cinco caídas hoy'], gameWords: ['shadow', 'colossus'], names: [] };
+
+  test('gerundios, participios y conjugaciones comunes no se descartan', () => {
+    for (const t of [
+      'Seguimos planteando la jugada.',
+      'Marcamos otra caída más.',
+      'Manu esquivando y trepando sin parar.',
+      'Aguantamos el tipo un rato.',
+      'Mañana pelearemos otra vez.',
+      'Habían plantado el campamento.',
+    ])
+      assert.equal(q.inventedDetail(t, ctx), '', t);
+  });
+
+  test('lo inventado sigue cayendo', () => {
+    assert.equal(q.inventedDetail('Manu busca esa costra para saltar.', ctx), 'costra');
+    assert.equal(q.inventedDetail('Seguimos vivos aquí en las Colosales.', ctx), 'Colosales');
+    assert.equal(q.inventedDetail('Camino hacia Valisthea con calma.', ctx), 'Valisthea');
+  });
+
+  test('pitorreo, cachondeo, guasa, vacile y pique son vocabulario del chat', () => {
+    for (const w of ['pitorreo', 'cachondeo', 'guasa', 'vacile', 'pique'])
+      assert.equal(q.inventedDetail(`Menudo ${w} se traen hoy.`, ctx), '', w);
+  });
 });
