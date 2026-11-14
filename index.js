@@ -25,7 +25,13 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const { createEventSubHandler, registerSubscriptions, initStreamState, checkLiveNow } = require('./src/eventsub');
+const {
+  createEventSubHandler,
+  registerSubscriptions,
+  initStreamState,
+  checkLiveNow,
+  restorePendingEnd,
+} = require('./src/eventsub');
 const commands = require('./src/commands/handler');
 const { resetSessionCounters } = commands;
 
@@ -296,6 +302,7 @@ client.on('connected', async () => {
 
     await initStreamState();
     await restoreBotState(client, CHANNEL);
+    await restorePendingEnd();
     await ai.initStreamStatus();
     ai.startEventCohost(client, CHANNEL);
 

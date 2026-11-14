@@ -7,6 +7,7 @@
  */
 const logger = require('./logger');
 const state = require('./state');
+const { sanitizePendingEnd } = require('./stream-session');
 
 const PLAYERS = ['manu', 'pao', 'ambos'];
 const SAVE_DEBOUNCE_MS = 1000;
@@ -16,10 +17,14 @@ const count = (n) => (Number.isInteger(n) && n >= 0 ? n : 0);
 
 // Lo que se guarda. Sin directo: nada (así un estado viejo nunca se restaura en el siguiente stream)
 function buildSnapshot(
-  { live, streamStartedAt, silenced, brbStart, player, deaths, bosses, muteUntil, mode },
+  { live, streamStartedAt, silenced, brbStart, player, deaths, bosses, muteUntil, mode, pendingEnd },
   now = Date.now(),
 ) {
-  if (!live || !streamStartedAt) return { v: 1, live: false, savedAt: now };
+  // Sin directo solo se conserva un corte pendiente de confirmar (para cerrarlo tras un reinicio)
+  if (!live || !streamStartedAt) {
+    const pending = sanitizePendingEnd(pendingEnd);
+    return pending ? { v: 1, live: false, pendingEnd: pending, savedAt: now } : { v: 1, live: false, savedAt: now };
+  }
   return {
     v: 1,
     live: true,
@@ -66,6 +71,7 @@ function currentSnapshot() {
     bosses: state.getBossCount(),
     muteUntil: state.getMuteUntil(),
     mode: state.getBotMode(),
+    pendingEnd: state.getPendingEnd(),
   });
 }
 

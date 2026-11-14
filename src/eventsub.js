@@ -10,8 +10,18 @@ const {
   restoreSessionNarrative,
   saveSessionNarrative,
   getCurrentSessionId,
+  endStreamSession,
+  loadBotState,
 } = require('./utils/supabase');
 const chatlog = require('./utils/chatlog');
+const {
+  rejoinMs,
+  endGraceUntil,
+  decideStreamTransition,
+  liveMinutes,
+  closingPlan,
+  sanitizePendingEnd,
+} = require('./utils/stream-session');
 const { persistBotState } = require('./utils/bot-state');
 const { throttleSay } = require('./alerts/handler');
 const { getAppAccessToken } = require('./twitch/app-token');
@@ -28,6 +38,10 @@ const {
   setBotMode,
   setBrbMode,
   setStreamEndGraceUntil,
+  setPendingEnd,
+  getPendingEnd,
+  setStreamGapMs,
+  getStreamGapMs,
   setSessionStarting,
   getSessionStarting,
   clearSessionStarting,
@@ -70,7 +84,6 @@ const EVENTSUB_SECRET = process.env.EVENTSUB_SECRET;
 
 // Deduplicación de notificaciones — Twitch puede reenviar el mismo evento
 const MESSAGE_MAX_AGE_MS = 10 * 60 * 1000;
-const END_OF_STREAM_GRACE_MS = 15 * 60 * 1000; // margen para el resumen de fin de stream (memoria IA incluida)
 const processedEventIds = new Map(); // message-id | tipo:event.id → expiresAt
 
 const DEDUPE_BY_EVENT_ID = /^channel\.(poll|prediction)\./;
@@ -495,6 +508,24 @@ async function getViewersWithAppToken(broadcasterId) {
 
 // --- Handler del webhook ---
 // deps evita dependencias circulares: estas funciones se pasan desde index.js donde ya están cargadas
+let armPendingEndHook = null; // lo fija createEventSubHandler
+
+// Tras un reinicio: si había un corte pendiente de confirmar y el canal sigue sin directo, se retoma la espera
+async function restorePendingEnd() {
+  try {
+    const pending = sanitizePendingEnd((await loadBotState())?.pendingEnd);
+    if (!pending || getStreamIsLive() || !armPendingEndHook) return false;
+    setPendingEnd(pending);
+    setStreamGapMs(pending.gapMs);
+    armPendingEndHook(pending.endedAt + rejoinMs() - Date.now());
+    logger.info('♻️ Corte del directo pendiente restaurado');
+    return true;
+  } catch (e) {
+    logger.warn(`Corte pendiente no restaurado: ${e.message}`);
+    return false;
+  }
+}
+
 function createEventSubHandler(client, channel, deps) {
   const {
     getCurrentGame,
@@ -514,6 +545,127 @@ function createEventSubHandler(client, channel, deps) {
     clearUserFactsCache,
     handleQuestion,
   } = deps;
+
+  let pendingEndTimer = null;
+
+  // Cierre real del directo (tras la ventana de corte): reinicios, despedida y, si dura lo bastante, resumen
+  function closeStream({ durationMinutes }) {
+    const plan = closingPlan(durationMinutes);
+    // El silencio y el BRB no pasan al siguiente directo; el bot aún puede despedirse unos minutos
+    setSilenceMode(false);
+    setMuteUntil(0);
+    setBotMode('normal');
+    setBrbMode(false, null, null);
+    setStreamEndGraceUntil(endGraceUntil());
+    setStreamGapMs(0);
+    persistBotState();
+    // I/O asíncrono en background — no bloquea la respuesta a Twitch
+    setImmediate(async () => {
+      const pending = getSessionStarting();
+      if (pending) await pending.catch(() => {});
+      // Resumen de modelos de reserva solo en el log (no en el chat)
+      const fallbackUse = getGroqFallbackUse();
+      resetGroqFallbackUse();
+      const fallbackLines = Object.entries(fallbackUse)
+        .map(([k, n]) => `${k}: ${n}`)
+        .join(', ');
+      logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
+      const tokenUse = getGroqTokenUse();
+      logger.info(`📊 Fin de stream — ${formatTokenUse(tokenUse)}`);
+      resetGroqTokenUse();
+      const aiUsage = getAiUsage();
+      logger.info(`📊 Fin de stream — ${formatAiUsage(aiUsage)}`);
+      resetAiStreamUsage();
+      const cohost = getCohostStats();
+      resetCohostStats();
+      // Métricas del stream para el registro de calidad (se capturan aquí porque se resetean arriba)
+      const streamMetrics = {
+        durationMinutes,
+        fallbackUse,
+        tokens: tokenUse.stream,
+        requests: Object.fromEntries(Object.entries(aiUsage).map(([k, u]) => [k, u.stream.requests])),
+        cohost,
+      };
+      logger.info(`📊 Fin de stream — ${formatCohostStats(cohost)}`);
+      const filters = getFilterStats();
+      resetFilterStats();
+      streamMetrics.filters = filters;
+      logger.info(`📊 Fin de stream — ${formatFilterStats(filters)}`);
+      try {
+        const gameInfo = await getCurrentGame().catch(() => null);
+        const metrics = getSummary();
+        const chatSample = typeof getStreamChatBuffer === 'function' ? getStreamChatBuffer() : '';
+        const activeUsers = getActiveUsers();
+        const activeUserIds = getActiveUserIds();
+        resetActiveUsers();
+        const reviewSessionId = getCurrentSessionId();
+        const stats = {
+          game: gameInfo?.game || null,
+          durationMinutes,
+          deathCount: getDeathCount(),
+          peakViewers: metrics.peakViewers || 0,
+          totalMessages: metrics.totalMessages || 0,
+          topCommands: Object.fromEntries(
+            (metrics.topCommands || '')
+              .split(' ')
+              .filter(Boolean)
+              .map((s) => {
+                const m = s.match(/!(\w+)\((\d+)\)/);
+                return m ? [m[1], parseInt(m[2])] : null;
+              })
+              .filter(Boolean),
+          ),
+          activeUsers: activeUsers,
+          activeUserIds,
+        };
+        // Directos cortos: sesión cerrada, pero sin resumen con IA ni memoria (no hay nada que resumir)
+        const memory =
+          plan === 'resumen' ? await onStreamEnd(stats, chatSample) : await endStreamSession(stats).then(() => null);
+        if (plan !== 'resumen') logger.info(`⏱️ Directo de ${durationMinutes} min: sin resumen con IA (plan: ${plan})`);
+        postStreamEnd(client, channel, memory?.summary || null, { silent: plan === 'nada' });
+        // Autorrevisión: solo log y Supabase, nunca el chat. Espera a que el chat registrado esté volcado.
+        setTimeout(() => {
+          chatlog
+            .flush()
+            .then(() =>
+              require('./ai/self-review').reviewStream({ sessionId: reviewSessionId, metrics: streamMetrics }),
+            )
+            .catch((err) => logger.warn(`Autorrevisión: ${err.message}`));
+        }, 15000).unref?.();
+      } catch (e) {
+        logger.warn(`Supabase session end: ${e.message}`);
+        try {
+          postStreamEnd(client, channel, null);
+        } catch (e2) {
+          logger.warn(`postStreamEnd fallback failed: ${e2.message}`);
+        }
+      }
+    });
+  }
+
+  // Cierra el corte pendiente: duración = primer inicio → último fin, sin los huecos
+  function closePendingStream() {
+    clearTimeout(pendingEndTimer);
+    pendingEndTimer = null;
+    const pending = getPendingEnd();
+    if (!pending) return;
+    setPendingEnd(null);
+    if (getStreamIsLive()) {
+      // Twitch ya lo da en directo (aviso de inicio perdido): no se cierra nada
+      persistBotState();
+      return;
+    }
+    const durationMinutes = liveMinutes({ ...pending });
+    logger.info(`⚫ Directo terminado (${durationMinutes} min en antena)`);
+    closeStream({ durationMinutes });
+  }
+
+  function armPendingEnd(ms) {
+    clearTimeout(pendingEndTimer);
+    pendingEndTimer = setTimeout(closePendingStream, Math.max(0, ms));
+    pendingEndTimer.unref?.();
+  }
+  armPendingEndHook = (ms) => armPendingEnd(ms);
 
   return async function handleEventSub(req, res, rawBody) {
     const messageType = req.headers[MESSAGE_TYPE];
@@ -590,6 +742,28 @@ function createEventSubHandler(client, channel, deps) {
       }
 
       if (type === 'stream.online') {
+        const pending = getPendingEnd();
+        if (pending && decideStreamTransition({ pendingEnd: pending }) === 'rejoin') {
+          // Corte breve: es el mismo directo. Sin aviso de inicio, sin sesión nueva y sin reiniciar nada.
+          clearTimeout(pendingEndTimer);
+          const gapMs = (pending.gapMs || 0) + (Date.now() - pending.endedAt);
+          setPendingEnd(null);
+          setStreamGapMs(gapMs);
+          setStreamIsLive(true);
+          setStreamStartedAt(pending.startedAt);
+          setStreamEndGraceUntil(0);
+          persistBotState();
+          logger.info(
+            `🔁 Stream online via EventSub: vuelve tras un corte de ${Math.round(gapMs / 1000)} s, misma sesión`,
+          );
+          return;
+        }
+        if (pending) {
+          // Corte vencido cuyo temporizador no llegó a cerrarlo: se cierra antes de abrir el directo nuevo
+          clearTimeout(pendingEndTimer);
+          closePendingStream();
+        }
+        setStreamGapMs(0);
         // Cambios de estado en memoria: síncronos e inmediatos
         setStreamIsLive(true);
         setStreamStartedAt(event?.started_at ? new Date(event.started_at).getTime() : Date.now());
@@ -652,101 +826,24 @@ function createEventSubHandler(client, channel, deps) {
       }
 
       if (type === 'stream.offline') {
-        // Cambios de estado en memoria: síncronos e inmediatos
+        if (getPendingEnd()) {
+          logger.info('ℹ️ EventSub: stream.offline repetido durante un corte, ignorado');
+          return;
+        }
         setStreamIsLive(false);
         const endedAt = Date.now();
-        const streamStartedAt = getStreamStartedAt();
-        const durationMinutes = streamStartedAt ? Math.floor((endedAt - streamStartedAt) / 60000) : 0;
+        const startedAt = getStreamStartedAt();
         setStreamStartedAt(null);
-        // El silencio y el BRB no pasan al siguiente directo; el bot aún puede despedirse unos minutos
-        setSilenceMode(false);
-        setMuteUntil(0);
-        setBotMode('normal');
-        setBrbMode(false, null, null);
-        setStreamEndGraceUntil(endedAt + END_OF_STREAM_GRACE_MS);
-        persistBotState();
         logger.info(`⚫ Stream offline via EventSub`);
-        // I/O asíncrono en background — no bloquea la respuesta a Twitch
-        setImmediate(async () => {
-          const pending = getSessionStarting();
-          if (pending) await pending.catch(() => {});
-          // Resumen de modelos de reserva solo en el log (no en el chat)
-          const fallbackUse = getGroqFallbackUse();
-          resetGroqFallbackUse();
-          const fallbackLines = Object.entries(fallbackUse)
-            .map(([k, n]) => `${k}: ${n}`)
-            .join(', ');
-          logger.info(`📊 Fin de stream — modelos de reserva de Groq: ${fallbackLines || 'ninguno usado'}`);
-          const tokenUse = getGroqTokenUse();
-          logger.info(`📊 Fin de stream — ${formatTokenUse(tokenUse)}`);
-          resetGroqTokenUse();
-          const aiUsage = getAiUsage();
-          logger.info(`📊 Fin de stream — ${formatAiUsage(aiUsage)}`);
-          resetAiStreamUsage();
-          const cohost = getCohostStats();
-          resetCohostStats();
-          // Métricas del stream para el registro de calidad (se capturan aquí porque se resetean arriba)
-          const streamMetrics = {
-            durationMinutes,
-            fallbackUse,
-            tokens: tokenUse.stream,
-            requests: Object.fromEntries(Object.entries(aiUsage).map(([k, u]) => [k, u.stream.requests])),
-            cohost,
-          };
-          logger.info(`📊 Fin de stream — ${formatCohostStats(cohost)}`);
-          const filters = getFilterStats();
-          resetFilterStats();
-          streamMetrics.filters = filters;
-          logger.info(`📊 Fin de stream — ${formatFilterStats(filters)}`);
-          try {
-            const gameInfo = await getCurrentGame().catch(() => null);
-            const metrics = getSummary();
-            const chatSample = typeof getStreamChatBuffer === 'function' ? getStreamChatBuffer() : '';
-            const activeUsers = getActiveUsers();
-            const activeUserIds = getActiveUserIds();
-            resetActiveUsers();
-            const reviewSessionId = getCurrentSessionId();
-            const memory = await onStreamEnd(
-              {
-                game: gameInfo?.game || null,
-                durationMinutes,
-                deathCount: getDeathCount(),
-                peakViewers: metrics.peakViewers || 0,
-                totalMessages: metrics.totalMessages || 0,
-                topCommands: Object.fromEntries(
-                  (metrics.topCommands || '')
-                    .split(' ')
-                    .filter(Boolean)
-                    .map((s) => {
-                      const m = s.match(/!(\w+)\((\d+)\)/);
-                      return m ? [m[1], parseInt(m[2])] : null;
-                    })
-                    .filter(Boolean),
-                ),
-                activeUsers: activeUsers,
-                activeUserIds,
-              },
-              chatSample,
-            );
-            postStreamEnd(client, channel, memory?.summary || null);
-            // Autorrevisión: solo log y Supabase, nunca el chat. Espera a que el chat registrado esté volcado.
-            setTimeout(() => {
-              chatlog
-                .flush()
-                .then(() =>
-                  require('./ai/self-review').reviewStream({ sessionId: reviewSessionId, metrics: streamMetrics }),
-                )
-                .catch((err) => logger.warn(`Autorrevisión: ${err.message}`));
-            }, 15000).unref?.();
-          } catch (e) {
-            logger.warn(`Supabase session end: ${e.message}`);
-            try {
-              postStreamEnd(client, channel, null);
-            } catch (e2) {
-              logger.warn(`postStreamEnd fallback failed: ${e2.message}`);
-            }
-          }
-        });
+        if (!startedAt) {
+          // Sin hora de inicio no hay corte que esperar: cierre directo (sin resumen, duración desconocida)
+          closeStream({ durationMinutes: 0 });
+          return;
+        }
+        // El directo no se cierra aún: si vuelve dentro de la ventana es la misma sesión
+        setPendingEnd({ endedAt, startedAt, gapMs: getStreamGapMs() });
+        persistBotState();
+        armPendingEnd(rejoinMs());
       }
 
       if (type === 'channel.hype_train.begin') {
@@ -886,6 +983,7 @@ module.exports = {
   handleRevocation,
   initStreamState,
   checkLiveNow,
+  restorePendingEnd,
   isLiveViaEventSub,
   getStreamUptime,
   getViewersWithAppToken,

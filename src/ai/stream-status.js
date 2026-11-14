@@ -2,7 +2,13 @@
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const { getStreamInfo } = require('../twitch/api');
-const { isSilenced, isReactive, claimStartAnnouncement, resetStartAnnouncement } = require('../utils/state');
+const {
+  isSilenced,
+  isReactive,
+  claimStartAnnouncement,
+  resetStartAnnouncement,
+  getPendingEnd,
+} = require('../utils/state');
 const quality = require('./quality');
 const { canMakeRequest } = require('../utils/ratelimit');
 const logger = require('../utils/logger');
@@ -19,7 +25,8 @@ let streamStatusInitialized = false;
 let streamEndPostedByEventSub = false;
 
 async function initStreamStatus() {
-  const isLive = getEventSubLiveStatus();
+  // Un corte pendiente de confirmar sigue siendo el mismo directo: ni aviso de inicio ni de fin
+  const isLive = getEventSubLiveStatus() || !!getPendingEnd();
   if (isLive) {
     streamWasLive = true;
     streamStatusInitialized = true;
@@ -38,7 +45,7 @@ const streamEndMessages = messagesConfig.stream_end_messages || [];
 
 async function checkStreamStatus(client, channel) {
   if (!streamStatusInitialized) return;
-  const isLive = getEventSubLiveStatus();
+  const isLive = getEventSubLiveStatus() || !!getPendingEnd();
 
   if (!streamWasLive && isLive) {
     streamWasLive = true;
@@ -83,10 +90,11 @@ async function onWarmupMode(client, channel, game) {
 }
 
 // Llamado desde eventsub.js tras generar la memoria del stream
-function postStreamEnd(client, channel, aiSummary) {
+// opts.silent: directo demasiado corto para despedirse (solo se cierra el estado)
+function postStreamEnd(client, channel, aiSummary, { silent = false } = {}) {
   streamWasLive = false;
   streamEndPostedByEventSub = true;
-  if (isReactive()) return; // modo reactivo: sin resumen espontáneo de fin de stream
+  if (silent || isReactive()) return; // modo reactivo: sin resumen espontáneo de fin de stream
   const msg = aiSummary
     ? `🎬 ¡Fin del stream! ${aiSummary} ¡Hasta la próxima! FUA! 💜🔥`
     : pickRandom(streamEndMessages);

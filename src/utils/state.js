@@ -338,6 +338,21 @@ function getLastCapsRageTime() {
 let streamStartedAt = null;
 let streamIsLive = false;
 let _sessionStarting = null;
+// Corte del directo en espera de confirmar si vuelve: { endedAt, startedAt, gapMs } (ver utils/stream-session.js)
+let pendingEnd = null;
+let streamGapMs = 0; // tiempo acumulado de cortes dentro del mismo directo
+function setPendingEnd(val) {
+  pendingEnd = val;
+}
+function getPendingEnd() {
+  return pendingEnd;
+}
+function setStreamGapMs(val) {
+  streamGapMs = Number.isFinite(val) && val > 0 ? val : 0;
+}
+function getStreamGapMs() {
+  return streamGapMs;
+}
 
 function setStreamStartedAt(val) {
   streamStartedAt = val;
@@ -953,6 +968,10 @@ module.exports = {
   getLastCapsRageTime,
   setStreamStartedAt,
   getStreamStartedAt,
+  setPendingEnd,
+  getPendingEnd,
+  setStreamGapMs,
+  getStreamGapMs,
   setStreamIsLive,
   getStreamIsLive,
   setStreamEndGraceUntil,
