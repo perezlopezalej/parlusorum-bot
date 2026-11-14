@@ -324,6 +324,12 @@ async function handleQuestion(client, channel, tags, args) {
       discard = true;
       logger.info(`!dios_fua: detalle que no está en la ficha («${inventedName}»)`);
     }
+    // Anglicismos («lads», «power»): como en el resto de textos del bot, salvo los de la pregunta o el título del juego
+    const english = !techLeak && !discard ? quality.anglicism(answer, detailCtx.allowed) : null;
+    if (english) {
+      discard = true;
+      logger.info(`!dios_fua: anglicismo («${english.word}»)`);
+    }
     // Ficha volcada en bruto (inglés, fechas ISO, campos copiados): no se envía; con datos de IGDB, un reintento y si no la plantilla
     const rawLeak = !techLeak
       ? leaksSheetRaw(answer, { names: [gameData?.name, gameName, ...(channelConfig.games_played || [])] })
@@ -347,6 +353,7 @@ async function handleQuestion(client, channel, tags, args) {
         !leaksSheetRaw(retryAnswer, { names: [gameData?.name, gameName, ...(channelConfig.games_played || [])] }) &&
         !quality.unsupportedAttributes(retryAnswer, gameText) &&
         !quality.inventedDetail(retryAnswer, detailCtx) &&
+        !quality.anglicism(retryAnswer, detailCtx.allowed) &&
         !(await factcheck.shouldDiscard(retryAnswer, gameText, { source: 'juego' }))
       ) {
         answer = retryAnswer;

@@ -977,5 +977,44 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "d13-mencion-power",
+    "filter": "mention",
+    "input": "@vlxj97 ¡Claro que me importa, soy el FUA del chat! Y si te falta un dragón, aquí tienes con todo el power.",
+    "question": "dios fua te importa que me falte un dragón",
+    "note": "Mención del 13-11 (14:53): anglicismo «power».",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-control-mencion-potencia",
+    "filter": "mention",
+    "input": "@vlxj97 ¡Claro que me importa, soy el FUA del chat! Y si te falta un dragón, te lo traigo con toda la potencia.",
+    "question": "dios fua te importa que me falte un dragón",
+    "note": "Control: la misma frase en español sí vale.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "d13-resumen-lads",
+    "filter": "summary",
+    "input": "Siete minutos de Shadow of the Colossus sin caídas y con un pico de tres lads aguantando la máquina, un directo corto pero con la esencia intacta.",
+    "note": "Resumen del 13-11 (18:11): «lads» y cifras de viewers. Regla `anglicismo`.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-cohost-lads",
+    "filter": "cohost",
+    "deaths": 5,
+    "input": "Cinco caídas y los lads del chat siguen animando a Manu, eso es FUA.",
+    "note": "Anglicismo «lads» en el cohost. Regla `anglicismo`.",
+    "expect": {
+      "rejected": true
+    }
   }
 ]

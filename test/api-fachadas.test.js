@@ -3,12 +3,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const QUALITY = [
+  'ANGLICISM_REASON',
   'FORMULAS',
   'LATAM_RE',
   'ROBOT_REFUSAL_RE',
   'SPORTS_RE',
   'abbreviatedGame',
   'achievesDeaths',
+  'anglicism',
   'applyEmotePolicy',
   'approxDuration',
   'asksAboutPastStream',

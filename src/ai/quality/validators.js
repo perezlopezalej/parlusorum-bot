@@ -25,6 +25,8 @@ const {
   mentionsGenre,
   mentionsMechanics,
   abbreviatedGame,
+  anglicism,
+  ANGLICISM_REASON,
   mentionsOtherGame,
   mirrorsUser,
   misusedIdiom,
@@ -87,11 +89,22 @@ function gameTalkProblem(text) {
 // opts.idioms: frases hechas vetadas en los mensajes automáticos (por defecto, igual que personal)
 function styleProblem(
   text,
-  { personal = true, idioms = personal, minWords = 3, player = 'manu', now = new Date(), names = [] } = {},
+  {
+    personal = true,
+    idioms = personal,
+    minWords = 3,
+    player = 'manu',
+    now = new Date(),
+    names = [],
+    allowed = [],
+  } = {},
 ) {
   const t = String(text || '');
   const junk = junkProblem(t, { minWords });
   if (junk) return junk;
+  // anglicismos («lads», «power»): en todos los textos del bot; `allowed` = título del juego y lo que escribió quien pregunta
+  const english = anglicism(t, allowed);
+  if (english) return { rule: 'anglicismo', reason: ANGLICISM_REASON(english) };
   if (isCutOff(t))
     return {
       rule: 'cortada',
@@ -203,7 +216,7 @@ function validateCohost(
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount))
     return { ok: false, rule: 'muertes', reason: 'menciona muertes que no están en el contador' };
-  const style = styleProblem(text, { player, now: new Date(now) });
+  const style = styleProblem(text, { player, now: new Date(now), allowed: [game] });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
   const twist = giroProblem(giro);
   if (twist) return { ok: false, rule: 'giro', reason: twist };
@@ -353,7 +366,7 @@ function validateHook(
   if (citesViewers(text)) return { ok: false, reason: VIEWERS_REASON };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
   if (usedStructures.has(METAPHOR_MARK) && isMetaphor(text)) return { ok: false, reason: METAPHOR_REASON };
-  const style = styleProblem(text, { player, now: new Date(now) });
+  const style = styleProblem(text, { player, now: new Date(now), allowed: [game] });
   if (style) return { ok: false, reason: style.reason };
   const abbreviated = abbreviatedGame(text, game);
   if (abbreviated) return { ok: false, reason: ABBREVIATED_REASON(abbreviated, game) };
@@ -377,6 +390,8 @@ function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '', fac
   if (isRobotRefusal(text)) return 'suena a rechazo de robot';
   if (mentionsUnrecordedDeaths(text, deathCount)) return 'menciona muertes que no están en el contador';
   if (inventedQuote(text, source)) return 'cita un mensaje del chat que no existe (entrecomillado inventado)';
+  const english = anglicism(text, [recap.game]);
+  if (english) return ANGLICISM_REASON(english);
   const boss = text.match(/(\d+)\s+(?:jefes?|bosses|boss)\b/i);
   if (boss && parseInt(boss[1], 10) !== bosses) return `cita ${boss[1]} jefes y llevamos ${bosses}`;
   if (facts) {
@@ -453,7 +468,7 @@ function validateTimerIA(
   if (repeatedMark) return { ok: false, reason: repeatedMark };
   if (citesGameScore(text)) return { ok: false, reason: 'cita la nota o la fuente del juego; no la menciones' };
   if (/@\w/.test(text)) return { ok: false, reason: 'no etiquetes a nadie con @' };
-  const style = styleProblem(text, { player, now: new Date(now) });
+  const style = styleProblem(text, { player, now: new Date(now), allowed: [currentGame] });
   if (style) return { ok: false, reason: style.reason };
   const copied = copiedFromChat(text, chatLines, {
     allowed: [...allowedWords, currentGame],
@@ -513,7 +528,7 @@ function validateMention(
   if (hasLatam(text))
     return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
-  const style = styleProblem(text, { personal: false, minWords: 2, player, names });
+  const style = styleProblem(text, { personal: false, minWords: 2, player, names, allowed: [question] });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
   if (mirrorsUser(text, question))
     return {

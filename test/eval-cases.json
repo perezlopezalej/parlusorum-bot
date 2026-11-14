@@ -917,5 +917,16 @@
         }
       ]
     }
+  },
+  {
+    "id": "d13-mencion-piratear",
+    "input": "dios fua Cristina a pirateado a dios fua",
+    "game": "Shadow of the Colossus",
+    "deaths": 5,
+    "note": "Mención del 13-11 (13:52): «piratear» es hackear; la respuesta hablaba de barcos y piratas.",
+    "expect": {
+      "reply": true,
+      "matchNone": ["barco", "pirata", "\\bpower\\b", "\\blads?\\b"]
+    }
   }
 ]

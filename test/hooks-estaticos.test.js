@@ -18,15 +18,14 @@ describe('pickStaticHook', () => {
     for (const h of gameHooks) assert.ok(seen.has(h), h);
   });
 
-  test('tras uno de juego, solo genéricos, aunque se agoten y se reinicie la lista', () => {
+  test('tras uno de juego, solo genéricos; agotados, no hay más (no se reinicia la lista)', () => {
     for (let i = 0; i < 20; i++) {
       const { hook, isGame } = pickStaticHook({ gameHooks, genericHooks, gameHookUsed: true, rng: Math.random });
       assert.ok(genericHooks.includes(hook), hook);
       assert.equal(isGame, false);
     }
     const all = pickStaticHook({ gameHooks, genericHooks, gameHookUsed: true, used: new Set(genericHooks) });
-    assert.equal(all.reset, true);
-    assert.ok(genericHooks.includes(all.hook));
+    assert.equal(all.hook, undefined);
   });
 
   test('marca si el elegido es de juego y no repite los ya dichos', () => {
@@ -34,7 +33,6 @@ describe('pickStaticHook', () => {
     const r = pickStaticHook({ gameHooks, genericHooks, used, rng: () => 0 });
     assert.equal(r.hook, gameHooks[0]);
     assert.equal(r.isGame, true);
-    assert.equal(r.reset, false);
     assert.equal(GAME_HOOK_MARK, 'hook-juego');
   });
 });

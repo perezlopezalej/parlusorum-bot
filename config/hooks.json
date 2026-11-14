@@ -1,0 +1,42 @@
+{
+  "_nota": "Preguntas fijas del hook anti-silencio (src/ai/hooks.js). Editable. Cada una sale como mucho una vez por stream y, al agotarse la lista, no hay más hooks fijos hasta el siguiente directo. A partir del 70 % usado, el intervalo entre hooks se duplica. Sin anglicismos (ver src/ai/quality/data/anglicismos.txt).",
+  "generic": [
+    "¿Sois más de cooperativo o en solitario? 💬",
+    "¡Chat! ¿Alguien se anima con un !trivia? 🧠",
+    "¿Cuántas caídas creéis que habrá hoy? 💀",
+    "¿Cuál es vuestro juego favorito de todos los tiempos? 🎮",
+    "¡Usad !chiste para que cuente un chiste! 😂",
+    "¿Qué juego os ha enganchado más de golpe? 🎮",
+    "¿Cuál fue el primer videojuego que jugasteis? 🕹️",
+    "¿Qué jefe os hizo rabiar más en la vida? 👹",
+    "¿Qué banda sonora de videojuego os pone los pelos de punta? 🎶",
+    "¿Sois de terminar los juegos al cien por cien o de pasar página? ✅",
+    "¿Qué videojuego esperáis con más ganas? 👀",
+    "¿Cuál es el juego más difícil que habéis terminado? 💪",
+    "¿Qué juego os gustaría ver en el canal algún día? 📺",
+    "¿Qué personaje de videojuego os cae mejor? 🙌",
+    "¿Con cuántos mandos habéis perdido los nervios? 🎮",
+    "¿Preferís juegos largos o historias cortas y redondas? 📖",
+    "¿Qué juego rejugaríais mil veces? 🔁",
+    "¿Qué consola os marcó de pequeños? 📼",
+    "¿Cuál es el final de videojuego que más os emocionó? 😢",
+    "¿Qué juego os da más nostalgia? 💜",
+    "¿Qué consejo le daríais a Manu ahora mismo? 🗣️",
+    "¿Cuál ha sido vuestro momento favorito del directo de hoy? ⭐",
+    "¿Os va más la acción o la estrategia? ⚔️",
+    "¿Qué juego os parece que está infravalorado? 🔎",
+    "¿Cuántas horas habéis echado a vuestro juego favorito? ⏳",
+    "¿Qué juego os da más miedo? 😱",
+    "¿Quién sois en un juego cooperativo: el que lidera o el que sigue? 🤝",
+    "¿Qué logro de videojuego os ha costado más conseguir? 🏆",
+    "¿Cuál es el mejor mundo abierto que habéis pisado? 🗺️",
+    "¿Qué videojuego recomendaríais a alguien que empieza? 🌱",
+    "¿Qué personaje os gustaría invocar en el directo? 🔮"
+  ],
+  "game_with_genres": [
+    "🎮 {streamer} juega a {game}: {genres}{year}. ¿Alguien lo ha jugado?",
+    "¿Qué os parece {game} hasta ahora? Género: {genres} 🎮",
+    "{game}: {genres}{year}. ¿Alguien lo conocía ya? 🤔"
+  ],
+  "game_plain": ["¿Qué os parece {game} hasta ahora? 🎮", "¿Alguien ha jugado {game} antes? ¿Es difícil? 🤔"]
+}

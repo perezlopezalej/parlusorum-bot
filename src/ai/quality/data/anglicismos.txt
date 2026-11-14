@@ -1,0 +1,34 @@
+# Anglicismos que el bot no usa (regla `anglicismo`, lexicon.js; vale para todos los textos del bot). Editable a mano.
+# Formato: palabra | cómo se dice en español (la sugerencia sale en el motivo del reintento). Minúsculas; las líneas con # son comentarios.
+# Se detectan como palabra suelta, con o sin mayúsculas. Si la palabra es parte del título del juego o la escribió quien pregunta, no cuenta.
+# «stream», «streamer», «boss», «gg» y los emotes son del canal y no están aquí.
+power | potencia
+powers | poderes
+lads | chavales
+lad | chaval
+guys | gente
+bro | colega
+bros | colegas
+vibes | ambiente
+vibe | ambiente
+hype | emoción
+hypeado | emocionado
+random | aleatorio
+randoms | aleatorios
+cringe | vergüenza ajena
+streaming | directo
+feeling | sensación
+mood | ánimo
+epic | épico
+gamer | jugón
+gamers | jugones
+spoiler | destripe
+spoilers | destripes
+gameplay | partida
+loot | botín
+level | nivel
+fail | fallo
+win | victoria
+team | equipo
+challenge | reto
+squad | grupo

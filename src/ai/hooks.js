@@ -1,5 +1,6 @@
 // Hooks: preguntas al chat cuando hay silencio.
 const channelConfig = require('../../config/channel.json');
+const hooksConfig = require('../../config/hooks.json');
 const { getCurrentGame, getGameInfo } = require('../twitch/api');
 const {
   getPlayer,
@@ -53,7 +54,8 @@ const gameHookCache = new Map(); // juego → { ok, at }
 
 const GAME_HOOK_MARK = 'hook-juego'; // marca por stream: ya salió un hook fijo sobre el juego
 
-// Elige un hook fijo: sin repetir los ya dichos y, tras uno de juego, solo genéricos. → { hook, isGame, reset }
+// Elige un hook fijo: sin repetir los ya dichos y, tras uno de juego, solo genéricos. → { hook, isGame }.
+// Agotada la lista no se reinicia: `hook` queda undefined y en este stream no hay más hooks fijos.
 function pickStaticHook({
   gameHooks = [],
   genericHooks = [],
@@ -62,11 +64,21 @@ function pickStaticHook({
   rng = Math.random,
 }) {
   const games = gameHookUsed ? [] : gameHooks;
-  let pool = [...games, ...genericHooks].filter((h) => !used.has(h));
-  const reset = !pool.length;
-  if (reset) pool = [...games, ...genericHooks];
+  const pool = [...games, ...genericHooks].filter((h) => !used.has(h));
+  if (!pool.length) return { hook: undefined, isGame: false };
   const hook = pool[Math.floor(rng() * pool.length)];
-  return { hook, isGame: games.includes(hook), reset };
+  return { hook, isGame: games.includes(hook) };
+}
+
+// Con el 70 % de la lista de hooks fijos gastada, el intervalo entre hooks se duplica (quedan pocos y no deben sonar a bucle)
+const HOOK_SLOWDOWN_SHARE = 0.7;
+function hookIntervalMs(used, total, base = HOOK_INTERVAL) {
+  return total > 0 && used / total >= HOOK_SLOWDOWN_SHARE ? base * 2 : base;
+}
+
+// «{game}», «{genres}», «{year}» («, de 2005» o nada) y «{streamer}» en las plantillas de config/hooks.json
+function fillHook(template, vars) {
+  return String(template).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 }
 
 async function gameHooksAllowed(game) {
@@ -85,7 +97,7 @@ async function checkChatHook(client, channel) {
   if (isFreeCohostPaused(now)) return; // alguien pidió silencio: tampoco el hook anti-silencio (los timers fijos siguen)
   const silenceTime = now - getLastChatTime();
 
-  if (now - lastHookTime < HOOK_INTERVAL) return;
+  if (now - lastHookTime < hookIntervalMs(usedStaticHooks.size, hooksConfig.generic.length)) return;
 
   // Si hay raid activa y el chat lleva al menos 1 min sin actividad, dar bienvenida a raiders
   if (isRaidActive() && silenceTime >= 60000) {
@@ -180,14 +192,8 @@ async function checkChatHook(client, channel) {
     }
   }
 
-  // Hooks estáticos de fallback
-  const genericHooks = [
-    '¿Sois más de cooperativo o en solitario? 💬',
-    '¡Chat! ¿Alguien se anima con un !trivia? 🧠',
-    '¿Cuántas muertes creéis que habrá hoy? 💀',
-    '¿Cuál es vuestro juego favorito de todos los tiempos? 🎮',
-    '¡Usad !chiste para que cuente un chiste! 😂',
-  ];
+  // Hooks estáticos de fallback (config/hooks.json)
+  const genericHooks = hooksConfig.generic;
 
   // Un solo hook de juego por stream («¿Alguien lo conocía ya?», «¿Alguien lo ha jugado?»…)
   const gameHookUsed = getUsedStructures().has(GAME_HOOK_MARK);
@@ -198,25 +204,30 @@ async function checkChatHook(client, channel) {
       const genres = translateGenres(gi?.genres);
       if (genres) {
         const year = gi.released?.slice(0, 4) || '';
-        gameHooks = [
-          `🎮 ${channelConfig.streamer} juega a ${game}: ${genres}${year ? `, de ${year}` : ''}. ¿Alguien lo ha jugado?`,
-          `¿Qué os parece ${game} hasta ahora? Género: ${genres} 🎮`,
-          `${game}: ${genres}${year ? `, de ${year}` : ''}. ¿Alguien lo conocía ya? 🤔`,
-        ];
+        const vars = { streamer: channelConfig.streamer, game, genres, year: year ? `, de ${year}` : '' };
+        gameHooks = hooksConfig.game_with_genres.map((t) => fillHook(t, vars));
       } else {
-        gameHooks = [`¿Qué os parece ${game} hasta ahora? 🎮`, `¿Alguien ha jugado ${game} antes? ¿Es difícil? 🤔`];
+        gameHooks = hooksConfig.game_plain.map((t) => fillHook(t, { game }));
       }
     } catch {
-      gameHooks = [`¿Qué os parece ${game} hasta ahora? 🎮`, `¿Alguien ha jugado ${game}? ¿Qué tal? 🤔`];
+      gameHooks = hooksConfig.game_plain.map((t) => fillHook(t, { game }));
     }
   }
 
-  // Sin repetir en este stream: se descartan los ya usados; si se agotan, se vuelve a empezar (sin hooks de juego si ya salió uno)
+  // Sin repetir en este stream y sin reiniciar la lista: agotada, no hay más hooks fijos hasta el siguiente directo
   const picked = pickStaticHook({ gameHooks, genericHooks, used: usedStaticHooks, gameHookUsed });
-  if (picked.reset) usedStaticHooks.clear();
+  if (!picked.hook) return;
   usedStaticHooks.add(picked.hook);
   if (picked.isGame) markStructure(GAME_HOOK_MARK);
   client.say(channel, picked.hook, { origin: 'hook' });
 }
 
-module.exports = { recentHooks, usedStaticHooks, checkChatHook, pickStaticHook, GAME_HOOK_MARK };
+module.exports = {
+  recentHooks,
+  usedStaticHooks,
+  checkChatHook,
+  pickStaticHook,
+  hookIntervalMs,
+  fillHook,
+  GAME_HOOK_MARK,
+};

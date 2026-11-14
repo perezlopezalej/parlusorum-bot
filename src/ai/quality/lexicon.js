@@ -1,4 +1,6 @@
 // Léxico vetado y detectores de temas (latinoamericanismos, juego, vida personal, identidad del bot, etc.).
+const fs = require('fs');
+const path = require('path');
 const { norm } = require('./text');
 const { wordRank } = require('./copy');
 
@@ -223,6 +225,41 @@ function abbreviatedGame(text, game = '') {
   return hit || '';
 }
 
+// Anglicismos (data/anglicismos.txt: «palabra | cómo se dice»): «lads», «power», «vibes»… → { word, es } o null.
+// `allowed`: textos donde la palabra sí es legítima (el título del juego, lo que escribió quien pregunta).
+let anglicisms = null;
+function loadAnglicisms() {
+  if (anglicisms) return anglicisms;
+  anglicisms = new Map();
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, 'data', 'anglicismos.txt'), 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      if (!line.trim() || line.trim().startsWith('#')) continue;
+      const [word, es = ''] = line.split('|').map((x) => x.trim());
+      if (word) anglicisms.set(norm(word), es);
+    }
+  } catch {
+    /* sin lista no se vigila nada */
+  }
+  return anglicisms;
+}
+function anglicism(text, allowed = []) {
+  const list = loadAnglicisms();
+  if (!list.size) return null;
+  const ok = new Set(
+    norm([].concat(allowed).join(' '))
+      .split(/[^a-z0-9ñ]+/)
+      .filter(Boolean),
+  );
+  const clean = String(text || '').replace(/https?:\/\/\S+|@\w+|\bparlus1\w*/gi, ' ');
+  for (const w of norm(clean).split(/[^a-z0-9ñ]+/)) {
+    if (list.has(w) && !ok.has(w)) return { word: w, es: list.get(w) };
+  }
+  return null;
+}
+const ANGLICISM_REASON = ({ word, es }) =>
+  `usa el anglicismo «${word}»; ${es ? `di «${es}» en español` : 'dilo en español'}`;
+
 // Juzgar el ambiente del chat ("el chat está quieto/dormilón") no es un comentario, es relleno
 const MOOD_JUDGING_RE =
   /\b(chat|ambiente|sala|canal)\b[^.!?]{0,40}\b(quiet[oa]s?|dormid[oa]s?|dormil[oó]n\w*|apagad[oa]s?|tranquil[oa]s?|silencios[oa]s?|muert[oa]s?|vac[ií][oa]s?|callad[oa]s?|mud[oa]s?)\b|\b(silencio|calma) (en el|del) chat\b/i;
@@ -399,6 +436,8 @@ module.exports = {
   CREATOR_CLAIM_RE,
   CHANNEL_OWNER_RE,
   hasLatam,
+  anglicism,
+  ANGLICISM_REASON,
   isRobotRefusal,
   matchesFormula,
   judgesChatMood,
