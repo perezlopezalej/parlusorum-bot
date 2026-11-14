@@ -29,6 +29,43 @@ function summaryProblem(text) {
   return null;
 }
 
+// Lee el JSON de la respuesta aunque venga con vallas de markdown, texto alrededor o cortado por el límite de tokens.
+// Devuelve un objeto o null si no hay forma de sacar nada.
+function parseMemoryJson(text) {
+  const raw = String(text || '')
+    .replace(/```(?:json)?/gi, '')
+    .trim();
+  const start = raw.indexOf('{');
+  if (start < 0) return null;
+  // Primer bloque { ... } equilibrado (respeta las llaves dentro de cadenas)
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < raw.length; i++) {
+    const c = raw[i];
+    if (inStr) {
+      if (c === '\\') i++;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) {
+      try {
+        const obj = JSON.parse(raw.slice(start, i + 1));
+        return obj && typeof obj === 'object' ? obj : null;
+      } catch {
+        break;
+      }
+    }
+  }
+  // JSON cortado o con comas sueltas: se rescata al menos el resumen
+  const m = raw.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return null;
+  try {
+    return { summary: JSON.parse(`"${m[1]}"`) };
+  } catch {
+    return null;
+  }
+}
+
 // ─── GENERAR RESUMEN AL ACABAR EL STREAM ─────────────────────────────────────
 
 async function generateStreamMemory(streamStats, chatSample) {
@@ -55,10 +92,14 @@ async function generateStreamMemory(streamStats, chatSample) {
         messages: [{ role: 'user', content: `${prompt}${retryNote(feedback)}` }],
       });
 
-      const text = response.choices[0].message.content.trim();
-      // Limpiar posibles backticks de markdown
-      const clean = text.replace(/```json|```/g, '').trim();
-      parsed = JSON.parse(clean);
+      const json = parseMemoryJson(response.choices[0].message.content);
+      if (!json) {
+        // Respuesta ilegible: se reintenta con el motivo en positivo en vez de abandonar todo el resumen
+        feedback = 'responde solo con el objeto JSON pedido, sin texto antes ni después';
+        logger.info('Resumen de fin de stream ilegible (no es JSON), se reintenta');
+        continue;
+      }
+      parsed = json;
 
       const rawSummary = String(parsed.summary || '').trim();
       const problem = summaryProblem(rawSummary);
@@ -212,5 +253,6 @@ module.exports = {
   invalidateMemoryCache,
   generateStreamMemory,
   summaryProblem,
+  parseMemoryJson,
   renderMemory,
 };

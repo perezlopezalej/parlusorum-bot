@@ -11,7 +11,7 @@ const stub = (rel, exports) => {
 };
 
 const db = { memories: [], saved: [], lore: [], upserts: [], sample: '', sessionId: 's1', getCalls: 0, fail: false };
-const groq = { reply: null, error: null, calls: 0 };
+const groq = { reply: null, replies: [], error: null, calls: 0 };
 
 stub('src/utils/supabase.js', {
   saveStreamMemory: async (m) => {
@@ -42,7 +42,7 @@ stub('src/utils/ai-router.js', {
   aiChat: async () => {
     groq.calls++;
     if (groq.error) throw groq.error;
-    return { choices: [{ message: { content: groq.reply } }] };
+    return { choices: [{ message: { content: groq.replies.length ? groq.replies.shift() : groq.reply } }] };
   },
 });
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {}, debug() {} });
@@ -73,7 +73,7 @@ const stats = {
 
 beforeEach(() => {
   Object.assign(db, { memories: [], saved: [], lore: [], upserts: [], sample: '', fail: false, getCalls: 0 });
-  Object.assign(groq, { reply: null, error: null, calls: 0 });
+  Object.assign(groq, { reply: null, replies: [], error: null, calls: 0 });
   memory.invalidateMemoryCache();
   lore.invalidateLoreCache();
 });
@@ -335,5 +335,41 @@ describe('lore aprendido', () => {
 
   test('getManualLore incluye los temas a evitar', () => {
     assert.match(lore.getManualLore(), /Temas a evitar/);
+  });
+});
+
+describe('lectura robusta del JSON de la memoria', () => {
+  const ok =
+    '{"summary":"Buen directo de Elden Ring con mucho ánimo","highlights":["Un jefe cayó"],"recurringPhrases":[]}';
+
+  test('parseMemoryJson: vallas, texto alrededor, llaves en cadenas y JSON cortado', () => {
+    assert.equal(memory.parseMemoryJson('```json\n' + ok + '\n```').summary.startsWith('Buen'), true);
+    assert.equal(memory.parseMemoryJson('Aquí tienes: ' + ok + ' ¡listo!').highlights[0], 'Un jefe cayó');
+    assert.equal(
+      memory.parseMemoryJson('{"summary":"Con {llaves} dentro","highlights":[]}').summary,
+      'Con {llaves} dentro',
+    );
+    assert.equal(
+      memory.parseMemoryJson('{"summary":"Resumen rescatado","highlights":["se cort').summary,
+      'Resumen rescatado',
+    );
+    assert.equal(memory.parseMemoryJson('nada de json'), null);
+    assert.equal(memory.parseMemoryJson(''), null);
+  });
+
+  test('una respuesta ilegible se reintenta y el segundo intento vale', async () => {
+    groq.replies = ['Lo siento, no puedo hacerlo', ok];
+    const m = await memory.generateStreamMemory(stats, '');
+    assert.equal(groq.calls, 2);
+    assert.match(m.summary, /Elden Ring/);
+    assert.deepEqual(m.highlights, ['Un jefe cayó']);
+  });
+
+  test('dos respuestas ilegibles caen al resumen de reserva sin lanzar', async () => {
+    groq.replies = ['basura', '{"summary":'];
+    const m = await memory.generateStreamMemory(stats, '');
+    assert.equal(groq.calls, 2);
+    assert.ok(m.summary.length > 10);
+    assert.deepEqual(m.highlights, []);
   });
 });
