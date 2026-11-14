@@ -254,7 +254,8 @@ async function checkPatternMatch(client, channel, tags, message) {
       answer = pickRandom(messagesConfig.mention_game_redirect);
     } else {
       const userType = getUserType(username, tags);
-      const userConv = getUserConversation(userId);
+      // Solo los turnos de menciones: los detalles de juegos de un !dios_fua anterior no se arrastran aquí
+      const userConv = getUserConversation(userId, { origin: 'mention' });
       const recentBot = getBotHistory();
       const lastBot = recentBot.filter((e) => Date.now() - e.ts < 120000).slice(-1)[0]?.msg || '';
       const recentToUser = userConv.filter((m) => m.role === 'assistant').map((m) => m.content);
@@ -315,6 +316,19 @@ async function checkPatternMatch(client, channel, tags, message) {
           fixKey = 'juego';
           continue;
         }
+        // Hablando del juego del directo: ni jefes, ni personajes ni lugares que nadie ha nombrado (no hay ficha delante)
+        const detail =
+          gameTalk && quality.mentionsGameName(`${question} ${raw}`, mentionGame?.game)
+            ? quality.inventedDetail(raw, {
+                allowed: [question, mentionGame?.game || '', lastBot, ...userConv.map((m) => m.content)],
+                names: [username, ...getChatterNames()],
+              })
+            : '';
+        if (detail) {
+          logger.info(`Mención: detalle del juego sin respaldo («${detail}»)`);
+          fixKey = 'juego';
+          continue;
+        }
         // Una sola llamada: datos del juego (solo si habla de videojuegos) y sentido/redacción
         const review = await factcheck.evaluate(
           raw,
@@ -338,8 +352,8 @@ async function checkPatternMatch(client, channel, tags, message) {
         release();
         return 'blocked';
       }
-      addToUserConversation(userId, 'user', `${username}: ${question}`);
-      addToUserConversation(userId, 'assistant', answer);
+      addToUserConversation(userId, 'user', `${username}: ${question}`, 'mention');
+      addToUserConversation(userId, 'assistant', answer, 'mention');
     }
 
     if (isStale(startedAt, Date.now(), MENTION_MAX_AGE_MS)) {

@@ -83,14 +83,17 @@ describe('memoria entre streams: generación', () => {
     groq.reply = '```json\n{"summary":"épico","highlights":["a"],"recurringPhrases":["fua"]}\n```';
     const m = await memory.onStreamEnd(stats, 'ana: fua');
     assert.equal(m.summary, 'épico');
-    assert.deepEqual(m.highlights, ['a']);
+    // los «momentos» y «frases» salían del chat literal: ya no se guardan aunque el modelo los devuelva
+    assert.deepEqual(m.highlights, []);
+    assert.deepEqual(m.recurringPhrases, []);
     assert.equal(db.saved.length, 1);
+    assert.match(db.saved[0].streamDate, /^\d{4}-\d{2}-\d{2}$/);
   });
 
-  test('si Groq falla usa el resumen sin IA y sigue guardando', async () => {
+  test('si Groq falla usa el resumen sin IA (solo hechos) y sigue guardando', async () => {
     groq.error = new Error('503');
     const m = await memory.onStreamEnd(stats, '');
-    assert.match(m.summary, /90 minutos con 7 muertes/);
+    assert.equal(m.summary, 'Directo de Elden Ring: una hora y media, 7 caídas.');
     assert.deepEqual(m.highlights, []);
     assert.equal(db.saved.length, 1);
   });
@@ -98,7 +101,18 @@ describe('memoria entre streams: generación', () => {
   test('si la IA devuelve basura (no JSON) también degrada sin IA', async () => {
     groq.reply = 'lo siento, no puedo';
     const m = await memory.onStreamEnd(stats, '');
-    assert.match(m.summary, /90 minutos/);
+    assert.match(m.summary, /una hora y media/);
+  });
+
+  test('la memoria se fecha por el día de inicio en Madrid, no por el cierre en UTC', async () => {
+    groq.reply = '{"summary":"épico"}';
+    // Empieza el 12-11 a las 21:00 de Madrid y acaba el 13-11 a la 01:30
+    const startedAt = Date.parse('2026-11-12T20:00:00Z');
+    const m = await memory.onStreamEnd(
+      { ...stats, durationMinutes: 270, startedAt, endedAt: startedAt + 270 * 60000 },
+      '',
+    );
+    assert.equal(m.streamDate, '2026-11-12');
   });
 });
 
@@ -115,14 +129,26 @@ describe('memoria entre streams: contexto y caché', () => {
     assert.equal(await memory.getMemoryContext(), '');
   });
 
-  test('sanea el resumen (saltos de línea y <>{}) y limita momentos a 2', async () => {
+  test('sanea el resumen (saltos de línea y <>{}) y no pasa momentos ni frases del chat', async () => {
     db.memories = [row];
     const ctx = await memory.getMemoryContext();
     assert.match(ctx, /Stream caótico ok/);
     assert.doesNotMatch(ctx, /[<>{}]/);
-    assert.match(ctx, /Momentos: h1, h2\./);
-    assert.doesNotMatch(ctx, /h3/);
-    assert.match(ctx, /Frases del chat: "fua total"/);
+    // las filas antiguas traen momentos y frases sacados del chat literal: no entran en los prompts
+    assert.doesNotMatch(ctx, /Momentos|h1|h2|h3|Frases del chat|fua total/);
+  });
+
+  test('cada stream lleva su día relativo a hoy', () => {
+    const now = Date.parse('2026-11-13T12:27:00Z');
+    const rows = [
+      { stream_date: '2026-11-13', game: 'Shadow of the Colossus', summary: 'Directo corto.' },
+      { stream_date: '2026-11-12', game: 'Hell Is Us', summary: 'Cuatro horas con muchas caídas.' },
+      { stream_date: '2026-11-09', game: 'Hades', summary: 'Un jefe superado.' },
+    ];
+    const text = memory.renderMemory(rows, { plain: true, now });
+    assert.match(text, /\[hoy, en un directo anterior, 13 de noviembre\] Shadow of the Colossus: Directo corto\./);
+    assert.match(text, /\[ayer, 12 de noviembre\] Hell Is Us: Cuatro horas/);
+    assert.match(text, /\[hace 4 días, 9 de noviembre\] Hades/);
   });
 
   test('la caché evita repetir la consulta hasta invalidarla', async () => {
@@ -362,7 +388,7 @@ describe('lectura robusta del JSON de la memoria', () => {
     const m = await memory.generateStreamMemory(stats, '');
     assert.equal(groq.calls, 2);
     assert.match(m.summary, /Elden Ring/);
-    assert.deepEqual(m.highlights, ['Un jefe cayó']);
+    assert.deepEqual(m.highlights, []);
   });
 
   test('dos respuestas ilegibles caen al resumen de reserva sin lanzar', async () => {

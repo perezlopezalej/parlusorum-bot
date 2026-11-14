@@ -695,5 +695,155 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "d13-resumen-ff-trece",
+    "filter": "summary",
+    "game": "FINAL FANTASY XVI",
+    "player": "manu",
+    "minutes": 212,
+    "deaths": 1,
+    "startedAt": "2026-11-13T10:30:00Z",
+    "input": "Tres horas y media de Final Fantasy trece con una sola caída, en un directo donde el FUA no tuvo que salir porque todo fue copiar y pegar, y el chat de España demostró ser más bueno que nadie.",
+    "note": "Resumen real del 13-11: el título no es el del juego («trece» por XVI), «copiar y pegar» y «el chat de España».",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-resumen-copiar-pegar",
+    "filter": "summary",
+    "game": "FINAL FANTASY XVI",
+    "player": "manu",
+    "minutes": 212,
+    "deaths": 1,
+    "startedAt": "2026-11-13T10:30:00Z",
+    "input": "Tres horas y media de FINAL FANTASY XVI en las que todo fue copiar y pegar y Manu cayó una vez.",
+    "note": "Regla chat_ajeno: «todo fue copiar y pegar» no sale de ningún hecho.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-resumen-chat-espana",
+    "filter": "summary",
+    "game": "FINAL FANTASY XVI",
+    "player": "manu",
+    "minutes": 212,
+    "deaths": 1,
+    "startedAt": "2026-11-13T10:30:00Z",
+    "input": "Tres horas y media de FINAL FANTASY XVI con una caída de Manu, y el chat de España demostró ser más bueno que nadie.",
+    "note": "Regla chat_ajeno: el chat es el del canal, no «el chat de España».",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-resumen-control-ff",
+    "filter": "summary",
+    "game": "FINAL FANTASY XVI",
+    "player": "manu",
+    "minutes": 212,
+    "deaths": 1,
+    "startedAt": "2026-11-13T10:30:00Z",
+    "input": "Tres horas y media de FINAL FANTASY XVI con una sola caída de Manu, y el FUA presente en cada intento.",
+    "note": "Control: el mismo resumen contando solo los hechos sí vale.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "d13-resumen-pao-sin-caidas",
+    "filter": "summary",
+    "game": "Shadow of the Colossus",
+    "player": "manu",
+    "minutes": 8,
+    "deaths": 0,
+    "input": "Ocho minutos de Shadow of the Colossus en la que Pao no tuvo una sola caída y el Fua salió a dar moral por los dos viewers que estaban ahí.",
+    "note": "Resumen real del 13-11: jugaba Manu, nadie anotó caídas (no se puede afirmar «ni una») y cita viewers.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-resumen-madrugada",
+    "filter": "summary",
+    "game": "Hell Is Us",
+    "player": "manu",
+    "minutes": 243,
+    "deaths": 20,
+    "startedAt": "2026-11-12T17:00:00Z",
+    "input": "Madrugada larga de 4 horas y casi 3 de Hell Is Us, donde Manu cayó toda la vida pero no se rindió, FUA incluido.",
+    "note": "Resumen real del 12-11 (de él salió «maratón… de madrugada» en la respuesta del 13-11): el directo fue de tarde y noche.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-resumen-maraton",
+    "filter": "summary",
+    "game": "Hell Is Us",
+    "player": "manu",
+    "minutes": 120,
+    "deaths": 20,
+    "startedAt": "2026-11-12T17:00:00Z",
+    "input": "Maratón de Hell Is Us en la que Manu cayó 20 veces y el chat no soltó el directo.",
+    "note": "Dos horas no son una maratón: la duración sale de los hechos.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-resumen-control-hell",
+    "filter": "summary",
+    "game": "Hell Is Us",
+    "player": "manu",
+    "minutes": 243,
+    "deaths": 20,
+    "startedAt": "2026-11-12T17:00:00Z",
+    "input": "Unas cuatro horas de Hell Is Us en las que Manu cayó 20 veces y se levantó otras tantas.",
+    "note": "Control: duración y caídas reales, sin parte del día.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "d13-quemeperdi-pao-grada",
+    "filter": "quemeperdi",
+    "game": "Shadow of the Colossus",
+    "player": "manu",
+    "minutes": 80,
+    "deaths": 0,
+    "input": "Llegamos a la hora y veinte de juego, Manu sigue explorando el mundo sin haber vencido a ningún coloso y el chat no para de lanzar chistes y bromas. Mientras tanto Pao está ahí en la grada, animando con su característico “¡FUA!” cada vez que el ambiente se pone más caótico.",
+    "note": "!quemeperdi real del 13-11: jugaba Manu y Pao no estaba en ningún dato.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "d13-quemeperdi-control",
+    "filter": "quemeperdi",
+    "game": "Shadow of the Colossus",
+    "player": "manu",
+    "minutes": 80,
+    "deaths": 0,
+    "input": "Llevamos una hora y pico de Shadow of the Colossus con Manu al mando. El chat no para de reírse y el FUA sigue en guardia.",
+    "note": "Control: cuenta solo los hechos (juego completo, quién juega, rato aproximado).",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "d13-quemeperdi-bahamut",
+    "filter": "quemeperdi",
+    "game": "FINAL FANTASY XVI",
+    "player": "manu",
+    "minutes": 120,
+    "deaths": 1,
+    "input": "Llevamos unas dos horas de FINAL FANTASY XVI y Manu ha caído una vez. Al fondo del pasillo le espera Bahamut.",
+    "note": "«Bahamut» (13-11) no está en ningún hecho: regla `inventado`.",
+    "expect": {
+      "rejected": true
+    }
   }
 ]

@@ -6,7 +6,7 @@ const path = require('path');
 const quality = require('./quality');
 
 const IDENTITY =
-  'Eres Dios Fua, el bot del canal de Twitch de Manu y Pao (la cuenta ParLusorum), creado por vlxj97. Hablas como uno más del chat de España: directo, con guasa y cariño, leal a Manu y Pao. El FUA es el grito de carácter en el momento de duda, y lo sacas cuando hay momento. Un lector de voz lee en alto todo lo que escribes: frases cortas, tiempos y números con palabras («una hora y media», «treinta segundos») y sin símbolos.';
+  'Eres Dios Fua, el bot del canal de Twitch de Manu y Pao (la cuenta ParLusorum), creado por vlxj97. Hablas como uno más del chat, en español de España: directo, con guasa y cariño, leal a Manu y Pao. El FUA es el grito de carácter en el momento de duda, y lo sacas cuando hay momento. Un lector de voz lee en alto todo lo que escribes: frases cortas, tiempos y números con palabras («una hora y media», «treinta segundos») y sin símbolos.';
 
 // --- Ejemplos editables ---
 const EXAMPLES_FILE = path.join(__dirname, '..', '..', 'config', 'style-examples.json');
@@ -238,35 +238,18 @@ const ALERT_TASKS = {
   prediccion: 'Cuenta el evento de la plataforma con la energía y la guasa de Dios Fua.',
 };
 
-function buildSummaryPrompt({
-  game,
-  durationMinutes,
-  deathCount,
-  peakViewers,
-  topCommands,
-  chatSample,
-  examples = pickStyleExamples('resumen', 3),
-}) {
-  const datos = [
-    `Juego: ${game || 'no definido'}`,
-    `Duración: ${durationMinutes} minutos`,
-    `Caídas del streamer: ${deathCount}`,
-    `Pico de viewers: ${peakViewers}`,
-    `Comandos más usados: ${JSON.stringify(topCommands)}`,
-  ].join('\n');
+// Resumen de fin de stream: se escribe solo con <hechos> (moment-facts.buildRecapFacts), nunca con el chat literal.
+// facts: [{ id, texto }]
+function buildSummaryPrompt({ facts = [], examples = pickStyleExamples('resumen', 3) } = {}) {
   return join(
     IDENTITY,
-    block('datos', datos),
-    block('chat', chatSample || 'sin datos'),
     block(
       'forma',
-      `summary: una frase en la voz de Dios Fua, dirigida a los Lusorums, que diga a qué se jugó, cómo fue el directo y un momento. Las muertes se cuentan como caídas del streamer («cayó 12 veces»), con ánimo positivo; habla del juego, del stream y del ambiente del chat. highlights: hasta 2 momentos del chat. recurringPhrases: hasta 2 frases que el chat repitió sobre el juego.`,
+      'summary: una o dos frases en la voz de Dios Fua, dirigidas a los Lusorums, que cuentan el directo solo con lo que dicen los <hechos>: a qué se jugó, cuánto duró y cómo fue, sin añadir personas, lugares, objetos ni momentos del día. Las muertes se cuentan como caídas del streamer («cayó 12 veces»), con ánimo positivo; habla del juego, del stream y del ambiente del chat. El título del juego y los nombres se escriben tal cual aparecen en los hechos.',
     ),
     renderExamples(examples),
-    block(
-      'tarea',
-      'Escribe el resumen del stream y devuelve solo este JSON: {"summary":"…","highlights":["…"],"recurringPhrases":["…"]}.',
-    ),
+    block('hechos', facts.map((f) => `${f.id}. ${f.texto}`).join('\n')),
+    block('tarea', 'Escribe el resumen del stream y devuelve solo este JSON: {"summary":"…"}.'),
   );
 }
 
@@ -336,20 +319,15 @@ function buildShoutoutSystem({ examples = pickStyleExamples('shoutout', 3) } = {
 }
 
 // --- !quemeperdi ---
-function buildQueMePerdiSystem({
-  game = '',
-  player = 'manu',
-  now = new Date(),
-  examples = pickStyleExamples('quemeperdi', 3),
-} = {}) {
+// Los <hechos> (moment-facts.buildRecapFacts) llegan en el mensaje del usuario: es lo único que el modelo sabe del directo
+function buildQueMePerdiSystem({ examples = pickStyleExamples('quemeperdi', 3) } = {}) {
   return join(
     IDENTITY,
     block(
       'forma',
-      'Exactamente 2 frases que cuentan, con tus propias palabras, lo que ha pasado hasta ahora usando solo los datos de <datos>, <stream_story> y <chat>. Las muertes son caídas del streamer.',
+      'Exactamente 2 frases que cuentan, con tus propias palabras, lo que ha pasado hasta ahora usando solo lo que dicen los <hechos>, sin añadir personas, lugares, objetos ni momentos del día. Las muertes son caídas del streamer. El título del juego y los nombres se escriben tal cual aparecen en los hechos.',
     ),
     renderExamples(examples),
-    block('stream', [game ? `Juegan a «${game}».` : '', playerLine(player), dayLine(now)].filter(Boolean).join(' ')),
     block('tarea', 'Un espectador llega tarde y pregunta qué se ha perdido: cuéntaselo.'),
   );
 }
@@ -474,9 +452,18 @@ const FIX_BY_RULE = {
   modismo: 'Dilo con palabras llanas.',
   inventado: 'Cuenta solo lo que dicen los hechos, con palabras sencillas.',
   juego_nombre: 'Si nombras el juego, escribe su título completo.',
+  jugador: 'Habla solo de quien juega según los hechos.',
+  chat_ajeno: 'Habla del chat del canal, los Lusorums, y de lo que dicen los hechos.',
+  duracion: 'Di la duración que dan los hechos, con sus mismas palabras.',
+  ficha: 'Cuenta solo lo que dice la ficha y, de lo demás, di con humor que no lo sabes.',
 };
 // Para los motivos que solo traen texto (hook, timer, resumen…): se reconoce el tipo por palabras clave
 const FIX_BY_REASON = [
+  [/no juega hoy/i, 'jugador'],
+  [/otro videojuego/i, 'otro_juego'],
+  [/chat de otro sitio/i, 'chat_ajeno'],
+  [/duraci[oó]n que no cuadra/i, 'duracion'],
+  [/no es la del directo/i, 'hora'],
   [/met[aá]fora/i, 'metafora'],
   [/frase hecha/i, 'modismo'],
   [/abrevia el nombre del juego/i, 'juego_nombre'],

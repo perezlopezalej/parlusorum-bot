@@ -130,13 +130,17 @@ const MAX_CONV_TURNS = 5;
 
 const MAX_CONV_AGE = 60 * 60 * 1000;
 
-function getUserConversation(userId) {
+// opts.origin ('diosfua' | 'mention'): solo los turnos de ese origen. Una mención no hereda los detalles de juegos que salieron
+// en un !dios_fua anterior (13-11: «Bahamut» reapareció en una mención que no hablaba de juegos).
+function getUserConversation(userId, { origin = null } = {}) {
   const conv = userConversations.get(userId) || [];
   const cutoff = Date.now() - MAX_CONV_AGE;
-  return conv.filter((m) => m.ts > sessionStart && m.ts > cutoff).map(({ role, content }) => ({ role, content }));
+  return conv
+    .filter((m) => m.ts > sessionStart && m.ts > cutoff && (!origin || !m.origin || m.origin === origin))
+    .map(({ role, content }) => ({ role, content }));
 }
 
-function addToUserConversation(userId, role, content) {
+function addToUserConversation(userId, role, content, origin = null) {
   if (userConversations.size >= MAX_CONVERSATION_USERS) {
     const oldest = [...userConversations.entries()]
       .sort((a, b) => (a[1].at(-1)?.ts || 0) - (b[1].at(-1)?.ts || 0))
@@ -145,7 +149,7 @@ function addToUserConversation(userId, role, content) {
     oldest.forEach((k) => userConversations.delete(k));
   }
   const conv = userConversations.get(userId) || [];
-  conv.push({ role, content, ts: Date.now() });
+  conv.push({ role, content, origin, ts: Date.now() });
   while (conv.length > MAX_CONV_TURNS * 2) conv.shift();
   userConversations.set(userId, conv);
 }

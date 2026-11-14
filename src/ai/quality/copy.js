@@ -241,8 +241,11 @@ function inventedDetail(text, { allowed = [], gameWords = [], names = [] } = {})
     if (singulars(k).some((w) => ok.has(w))) continue;
     const before = t.slice(0, m.index).replace(/\s+$/, '');
     const startsSentence = !before || /[.!?¡¿…:;"“«(\-—]$/.test(before);
-    const proper = /^\p{Lu}\p{Ll}/u.test(word) && !startsSentence;
     const rank = Math.min(...singulars(k).map(wordRank));
+    // Tras dos puntos o punto y coma lo normal es la minúscula: una mayúscula ahí que ni está en la lista de frecuencia es un
+    // nombre («aquí tienes: Bahamut»); «Resumen: Tres caídas» no cuenta
+    const afterColon = /[:;]$/.test(before);
+    const proper = /^\p{Lu}\p{Ll}/u.test(word) && (!startsSentence || (afterColon && rank === Infinity));
     // formas conjugadas o derivadas («animan», «peleando») cuentan como comunes si empiezan igual que una palabra de la lista
     const uncommon =
       k.length >= 5 &&

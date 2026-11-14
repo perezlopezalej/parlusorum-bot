@@ -31,6 +31,7 @@ const NUMBER_WORDS = [
 ];
 const num = (n) => NUMBER_WORDS[n] || String(n);
 const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
+const bossCount = (n) => (n === 1 ? 'un jefe' : `${num(n)} jefes`);
 
 // --- Categorías del chat (reglas; una línea cuenta para la primera que case) ---
 const LAUGH_RE = /^(?:\W|\d)*(?:(?:j+[aeiou]+j*|ha+h[ah]*|he+h[eh]*|k+e+k+w*|lo+l+|xd+|lmao|rofl)\W*)+$/i;
@@ -218,7 +219,7 @@ function buildMomentFacts({
     }
     if (recentBosses > 0) push('suceso', 'Se acaba de superar un jefe', KEYS.jefe);
     else if (bosses > 0)
-      push('suceso', `Hoy ${bosses === 1 ? 'ha caído' : 'han caído'} ${plural(bosses, 'jefe', 'jefes')}`, KEYS.jefe);
+      push('suceso', `Hoy ${bosses === 1 ? 'ha caído' : 'han caído'} ${bossCount(bosses)}`, KEYS.jefe);
   }
 
   const topic = chatTopic(chatLines, { player, gameWords });
@@ -236,10 +237,77 @@ function buildMomentFacts({
   return picked.map((f, i) => ({ id: `h${i + 1}`, ...f }));
 }
 
+// Hechos para contar el directo entero (!quemeperdi mientras dura, resumen de fin de stream al acabar): [{ id, tipo, texto }].
+// Solo datos del código: juego exacto, quién juega (`!juega`), duración aproximada, caídas, jefes y el tema del chat por reglas
+// (3+ usuarios). Ninguna línea del chat llega al modelo. Con el contador a cero no hay hecho de caídas: puede que nadie las
+// haya anotado, así que no se afirma «sin caídas» (y la regla de muertes no anotadas rechaza que el texto las nombre). `ended`: en pasado (resumen de fin de stream).
+const RECAP_MIN_USERS = 3;
+const PAST_TOPIC = {
+  consejos: (player, many) => `El chat ${many ? 'les' : 'le'} dio consejos a ${player}`,
+  animos: (player) => `El chat animó a ${player}`,
+  risas: () => 'El chat se rió bastante',
+  juego: () => 'El chat comentó el juego',
+};
+function buildRecapFacts({
+  game,
+  gameWords = [],
+  minutes,
+  deathCount = 0,
+  bosses = 0,
+  player = 'el streamer',
+  chatLines = [],
+  ended = false,
+} = {}) {
+  const facts = [];
+  const push = (tipo, texto) => facts.push({ tipo, texto });
+  const many = / y /.test(player);
+  if (game)
+    push(
+      'estado',
+      ended
+        ? `Se jugó a ${game} y ${many ? 'jugaron' : 'jugó'} ${player}`
+        : `Juegan a ${game} y ${many ? 'juegan' : 'juega'} ${player}`,
+    );
+  if (Number.isFinite(minutes) && minutes > 0)
+    push(
+      'tiempo',
+      ended ? `El directo duró ${approxDuration(minutes)}` : `Llevan ${approxDuration(minutes)} de directo`,
+    );
+  if (deathCount > 0) {
+    const times = deathCount === 1 ? 'una vez' : `${num(deathCount)} veces`;
+    push(
+      'suceso',
+      ended
+        ? `${player} ${many ? 'cayeron' : 'cayó'} ${times}`
+        : `${player} ${many ? 'han caído' : 'ha caído'} ${times} hoy`,
+    );
+  }
+  if (bosses > 0)
+    push(
+      'suceso',
+      ended
+        ? `${bosses === 1 ? 'Se superó' : 'Se superaron'} ${bossCount(bosses)}`
+        : `Hoy ${bosses === 1 ? 'se ha superado' : 'se han superado'} ${bossCount(bosses)}`,
+    );
+  const topic = chatTopic(chatLines, { player, gameWords, minUsers: RECAP_MIN_USERS });
+  if (topic && (!ended || PAST_TOPIC[topic.categoria]))
+    push('chat', ended ? PAST_TOPIC[topic.categoria](player, many) : topic.texto);
+  return facts.map((f, i) => ({ id: `h${i + 1}`, ...f }));
+}
+
 // Bloque <hechos> para los prompts; '' si no hay hechos
 function renderFacts(facts) {
   if (!facts?.length) return '';
   return `<hechos>\n${facts.map((f) => `${f.id}. ${f.texto}`).join('\n')}\n</hechos>`;
 }
 
-module.exports = { buildMomentFacts, chatTopic, classifyLine, gameVocabulary, properNouns, renderFacts, keysOf };
+module.exports = {
+  buildMomentFacts,
+  buildRecapFacts,
+  chatTopic,
+  classifyLine,
+  gameVocabulary,
+  properNouns,
+  renderFacts,
+  keysOf,
+};

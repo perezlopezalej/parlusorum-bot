@@ -1,8 +1,9 @@
 // !dios_fua (preguntas con herramienta de juegos) y chistes.
 const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
-const { lookupGameInfo } = require('../twitch/api');
-const { isSilenced, addBotMessage } = require('../utils/state');
+const twitchApi = require('../twitch/api');
+const { lookupGameInfo } = twitchApi;
+const { isSilenced, addBotMessage, getChatterNames } = require('../utils/state');
 const factcheck = require('./factcheck');
 const { buildGameTemplate } = require('./game-template');
 const { buildGameSheet, leaksSheetRaw } = require('./game-sheet');
@@ -171,9 +172,25 @@ async function handleQuestion(client, channel, tags, args) {
   }
 
   try {
+    const currentGame = (await twitchApi.getCurrentGame?.().catch(() => null))?.game || '';
+    // Jefes, villano, final, personajes, armas…: la ficha del juego no lo trae y el modelo se lo inventaba («Bahamut»).
+    // Si la pregunta va de un juego, frase fija que lo reconoce con humor, sin IA ni cupo.
+    const beyond = quality.asksBeyondSheet(question);
+    if (
+      beyond &&
+      (beyond.strong || quality.extractGameMention(question) || quality.talksAboutGames(question, currentGame))
+    ) {
+      const reply = pickRandom(messagesConfig.dios_fua_beyond_sheet).replace('{tema}', beyond.label);
+      logger.info(`!dios_fua: pregunta fuera de la ficha (${beyond.topic}), respuesta fija`);
+      client.say(channel, truncate(`@${username} ${reply}`));
+      addBotMessage(reply);
+      questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
+      return;
+    }
     trackMessage();
     refreshMode();
-    const userConv = getUserConversation(userId);
+    // Solo los turnos de !dios_fua: lo hablado en menciones va por su lado
+    const userConv = getUserConversation(userId, { origin: 'diosfua' });
     const questionMode = getModeConfig();
     const systemContent = buildQuestionSystem({
       context: await buildContextText({ question }),
@@ -286,6 +303,27 @@ async function handleQuestion(client, channel, tags, args) {
     if (inventedAttr && !discard) {
       discard = true;
     }
+    // Nombres propios y palabras poco comunes que no están en la ficha, en la pregunta ni en el canal (un jefe, un personaje,
+    // un lugar): solo cuando se piden datos de un juego, para no tocar la cultura general
+    const aboutGameData =
+      /^Nombre: /m.test(gameText) || quality.isGameQuestion(question) || quality.mentionsGame(question, currentGame);
+    const detailCtx = {
+      allowed: [
+        gameText,
+        question,
+        gameName || '',
+        gameData?.name || '',
+        currentGame,
+        ...(channelConfig.games_played || []),
+        ...userConv.filter((m) => m.role === 'user').map((m) => m.content),
+      ],
+      names: [username, ...getChatterNames()],
+    };
+    const inventedName = !techLeak && aboutGameData ? quality.inventedDetail(answer, detailCtx) : '';
+    if (inventedName) {
+      discard = true;
+      logger.info(`!dios_fua: detalle que no está en la ficha («${inventedName}»)`);
+    }
     // Ficha volcada en bruto (inglés, fechas ISO, campos copiados): no se envía; con datos de IGDB, un reintento y si no la plantilla
     const rawLeak = !techLeak
       ? leaksSheetRaw(answer, { names: [gameData?.name, gameName, ...(channelConfig.games_played || [])] })
@@ -308,6 +346,7 @@ async function handleQuestion(client, channel, tags, args) {
         !quality.leaksTech(retryAnswer) &&
         !leaksSheetRaw(retryAnswer, { names: [gameData?.name, gameName, ...(channelConfig.games_played || [])] }) &&
         !quality.unsupportedAttributes(retryAnswer, gameText) &&
+        !quality.inventedDetail(retryAnswer, detailCtx) &&
         !(await factcheck.shouldDiscard(retryAnswer, gameText, { source: 'juego' }))
       ) {
         answer = retryAnswer;
@@ -345,8 +384,8 @@ async function handleQuestion(client, channel, tags, args) {
     addBotMessage(truncate(answer, qMaxChars));
     questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
     persistCooldown(`question-${userId}`, now + QUESTION_COOLDOWN_MS);
-    addToUserConversation(userId, 'user', `${username}: ${question}`);
-    addToUserConversation(userId, 'assistant', answer);
+    addToUserConversation(userId, 'user', `${username}: ${question}`, 'diosfua');
+    addToUserConversation(userId, 'assistant', answer, 'diosfua');
   } catch (err) {
     logger.error(`!dios_fua: ${err.message}`);
     const isTimeout = err.message?.includes('timeout') || err.code === 'ETIMEDOUT';

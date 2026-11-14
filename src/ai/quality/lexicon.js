@@ -1,5 +1,6 @@
 // Léxico vetado y detectores de temas (latinoamericanismos, juego, vida personal, identidad del bot, etc.).
 const { norm } = require('./text');
+const { wordRank } = require('./copy');
 
 // Control de calidad puro de las respuestas de la IA (sin estado ni I/O): tono, repetición, emotes, muertes y cortes.
 
@@ -179,7 +180,9 @@ function mentionsEthnicTerms(text) {
 }
 
 // El juego se nombra con su título completo: «Shadow» a secas por «Shadow of the Colossus» confunde a quien lo oye.
-// → la palabra del título que aparece sin el título entero, o '' si no hay abreviatura (títulos de una sola palabra: nunca)
+// → la palabra del título que aparece sin el título entero, o '' si no hay abreviatura (títulos de una sola palabra: nunca).
+// Una palabra del título que también es corriente en español («final» en «FINAL FANTASY XVI») no delata nada: «al final del directo».
+const TITLE_COMMON_RANK = 5000;
 const TITLE_STOP = new Set(['the', 'of', 'and', 'para', 'del', 'con', 'las', 'los', 'una', 'what', 'from', 'with']);
 function abbreviatedGame(text, game = '') {
   const title = norm(String(game).replace(/\(.*?\)/g, ' '))
@@ -192,7 +195,13 @@ function abbreviatedGame(text, game = '') {
     .replace(/[^a-z0-9ñ ]+/g, ' ')
     .replace(/\s+/g, ' ');
   if ((' ' + t + ' ').includes(' ' + title + ' ')) return '';
-  const hit = parts.find((w) => w.length >= 5 && !TITLE_STOP.has(w) && (' ' + t + ' ').includes(' ' + w + ' '));
+  const hit = parts.find(
+    (w) =>
+      w.length >= 5 &&
+      !TITLE_STOP.has(w) &&
+      wordRank(w) >= TITLE_COMMON_RANK &&
+      (' ' + t + ' ').includes(' ' + w + ' '),
+  );
   return hit || '';
 }
 
@@ -398,5 +407,6 @@ module.exports = {
   summaryPersonalLife,
   hasPersonalDistress,
   mentionsGame,
+  mentionsGameName,
   talksAboutGames,
 };

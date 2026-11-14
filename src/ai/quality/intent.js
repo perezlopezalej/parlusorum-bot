@@ -189,8 +189,47 @@ function asksAboutPastStream(text) {
   return PAST_STREAM_RE.test(String(text || ''));
 }
 
+// Preguntas que la ficha de un juego (género, estudio, año, premisa) no puede contestar: jefes, villano, final, personajes,
+// armas, duración… El 13-11 «¿quién es el boss final de Final Fantasy XVI?» acabó en «Bahamut». Se responden con una frase fija.
+// → { topic, label, strong } o null. strong = la pregunta ya es de videojuegos por sí sola (jefes); el resto necesita que
+// se hable de un juego. label: cómo nombrar el tema en la respuesta («sobre {tema} no sé nada seguro»).
+const BEYOND_SHEET = [
+  {
+    topic: 'jefes',
+    label: 'los jefes',
+    strong: true,
+    re: /\b(?:jefes?|boss(?:es)?)\b[^.?!]{0,25}\b(?:final(?:es)?|ultimos?|secretos?|opcional(?:es)?|mas dificil(?:es)?)\b|\b(?:ultimo|primer|mejor|peor)\s+(?:jefe|boss)\b|\bfinal boss\b|\b(?:cuantos|cuales|que|quien(?:es)?)\b[^.?!]{0,20}\b(?:jefes|boss(?:es)?)\b/,
+  },
+  {
+    topic: 'villano',
+    label: 'el villano',
+    strong: false,
+    re: /\b(?:villan[oa]s?|antagonistas?|malo final|enemigo final)\b/,
+  },
+  {
+    topic: 'final',
+    label: 'cómo acaba',
+    strong: false,
+    re: /\b(?:como|en que) (?:acaba|termina)\b|\b(?:el|su|un|los|cuantos|que) final(?:es)?\b(?! (?:fantasy|boss))|\bspoilers?\b|\bquien (?:muere|sobrevive|traiciona)\b/,
+  },
+  { topic: 'personajes', label: 'los personajes', strong: false, re: /\bpersonajes?\b/ },
+  {
+    topic: 'detalles',
+    label: 'esos detalles',
+    strong: false,
+    re: /\b(?:armas?|builds?|misiones|coleccionables|trofeos?|logros?|capitulos?|secretos?|trucos?|cuanto dura|cuantas horas (?:dura|tiene|son))\b/,
+  },
+];
+
+function asksBeyondSheet(text) {
+  const t = norm(text).replace(/[¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
+  const hit = BEYOND_SHEET.find((b) => b.re.test(t));
+  return hit ? { topic: hit.topic, label: hit.label, strong: hit.strong } : null;
+}
+
 module.exports = {
   asksAboutPastStream,
+  asksBeyondSheet,
   identityQuestion,
   injectionAttempt,
   extractGameQuery,

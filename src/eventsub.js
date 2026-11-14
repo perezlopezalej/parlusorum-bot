@@ -65,6 +65,8 @@ const {
   getCohostStats,
   resetCohostStats,
   resetPlayer,
+  getPlayer,
+  getBossCount,
   resetFreeCohostPause,
 } = require('./utils/state');
 
@@ -549,7 +551,7 @@ function createEventSubHandler(client, channel, deps) {
   let pendingEndTimer = null;
 
   // Cierre real del directo (tras la ventana de corte): reinicios, despedida y, si dura lo bastante, resumen
-  function closeStream({ durationMinutes }) {
+  function closeStream({ durationMinutes, startedAt = null, endedAt = null }) {
     const plan = closingPlan(durationMinutes);
     // El silencio y el BRB no pasan al siguiente directo; el bot aún puede despedirse unos minutos
     setSilenceMode(false);
@@ -603,6 +605,10 @@ function createEventSubHandler(client, channel, deps) {
           game: gameInfo?.game || null,
           durationMinutes,
           deathCount: getDeathCount(),
+          bosses: getBossCount(),
+          player: getPlayer(),
+          startedAt,
+          endedAt,
           peakViewers: metrics.peakViewers || 0,
           totalMessages: metrics.totalMessages || 0,
           topCommands: Object.fromEntries(
@@ -657,7 +663,7 @@ function createEventSubHandler(client, channel, deps) {
     }
     const durationMinutes = liveMinutes({ ...pending });
     logger.info(`⚫ Directo terminado (${durationMinutes} min en antena)`);
-    closeStream({ durationMinutes });
+    closeStream({ durationMinutes, startedAt: pending.startedAt, endedAt: pending.endedAt });
   }
 
   function armPendingEnd(ms) {

@@ -304,7 +304,7 @@ test('resumen de fin de stream: sin vida personal (lista ampliada solo aquí)', 
   assert.equal(q.personalMatch('Con el calor del combate el FUA sigue encendido'), false);
 });
 
-test('resumen de fin de stream: onStreamEnd filtra momentos y frases personales y reintenta', async () => {
+test('resumen de fin de stream: un resumen con vida personal se reintenta y no se guardan momentos ni frases', async () => {
   process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test';
   const { setTransport } = require('../src/utils/ai-router');
   const answers = [
@@ -347,8 +347,11 @@ test('resumen de fin de stream: onStreamEnd filtra momentos y frases personales 
     assert.match(prompts[1], /<correccion>Habla del directo: la partida, Manu o el FUA\.<\/correccion>/);
     assert.doesNotMatch(prompts[1], /hamburguesas|calor|RECHAZADO/);
     assert.match(out.summary, /venció al jefe final/);
-    assert.deepEqual(out.highlights, ['Manu venció al jefe']);
-    assert.deepEqual(out.recurringPhrases, ['por el FUA']);
+    // el prompt lleva hechos y no el chat; lo que el modelo devuelva como momentos o frases no se guarda
+    assert.match(prompts[0], /<hechos>[\s\S]*Se jugó a Phantom Blade Zero y jugó Manu[\s\S]*<\/hechos>/);
+    assert.doesNotMatch(prompts[0], /<chat>|user: hola|Pico de viewers/);
+    assert.deepEqual(out.highlights, []);
+    assert.deepEqual(out.recurringPhrases, []);
   } finally {
     setTransport('groq', async () => {
       throw new Error('transporte de prueba sin configurar');

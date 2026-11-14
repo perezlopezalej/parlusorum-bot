@@ -40,7 +40,67 @@ function sanitizePendingEnd(p) {
   return { endedAt: p.endedAt, startedAt: p.startedAt, gapMs: Number.isFinite(p.gapMs) && p.gapMs > 0 ? p.gapMs : 0 };
 }
 
+// Día (YYYY-MM-DD) en la hora de Madrid: la memoria se fecha por el día en que EMPEZÓ el directo, no por el cierre en UTC
+function madridDateKey(ts = Date.now()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(ts));
+}
+
+const MONTHS_ES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+const dayNumber = (key) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(key || ''));
+  return m ? { y: +m[1], m: +m[2], d: +m[3], n: Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 } : null;
+};
+
+// Días entre una fecha guardada y hoy (Madrid); null si la fecha no es válida
+function daysAgo(dateKey, now = Date.now()) {
+  const then = dayNumber(dateKey);
+  const today = dayNumber(madridDateKey(now));
+  return then && today ? today.n - then.n : null;
+}
+
+// «ayer, 12 de noviembre», «hace 3 días, 10 de noviembre», «hoy, en un directo anterior, 13 de noviembre»: así el modelo no
+// tiene que calcular qué día fue «ayer» a partir de una fecha suelta
+function relativeDayLabel(dateKey, now = Date.now()) {
+  const then = dayNumber(dateKey);
+  if (!then) return String(dateKey || '');
+  const date = `${then.d} de ${MONTHS_ES[then.m - 1]}`;
+  const days = daysAgo(dateKey, now);
+  const rel =
+    days === 0
+      ? 'hoy, en un directo anterior'
+      : days === 1
+        ? 'ayer'
+        : days === 2
+          ? 'anteayer'
+          : days > 2 && days <= 6
+            ? `hace ${days} días`
+            : '';
+  if (rel) return `${rel}, ${date}`;
+  return dayNumber(madridDateKey(now)).y === then.y ? date : `${date} de ${then.y}`;
+}
+
 module.exports = {
+  madridDateKey,
+  daysAgo,
+  relativeDayLabel,
   MIN_SUMMARY_MINUTES,
   MIN_FAREWELL_MINUTES,
   END_GRACE_MS,

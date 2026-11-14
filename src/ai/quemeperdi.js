@@ -13,7 +13,6 @@ const {
   getBossCount,
   getStreamStartedAt,
 } = require('../utils/state');
-const { buildStoryBlock } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const quality = require('./quality');
 const { spokenDuration, spokenSeconds } = quality;
@@ -23,7 +22,8 @@ const logger = require('../utils/logger');
 const { truncate, TWITCH_MAX_LENGTH } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
 const { getUserType } = require('./common');
-const { getStreamChatBuffer } = require('./chat-memory');
+const { streamChatBuffer } = require('./chat-memory');
+const { buildRecapFacts, gameVocabulary, renderFacts } = require('./moment-facts');
 
 // --- !quemeperdi ---
 const queMePerdiCooldowns = new Map();
@@ -61,9 +61,8 @@ async function handleQueMePerdi(client, channel, tags) {
     return;
   }
 
-  const chat = getStreamChatBuffer();
   const narrative = getStreamNarrative();
-  if (!chat && narrative.length === 0) {
+  if (!streamChatBuffer.length && narrative.length === 0) {
     client.say(channel, truncate(msgs.nothing_yet.replace('{username}', username)));
     return;
   }
@@ -88,9 +87,21 @@ async function handleQueMePerdi(client, channel, tags) {
     return;
   }
   try {
-    const story = buildStoryBlock(narrative);
+    // Hechos escritos por el código (juego exacto, quién juega, rato, caídas, jefes y tema del chat por reglas): el modelo
+    // no recibe ninguna línea del chat y la salida solo puede contar esto
     const bosses = getBossCount();
-    const facts = `Minutos de stream: ${minutes}. Muertes del streamer (veces que ha caído): ${deaths}. Jefes derrotados: ${bosses}.`;
+    const player = getPlayer();
+    const gameWords = gameVocabulary(game || '');
+    const recapFacts = buildRecapFacts({
+      game,
+      gameWords,
+      minutes,
+      deathCount: deaths,
+      bosses,
+      player: { pao: 'Pao', ambos: 'Manu y Pao' }[player] || 'Manu',
+      chatLines: streamChatBuffer.map((m) => ({ username: m.username, message: m.message })),
+    });
+    const facts = recapFacts.map((f) => f.texto).join('. ');
     let text = '';
     let feedback = '';
     for (let attempt = 0; attempt < 2 && !text; attempt++) {
@@ -98,16 +109,10 @@ async function handleQueMePerdi(client, channel, tags) {
       const response = await aiChat('quemeperdi', {
         max_tokens: 150,
         messages: [
-          {
-            role: 'system',
-            content: `${buildQueMePerdiSystem({ game: game || '', player: getPlayer() })}${retryNote(feedback)}`,
-          },
+          { role: 'system', content: `${buildQueMePerdiSystem()}${retryNote(feedback)}` },
           {
             role: 'user',
-            content: `<datos>${facts}</datos>${story}
-<chat>
-${chat}
-</chat>
+            content: `${renderFacts(recapFacts)}
 Cuenta lo ocurrido.`,
           },
         ],
@@ -121,8 +126,15 @@ Cuenta lo ocurrido.`,
       const problem = quality.validateQueMePerdi(out, {
         deathCount: deaths,
         bosses,
+        source: facts,
+        facts: recapFacts,
+        game: game || '',
+        player,
         minutes,
-        source: `${chat}\n${story}\n${facts}`,
+        gameWords,
+        channelGames: channelConfig.games_played || [],
+        startedAt,
+        endedAt: now,
       });
       if (problem) {
         feedback = problem;

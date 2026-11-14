@@ -10,8 +10,33 @@ const quality = require('../src/ai/quality');
 const { classifyMessage } = require('../src/ai/patterns');
 const { containsBlockedContent } = require('../src/utils/filter');
 const { summaryProblem } = require('../src/memory/handler');
-const { gameVocabulary } = require('../src/ai/moment-facts');
+const { gameVocabulary, buildRecapFacts } = require('../src/ai/moment-facts');
 const cases = require('./fixtures/frases-reales.json');
+
+// Datos del directo de un caso de resumen o de !quemeperdi (game, player, minutes, deaths, bosses, startedAt): los hechos con
+// los que se habría escrito y el contexto de las reglas de quality/recap.js
+function recapOf(c, ended) {
+  const player = c.player || 'manu';
+  const deathCount = c.deaths ?? 0;
+  const startedAt = c.startedAt ? Date.parse(c.startedAt) : null;
+  return {
+    facts: buildRecapFacts({
+      game: c.game,
+      minutes: c.minutes,
+      deathCount,
+      bosses: c.bosses ?? 0,
+      player: { pao: 'Pao', ambos: 'Manu y Pao' }[player] || 'Manu',
+      ended,
+    }),
+    game: c.game || '',
+    player,
+    minutes: c.minutes,
+    deathCount,
+    gameWords: gameVocabulary(c.game || ''),
+    startedAt,
+    endedAt: startedAt ? startedAt + (c.minutes || 0) * 60000 : null,
+  };
+}
 
 function verdict(c) {
   const deaths = c.deaths ?? 5;
@@ -51,7 +76,10 @@ function verdict(c) {
     case 'shutup':
       return classifyMessage(c.input, {}, { botNames: ['dios_fua'] }) !== 'shutup';
     case 'summary':
-      return !summaryProblem(c.input);
+      // con `minutes` el caso trae los datos del directo: se comprueba también que el resumen cuente solo esos hechos
+      return !summaryProblem(c.input, c.minutes != null ? recapOf(c, true) : null);
+    case 'quemeperdi':
+      return !quality.validateQueMePerdi(c.input, { bosses: c.bosses ?? 0, ...recapOf(c, false) });
     default:
       throw new Error(`filtro desconocido: ${c.filter}`);
   }

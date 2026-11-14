@@ -45,6 +45,7 @@ const {
   selfHelp,
   hasPersonalDistress,
   mentionsGame,
+  mentionsGameName,
   talksAboutGames,
   leaksTech,
   mentionsMechanics,
@@ -127,6 +128,7 @@ const {
   isGameQuestion,
   isDeathQuestion,
   asksAboutPastStream,
+  asksBeyondSheet,
 } = require('./intent');
 const {
   inventedQuote,
@@ -138,6 +140,7 @@ const {
   giroProblem,
 } = require('./facts');
 const { copiedFromChat, inventedDetail, wordRank } = require('./copy');
+const { otherStreamer, foreignChat, wrongHours, streamDayParts, wrongStreamDayPart, recapProblem } = require('./recap');
 
 module.exports = {
   oneLine,
@@ -262,4 +265,12 @@ module.exports = {
   inventedDetail,
   abbreviatedGame,
   wordRank,
+  otherStreamer,
+  foreignChat,
+  wrongHours,
+  streamDayParts,
+  wrongStreamDayPart,
+  recapProblem,
+  mentionsGameName,
+  asksBeyondSheet,
 };

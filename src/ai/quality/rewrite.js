@@ -1,5 +1,6 @@
 // Arreglos del texto ya generado: recortes por frase, muletillas, nicks y nombres.
 const { isCutOff } = require('./form');
+const { approxDuration } = require('./numbers');
 
 // Todo mensaje del bot sale en una sola línea y con las palabras separadas: los saltos de línea (\n, \r, U+2028/2029), los
 // espacios raros que escriben los modelos (NBSP, U+202F, finos...) y el espacio de ancho cero entre palabras pasan a un espacio;
@@ -147,14 +148,17 @@ function insertUsername(text, username) {
   return `@${username} ${clean}`;
 }
 
-// Resumen de reserva sin IA: datos reales (muertes, juego) y en positivo
-function positiveSummaryFallback({ game, durationMinutes, deathCount } = {}) {
-  const juego = game ? ` de ${game}` : '';
-  const datos =
-    deathCount > 0
-      ? `${durationMinutes} minutos con ${deathCount} ${deathCount === 1 ? 'muerte' : 'muertes'}`
-      : `${durationMinutes} minutos`;
-  return `Gran stream${juego}: ${datos}, mucho FUA y muy buen ambiente en el chat.`;
+// Resumen de reserva sin IA: solo hechos (juego, quién jugó, duración aproximada, caídas y jefes), sin adornos.
+// Es lo que se guarda como memoria cuando la IA falla: nada que el modelo pueda malinterpretar después.
+// player: 'manu' | 'pao' | 'ambos' (sin él no se nombra a nadie)
+function positiveSummaryFallback({ game, durationMinutes, deathCount = 0, bosses = 0, player = '' } = {}) {
+  const who = { manu: 'Manu', pao: 'Pao', ambos: 'Manu y Pao' }[player] || '';
+  const parts = [approxDuration(durationMinutes)];
+  // con el contador a cero no se afirma «sin caídas»: puede que nadie las anotara
+  if (deathCount > 0) parts.push(`${deathCount} ${deathCount === 1 ? 'caída' : 'caídas'}`);
+  if (bosses > 0) parts.push(`${bosses} ${bosses === 1 ? 'jefe superado' : 'jefes superados'}`);
+  const list = parts.length > 2 ? `${parts.slice(0, -1).join(', ')} y ${parts.at(-1)}` : parts.join(', ');
+  return `Directo${game ? ` de ${game}` : ''}${who ? ` con ${who} al mando` : ''}: ${list}.`;
 }
 
 // --- Cortes en final de frase ---

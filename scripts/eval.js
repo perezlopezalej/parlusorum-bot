@@ -296,6 +296,35 @@ async function runGenCase(c) {
     timers.stop();
     if (sent) said.push(sent);
     outcome = sent ? 'sent' : 'dropped';
+  } else if (c.gen === 'quemeperdi') {
+    // !quemeperdi: se escribe con hechos (juego, quién juega, rato, caídas); c.player = quién juega (!juega)
+    state.setPlayer(c.player || 'manu');
+    try {
+      // usuario distinto en cada ejecución: el comando tiene un cooldown de 2 min por usuario
+      await ai.handleQueMePerdi(client, '#eval', fakeTags(5000 + Math.floor(Math.random() * 100000), 0));
+    } finally {
+      state.setPlayer('manu');
+    }
+    outcome = said.length ? 'sent' : 'dropped';
+  } else if (c.gen === 'resumen') {
+    // Resumen de fin de stream: lo que se guardaría como memoria (c.minutes de directo, c.player, c.startHour en Madrid)
+    const memory = require('../src/memory/handler');
+    const startedAt = Date.now() - (c.minutes ?? 110) * 60000;
+    const out = await memory.generateStreamMemory(
+      {
+        game: evalGame,
+        durationMinutes: c.minutes ?? 110,
+        deathCount: c.deaths ?? 0,
+        bosses: c.bosses ?? 0,
+        player: c.player || 'manu',
+        startedAt,
+        endedAt: Date.now(),
+        activeUsers: [],
+      },
+      (c.chat || []).map(([user, message]) => `${user}: ${message}`).join('\n'),
+    );
+    if (out?.summary) said.push(out.summary);
+    outcome = 'sent';
   } else throw new Error(`gen desconocido: ${c.gen}`);
   const reply = said[said.length - 1] || '';
   const exp = c.expect || {};

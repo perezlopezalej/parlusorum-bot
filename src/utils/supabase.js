@@ -5,6 +5,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('./logger');
+const { madridDateKey } = require('./stream-session');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
@@ -418,7 +419,7 @@ async function saveStreamMemory(memoryData) {
   try {
     const { error } = await db.from('stream_memory').insert({
       session_id: currentSessionId,
-      stream_date: new Date().toISOString().split('T')[0],
+      stream_date: memoryData.streamDate || madridDateKey(),
       game: memoryData.game || null,
       summary: memoryData.summary || null,
       highlights: memoryData.highlights || [],
@@ -442,7 +443,7 @@ async function getRecentStreamMemory(limit = 5) {
     const { data, error } = await db
       .from('stream_memory')
       .select('*')
-      .order('stream_date', { ascending: false })
+      .order('created_at', { ascending: false }) // varios directos el mismo día: el más reciente primero
       .limit(limit);
 
     if (error) throw error;

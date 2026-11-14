@@ -767,5 +767,120 @@
     "expect": {
       "year": 2005
     }
+  },
+  {
+    "id": "d13-jefe-final-ff16",
+    "input": "!dios_fua quien es el boss final de final fantasy xvi?",
+    "note": "Directo del 13-11: contestó «Bahamut, el dragón legendario». La ficha no trae jefes: frase fija que lo reconoce, sin inventar un nombre.",
+    "expect": {
+      "route": "question",
+      "reply": true,
+      "matchAny": ["jefes"],
+      "matchNone": ["Bahamut", "Ultima", "Ifrit", "Odin", "Titan", "drag[oó]n"]
+    }
+  },
+  {
+    "id": "d13-ultimo-jefe-ff16",
+    "input": "!dios_fua me refiero al ultimo jefe al que te enfrentas en final fantasy xvi",
+    "note": "Directo del 13-11 (la repregunta que acabó en «Bahamut»): tampoco se inventa el jefe.",
+    "expect": {
+      "route": "question",
+      "reply": true,
+      "matchNone": ["Bahamut", "Ultima", "Ifrit", "Odin", "Titan", "drag[oó]n"]
+    }
+  },
+  {
+    "id": "d13-opinion-ff16",
+    "input": "!dios_fua qué opinas de Final Fantasy XVI",
+    "note": "Con ficha de IGDB: cuenta lo de la ficha (género, estudio, año) sin añadir jefes ni personajes que no estén en ella.",
+    "expect": {
+      "route": "question",
+      "tool": "buscar_juego",
+      "toolData": true,
+      "reply": true,
+      "matchNone": ["Bahamut", "Ifrit", "Odin"],
+      "notFromPool": ["dios_fua_no_data"]
+    }
+  },
+  {
+    "id": "d13-stream-de-ayer",
+    "input": "!dios_fua cual fue el stream de ayer?",
+    "note": "Directo del 13-11: contestó «maratón… de madrugada». Con la memoria sembrada (ninguna fila es de ayer) dice que de ayer no consta nada o cuenta el último guardado con su día, sin «maratón» ni «madrugada».",
+    "memory": [
+      {
+        "stream_date": "2026-11-08",
+        "game": "Hell Is Us",
+        "summary": "Unas cuatro horas de Hell Is Us en las que Manu cayó 20 veces y se levantó otras tantas.",
+        "highlights": ["El tema del coto amenazó de bomba el bahía sur"],
+        "recurring_phrases": ["Un abrazo"]
+      }
+    ],
+    "expect": {
+      "route": "question",
+      "reply": true,
+      "matchNone": ["marat[oó]n", "madrugada", "bomba", "bah[ií]a", "Un abrazo"]
+    }
+  },
+  {
+    "id": "d13-mencion-sin-arrastre",
+    "turns": ["dios fua a ti qué te importa de qué nos reímos"],
+    "game": "FINAL FANTASY XVI",
+    "deaths": 1,
+    "note": "Directo del 13-11: la mención soltó «Bahamut, con todo el power» por la conversación de !dios_fua. Una mención sin tema de juego no nombra jefes ni personajes.",
+    "expect": {
+      "matchNone": ["Bahamut", "Ifrit", "drag[oó]n"]
+    }
+  },
+  {
+    "id": "d13-quemeperdi-manu",
+    "gen": "quemeperdi",
+    "game": "Shadow of the Colossus",
+    "player": "manu",
+    "deaths": 0,
+    "minutes": 80,
+    "chat": [
+      ["markosssx", "jajaja menuda caída"],
+      ["gangar79", "coto amenaza de bomba en el bahia sur"],
+      ["vlxj97", "jajajaja"],
+      ["stewar32", "jajaja qué risa"],
+      ["gangar79", "Pao, revélate, enseña al Manu de lo que es capaz un charmander"],
+      ["markosssx", "vamos Manu tu puedes"]
+    ],
+    "note": "Directo del 13-11: «Pao está ahí en la grada» jugando Manu. Con hechos: no nombra a Pao, no cita el chat y da el título completo.",
+    "expect": {
+      "matchAll": ["Shadow of the Colossus|directo|rato|hora"],
+      "matchNone": ["\\bPao\\b", "grada", "bomba", "bah[ií]a", "charmander", "coloso"]
+    }
+  },
+  {
+    "id": "d13-resumen-largo-ff16",
+    "gen": "resumen",
+    "game": "FINAL FANTASY XVI",
+    "player": "manu",
+    "deaths": 1,
+    "minutes": 212,
+    "chat": [
+      ["markosssx", "jajaja menuda caída"],
+      ["gangar79", "coto amenaza de bomba en el bahia sur"],
+      ["vlxj97", "jajajaja"],
+      ["stewar32", "jajaja qué risa"],
+      ["gangar79", "Pao, revélate, enseña al Manu de lo que es capaz un charmander"],
+      ["markosssx", "vamos Manu tu puedes"]
+    ],
+    "note": "Directo del 13-11: «Final Fantasy trece», «todo fue copiar y pegar», «el chat de España». Con hechos: título exacto, sin Pao, sin chat literal y con la duración real.",
+    "expect": {
+      "matchAll": ["final fantasy xvi"],
+      "matchNone": [
+        "trece",
+        "copiar y pegar",
+        "chat de Espa[ñn]a",
+        "\\bPao\\b",
+        "bomba",
+        "bah[ií]a",
+        "madrugada",
+        "marat[oó]n",
+        "\\d{3} minutos"
+      ]
+    }
   }
 ]

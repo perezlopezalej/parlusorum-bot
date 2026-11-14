@@ -129,10 +129,19 @@ async function buildContextText({ question = '' } = {}) {
   }
   try {
     if (asksAboutPastStream(question)) {
-      const memory = await getMemoryContext({ maxStreams: 2, summaryMax: 240, maxHighlights: 2, plain: true });
-      if (memory) parts.push(`Streams anteriores (cada uno con su fecha y su juego; di de qué juego era): ${memory}`);
+      const memory = await getMemoryContext({ maxStreams: 3, summaryMax: 240, plain: true });
+      if (memory) {
+        parts.push(
+          `Streams guardados, del más reciente al más antiguo (cada uno con su día y su juego; cuenta solo lo que pone aquí y di de qué juego era): ${memory}`,
+        );
+        // «¿el stream de ayer?» sin fila de ayer: se dice, en vez de dejar que el modelo adivine cuál fue
+        if (/\bayer\b/i.test(question) && !memory.includes('[ayer,'))
+          parts.push(
+            'De ayer no hay ningún directo guardado: dilo así y cuenta el más reciente que sí consta, con su día.',
+          );
+      } else parts.push('No hay streams anteriores guardados: dilo así, con humor.');
     } else {
-      const memory = await getMemoryContext({ maxStreams: 1, summaryMax: 160, maxHighlights: 1, plain: true, game });
+      const memory = await getMemoryContext({ maxStreams: 1, summaryMax: 160, plain: true, game });
       if (memory) parts.push(`Último stream: ${memory}`);
     }
   } catch {

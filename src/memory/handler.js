@@ -13,9 +13,13 @@ const { containsBlockedContent } = require('../utils/filter');
 const { aiChat } = require('../utils/ai-router');
 const { onStreamEndLore } = require('../lore/handler');
 const { scrubNicks, nicksFromChatSample } = require('../privacy/names');
+const { buildRecapFacts, gameVocabulary } = require('../ai/moment-facts');
+const { madridDateKey, relativeDayLabel } = require('../utils/stream-session');
 
-// Motivo de rechazo del resumen (null si vale): vacío, negativo, muertes como logro, género a ParLusorum, vida personal o texto basura
-function summaryProblem(text) {
+// Motivo de rechazo del resumen (null si vale): vacío, negativo, muertes como logro, género a ParLusorum, vida personal o texto basura.
+// recap: hechos y datos del directo ({ facts, game, player, minutes, deathCount, startedAt, endedAt… }, ver quality/recap.js);
+// con ellos se exige además que el resumen cuente solo eso (jugador, título exacto, duración, parte del día, sin inventos)
+function summaryProblem(text, recap = null) {
   if (!text) return 'vacío';
   if (quality.negativeSummary(text)) return 'es negativo; el resumen siempre va en positivo';
   if (quality.achievesDeaths(text)) return 'presenta las muertes como un logro; son caídas del streamer';
@@ -26,7 +30,24 @@ function summaryProblem(text) {
     return 'habla de vida personal o charla ajena al stream (comida, clima, calor...); habla solo del juego, el stream y el ambiente del chat';
   const junk = quality.junkProblem(text, { minWords: 1 });
   if (junk) return junk.reason;
+  if (recap) {
+    if (quality.mentionsUnrecordedDeaths(text, recap.deathCount || 0))
+      return 'menciona muertes que no están en el contador';
+    const problem = quality.recapProblem(text, recap);
+    if (problem) return problem.reason;
+  }
   return null;
+}
+
+// «nick: mensaje» por línea → [{ username, message }] (para sacar el tema del chat por reglas, nunca para el prompt)
+function linesFromChatSample(chatSample) {
+  return String(chatSample || '')
+    .split('\n')
+    .map((line) => {
+      const sep = line.indexOf(': ');
+      return sep > 0 ? { username: line.slice(0, sep).trim(), message: line.slice(sep + 2) } : null;
+    })
+    .filter(Boolean);
 }
 
 // Lee el JSON de la respuesta aunque venga con vallas de markdown, texto alrededor o cortado por el límite de tokens.
@@ -69,21 +90,42 @@ function parseMemoryJson(text) {
 // ─── GENERAR RESUMEN AL ACABAR EL STREAM ─────────────────────────────────────
 
 async function generateStreamMemory(streamStats, chatSample) {
+  // El día de la memoria es el del inicio del directo en Madrid (un directo que acaba de madrugada sigue siendo «el de ayer»)
+  const streamDate = madridDateKey(
+    Number.isFinite(streamStats.startedAt)
+      ? streamStats.startedAt
+      : Date.now() - (Number(streamStats.durationMinutes) || 0) * 60000,
+  );
   try {
-    const { game, durationMinutes, deathCount, peakViewers, topCommands } = streamStats;
+    const { game, durationMinutes, deathCount = 0, bosses = 0, player = 'manu', startedAt = null } = streamStats;
+    const { endedAt = null } = streamStats;
 
-    const prompt = buildSummaryPrompt({
-      streamer: channelConfig.streamer,
+    // Hechos escritos por el código: el modelo no recibe el chat (de ahí salieron «Pao en la grada» o «el chat de España»)
+    const gameWords = gameVocabulary(game || '');
+    const facts = buildRecapFacts({
       game,
-      durationMinutes,
+      gameWords,
+      minutes: durationMinutes,
       deathCount,
-      peakViewers,
-      topCommands,
-      chatSample,
+      bosses,
+      player: { pao: 'Pao', ambos: 'Manu y Pao' }[player] || 'Manu',
+      chatLines: linesFromChatSample(chatSample),
+      ended: true,
     });
+    const recap = {
+      facts,
+      game: game || '',
+      player,
+      minutes: durationMinutes,
+      deathCount,
+      gameWords,
+      channelGames: channelConfig.games_played || [],
+      startedAt,
+      endedAt,
+    };
+    const prompt = buildSummaryPrompt({ facts });
 
-    // Hasta 2 intentos: si el resumen habla de vida personal, es negativo o está mal, el segundo recibe el motivo
-    let parsed = {};
+    // Hasta 2 intentos: si el resumen se sale de los hechos, es negativo o está mal, el segundo recibe el motivo
     let summary = '';
     let feedback = '';
     for (let attempt = 0; attempt < 2 && !summary; attempt++) {
@@ -99,10 +141,8 @@ async function generateStreamMemory(streamStats, chatSample) {
         logger.info('Resumen de fin de stream ilegible (no es JSON), se reintenta');
         continue;
       }
-      parsed = json;
-
-      const rawSummary = String(parsed.summary || '').trim();
-      const problem = summaryProblem(rawSummary);
+      const rawSummary = String(json.summary || '').trim();
+      const problem = summaryProblem(rawSummary, recap);
       if (problem) {
         feedback = problem;
         logger.info(`Resumen de fin de stream descartado (${problem}): ${rawSummary.slice(0, 80)}`);
@@ -110,23 +150,19 @@ async function generateStreamMemory(streamStats, chatSample) {
       }
       summary = rawSummary;
     }
+    // Dos intentos fallidos: resumen fijo con los hechos (juego, quién jugó, duración, caídas), sin IA
     if (!summary) summary = quality.positiveSummaryFallback(streamStats);
-
-    // Los momentos y frases también entran luego en los prompts: sin vida personal ni charla ajena al stream
-    const keep = (list) =>
-      (Array.isArray(list) ? list : []).filter(
-        (item) => typeof item === 'string' && !quality.summaryPersonalLife(item) && !quality.mentionsEthnicTerms(item),
-      );
 
     // Lo que perdura entre streams no lleva nicks: se sustituyen por «un espectador»
     const nicks = [...(streamStats.activeUsers || []), ...nicksFromChatSample(chatSample)];
-    const clean = (text) => scrubNicks(text, nicks);
 
+    // Ya no se guardan «momentos» ni «frases del chat»: salían del chat literal y acababan como memoria en los prompts
     return {
       game,
-      summary: clean(summary),
-      highlights: keep(parsed.highlights).map(clean),
-      recurringPhrases: keep(parsed.recurringPhrases).map(clean),
+      streamDate,
+      summary: scrubNicks(summary, nicks),
+      highlights: [],
+      recurringPhrases: [],
       activeUsers: [],
     };
   } catch (e) {
@@ -134,6 +170,7 @@ async function generateStreamMemory(streamStats, chatSample) {
     // Fallback sin IA
     return {
       game: streamStats.game,
+      streamDate,
       summary: quality.positiveSummaryFallback(streamStats),
       highlights: [],
       recurringPhrases: [],
@@ -198,33 +235,20 @@ const MEMORY_CACHE_TTL = 10 * 60 * 1000;
 
 // Texto de memoria para el prompt. maxStreams/summaryMax recortan el perfil "lean" (los más recientes primero)
 // game: solo entran los streams del mismo juego (los detalles de otro juego no se mezclan con el actual)
-function renderMemory(
-  memories,
-  { maxStreams = 5, summaryMax = 500, maxHighlights = 2, plain = false, game = '' } = {},
-) {
+// Cada stream lleva su día relativo a hoy («ayer, 12 de noviembre»): el modelo no calcula fechas. Solo entra el resumen:
+// los «momentos» y «frases del chat» de las filas antiguas salían del chat literal y no se pasan a los prompts.
+function renderMemory(memories, { maxStreams = 5, summaryMax = 500, plain = false, game = '', now = Date.now() } = {}) {
   const sameGame = game
     ? memories.filter((m) => String(m.game || '').toLowerCase() === String(game).toLowerCase())
     : memories;
   if (!sameGame.length) return '';
   const lines = sameGame.slice(0, maxStreams).map((m) => {
-    const date = m.stream_date;
     const game = m.game || 'sin juego';
     const summary = sanitizeMemoryField(m.summary, summaryMax);
-    const highlights =
-      m.highlights?.length && maxHighlights > 0
-        ? `Momentos: ${m.highlights
-            .slice(0, maxHighlights)
-            .map((h) => sanitizeMemoryField(h, 150))
-            .filter(Boolean)
-            .join(', ')}.`
-        : '';
-    const phrases = m.recurring_phrases?.length
-      ? `Frases del chat: "${sanitizeMemoryField(m.recurring_phrases[0], 150)}".`
-      : '';
-    return `[${date}] ${game}: ${summary} ${highlights} ${phrases}`.trim();
+    return `[${relativeDayLabel(m.stream_date, now)}] ${game}: ${summary}`.trim();
   });
   if (plain) return lines.join(' | ');
-  return `\nMEMORIA DEL CANAL — referencía estos momentos y frases de forma espontanea cuando encaje en la conversacion:\n${lines.join('\n')}`;
+  return `\nMEMORIA DEL CANAL — streams anteriores, cada uno con su día y su juego:\n${lines.join('\n')}`;
 }
 
 async function getMemoryContext(opts = {}) {
@@ -253,6 +277,7 @@ module.exports = {
   invalidateMemoryCache,
   generateStreamMemory,
   summaryProblem,
+  linesFromChatSample,
   parseMemoryJson,
   renderMemory,
 };

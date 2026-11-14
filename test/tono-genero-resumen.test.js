@@ -36,13 +36,22 @@ describe('resumen de fin de stream en positivo', () => {
     assert.equal(q.negativeSummary('Stream aburrido y flojo'), true);
     assert.equal(q.negativeSummary('Stream épico con 12 muertes y el jefe por fin caído'), false);
   });
-  test('el resumen de reserva usa los datos reales y es positivo', () => {
+  test('el resumen de reserva lleva solo hechos (juego, quién jugó, duración aproximada, caídas, jefes)', () => {
     const s = q.positiveSummaryFallback({ game: 'Blade', durationMinutes: 150, deathCount: 12 });
-    assert.match(s, /12 muertes/);
-    assert.match(s, /Blade/);
-    assert.match(s, /150 minutos con 12 muertes/);
+    assert.equal(s, 'Directo de Blade: dos horas y media, 12 caídas.');
     assert.equal(q.negativeSummary(s), false);
     assert.equal(q.negativeSummary(q.positiveSummaryFallback({ durationMinutes: 20, deathCount: 0 })), false);
+    // 13-11: «Gran stream de Shadow of the Colossus: 283 minutos, mucho FUA y muy buen ambiente en el chat»
+    const real = q.positiveSummaryFallback({
+      game: 'Shadow of the Colossus',
+      durationMinutes: 283,
+      deathCount: 0,
+      bosses: 2,
+      player: 'manu',
+    });
+    assert.equal(real, 'Directo de Shadow of the Colossus con Manu al mando: casi cinco horas, 2 jefes superados.');
+    assert.doesNotMatch(real, /283|minutos|Gran stream|mucho FUA|caída/);
+    assert.equal(q.exactMinutes(real), false);
   });
 });
 

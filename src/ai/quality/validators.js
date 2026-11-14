@@ -67,6 +67,7 @@ const {
   tooSimilar,
 } = require('./repetition');
 const { plainWords } = require('./text');
+const { recapProblem } = require('./recap');
 
 // Motivo de rechazo si el mensaje automático habla de mecánicas del juego, cita la nota del juego o desprecia el juego
 function gameTalkProblem(text) {
@@ -332,7 +333,9 @@ function validateHook(
   return { ok: true };
 }
 
-function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '' } = {}) {
+// ctx.facts: hechos con los que se escribió (activa las reglas del resumen: jugador, título exacto, duración, parte del día,
+// detalles inventados); ctx.game/player/minutes/gameWords/channelGames/startedAt/endedAt: ver recap.js
+function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '', facts = null, ...recap } = {}) {
   if (fuaGender(text)) return '"el FUA" va siempre en masculino';
   if (ETHNIC_RE.test(String(text || ''))) return 'usa una expresión con etnias o pueblos; cuéntalo sin ellas';
   const junk = junkProblem(text);
@@ -347,6 +350,10 @@ function validateQueMePerdi(text, { deathCount = 0, bosses = 0, source = '' } = 
   if (inventedQuote(text, source)) return 'cita un mensaje del chat que no existe (entrecomillado inventado)';
   const boss = text.match(/(\d+)\s+(?:jefes?|bosses|boss)\b/i);
   if (boss && parseInt(boss[1], 10) !== bosses) return `cita ${boss[1]} jefes y llevamos ${bosses}`;
+  if (facts) {
+    const problem = recapProblem(text, { facts, ...recap });
+    if (problem) return problem.reason;
+  }
   return null;
 }
 
