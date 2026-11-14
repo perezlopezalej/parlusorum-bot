@@ -396,6 +396,8 @@ client.on('message', async (channel, tags, message, self) => {
 
   const msg = message.trim();
   const username = tags['display-name'];
+  // Mensaje al que contesta el bot si CHAT_REPLY_THREAD=1 (utils/reply-thread.js); sin id de mensaje no hay hilo
+  const replyOpt = tags.id ? { replyTo: { id: tags.id, nick: username || tags.username } } : {};
   botState.pushUserText(msg);
   chatlog.logUserMessage(username, msg, tags['reply-parent-user-login'], tags['user-id']);
 
@@ -411,7 +413,7 @@ client.on('message', async (channel, tags, message, self) => {
       runWithOrigin('highlight', () => ai.checkForHighlight(client, channel, msg, tags['user-id'] || username)).catch(
         (err) => logger.warn(`checkForHighlight error: ${err.message}`),
       );
-      await runWithOrigin('mencion', () => ai.checkPatternMatch(client, channel, tags, msg)); // el cohost libre va por reloj (ai.startEventCohost)
+      await runWithOrigin('mencion', () => ai.checkPatternMatch(client, channel, tags, msg), replyOpt); // el cohost libre va por reloj (ai.startEventCohost)
       runWithOrigin('emote_spam', () => ai.checkEmoteSpam(client, channel, tags, msg)).catch((err) =>
         logger.warn(`checkEmoteSpam error: ${err.message}`),
       );
@@ -431,11 +433,13 @@ client.on('message', async (channel, tags, message, self) => {
 
     if (command === 'trivia' || command === 'top')
       return runWithOrigin('trivia', () => games.handle(client, channel, tags, command, args));
-    if (command === 'dios_fua') return runWithOrigin('dios_fua', () => ai.handleQuestion(client, channel, tags, args));
-    if (command === 'chiste') return runWithOrigin('chiste', () => ai.handleChiste(client, channel, tags));
-    if (command === 'quemeperdi') return runWithOrigin('quemeperdi', () => ai.handleQueMePerdi(client, channel, tags));
+    if (command === 'dios_fua')
+      return runWithOrigin('dios_fua', () => ai.handleQuestion(client, channel, tags, args), replyOpt);
+    if (command === 'chiste') return runWithOrigin('chiste', () => ai.handleChiste(client, channel, tags), replyOpt);
+    if (command === 'quemeperdi')
+      return runWithOrigin('quemeperdi', () => ai.handleQueMePerdi(client, channel, tags), replyOpt);
 
-    await runWithOrigin('comando', () => commands.handle(client, channel, tags, command, args, config));
+    await runWithOrigin('comando', () => commands.handle(client, channel, tags, command, args, config), replyOpt);
   } catch (err) {
     logger.error(`Message handler error [${username}]: ${err.message}`);
   }

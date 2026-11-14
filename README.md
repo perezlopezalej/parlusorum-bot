@@ -135,6 +135,7 @@ npm start                # o npm run dev, con recarga
 
 - Variables obligatorias: `BOT_USERNAME`, `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `CHANNEL`, `GROQ_API_KEY`, `BROADCASTER_TOKEN`, `EVENTSUB_SECRET` (mínimo 10 caracteres). El resto está en `.env.example`.
 - El token del streamer se obtiene visitando `/auth/broadcaster` con el bot en marcha.
+- Respuestas en hilo (opcional, apagado por defecto): con `CHAT_SEND=api` y `CHAT_REPLY_THREAD=1`, las respuestas a comandos, menciones, `!dios_fua`, `!chiste` y `!quemeperdi` se envían como respuesta al mensaje de quien escribió (`reply_parent_message_id`) y sin «@usuario» al inicio, para que un lector de voz no lea la arroba. Twitch no documenta si añade él la arroba al texto, así que hay que probarlo en directo antes de dejarlo activo. Con `CHAT_SEND=irc` (por defecto) no hay hilo: tmi.js no trae `reply()` y el mensaje sale con su «@usuario».
 - Supabase: ejecuta en el SQL Editor los ficheros de `supabase/migrations/` en orden (`000` a `010`; la `011` es destructiva y va después de comprobar la `010`).
 - Para EventSub en local, expón el puerto con un túnel (por ejemplo ngrok) y define `PUBLIC_URL`.
 - Despliegue en Render: **New → Blueprint** sobre el repositorio (lee `render.yaml`), rellena las variables secretas y cada push a `main` despliega. Después, `npm run check:eventsub` comprueba las suscripciones.

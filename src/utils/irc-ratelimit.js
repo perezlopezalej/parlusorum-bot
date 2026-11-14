@@ -5,21 +5,34 @@ const state = require('./state');
 const { limitFillers, limitLusorums, oneLine, speakable } = require('../ai/quality');
 const { checkOutbound } = require('./output-guard');
 const { outboundBlock } = require('./bot-control');
+const { planReply } = require('./reply-thread');
 
 const BOT_NAME = process.env.BOT_USERNAME || 'bot';
 
 // Envío por la API Send Chat Message (insignia de Chat Bot). Si está activo y falla, el mensaje sale por IRC.
-// apiSender(msg) → { sent: true } | { sent: false, reason }; lanza si no se pudo usar la API.
+// apiSender(msg, { replyTo }) → { sent: true } | { sent: false, reason }; lanza si no se pudo usar la API.
 let apiSender = null;
 function setApiSender(fn) {
   apiSender = fn;
 }
 
 // Un mensaje por API (o IRC si la API no está o falla). Devuelve 'sent' | 'dropped'
-async function deliver(sayFn, channel, msg) {
+// Con CHAT_REPLY_THREAD=1 las respuestas a un usuario salen en hilo y sin la arroba inicial; si Twitch rechaza el mensaje
+// padre (400), el mismo texto sale otra vez sin hilo y con su arroba.
+async function deliver(sayFn, channel, msg, meta) {
   if (apiSender) {
     try {
-      const r = await apiSender(msg);
+      const thread = planReply(msg, meta);
+      let r;
+      if (thread) {
+        try {
+          r = await apiSender(thread.text, { replyTo: thread.replyTo });
+        } catch (e) {
+          if (!e.replyParent) throw e;
+          logger.info('Chat API: el mensaje al que se contestaba ya no es válido; se envía sin hilo');
+        }
+      }
+      if (!r) r = await apiSender(msg);
       if (r.sent) return 'sent';
       logger.warn(`Chat API: Twitch no publicó el mensaje (${r.reason}): "${String(msg).slice(0, 60)}"`);
       state.recordFilterDiscard('salida', `api:${r.reason}`);
@@ -123,7 +136,7 @@ async function _sendNext() {
     let timer;
     try {
       const outcome = await Promise.race([
-        deliver(sayFn, channel, msg),
+        deliver(sayFn, channel, msg, meta),
         new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error(`say sin respuesta en ${SAY_TIMEOUT_MS} ms`)), SAY_TIMEOUT_MS);
         }),

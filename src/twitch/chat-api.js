@@ -81,6 +81,13 @@ async function sendChatMessage(message, { replyTo } = {}) {
     },
   });
   if (res.status === 429) throw new ChatApiError('límite de la API de chat', { status: 429 });
+  // Un 400 con reply_parent_message_id es casi seguro un mensaje padre no válido (borrado, de otro canal): no es un fallo de
+  // autorización y no desactiva la API; el llamador reenvía sin hilo
+  if (res.status === 400 && replyTo) {
+    const err = new ChatApiError('mensaje padre no válido', { status: 400 });
+    err.replyParent = true;
+    throw err;
+  }
   if (!res.ok) {
     const auth = [400, 401, 403].includes(res.status);
     if (auth) {

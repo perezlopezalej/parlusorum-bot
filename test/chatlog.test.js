@@ -130,12 +130,18 @@ describe('contexto de origen', () => {
       await new Promise((r) => setTimeout(r, 1));
       noteAiCall('m2', 50);
       noteTool('buscar_juego');
-      assert.deepEqual(currentMeta(), { origin: 'dios_fua', model: 'm2', usedTool: true, latencyMs: 150 });
+      assert.deepEqual(currentMeta(), {
+        origin: 'dios_fua',
+        model: 'm2',
+        usedTool: true,
+        latencyMs: 150,
+        replyTo: null,
+      });
     });
   });
 
   test('lo explícito gana; sin contexto → "otro" sin latencia', () => {
-    assert.deepEqual(currentMeta(), { origin: 'otro', model: null, usedTool: false, latencyMs: null });
+    assert.deepEqual(currentMeta(), { origin: 'otro', model: null, usedTool: false, latencyMs: null, replyTo: null });
     runWithOrigin('trivia', () => assert.equal(currentMeta({ origin: 'hook' }).origin, 'hook'));
   });
 

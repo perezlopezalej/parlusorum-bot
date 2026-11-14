@@ -23,8 +23,9 @@ const als = new AsyncLocalStorage();
 // ─── Contexto de origen ──────────────────────────────────────────────────────
 
 // Ejecuta fn con un contexto nuevo; los say() hechos dentro (también tras await/timers) lo heredan
-function runWithOrigin(origin, fn) {
-  return als.run({ origin, model: null, usedTool: false, latencyMs: 0, aiCalls: 0 }, fn);
+// opts.replyTo: { id, nick } del mensaje al que contesta el bot (respuestas en hilo, utils/reply-thread.js)
+function runWithOrigin(origin, fn, opts = {}) {
+  return als.run({ origin, model: null, usedTool: false, latencyMs: 0, aiCalls: 0, replyTo: opts.replyTo || null }, fn);
 }
 
 // Envuelve fn para que cada llamada (intervalos, callbacks) abra su propio contexto
@@ -54,6 +55,7 @@ function currentMeta(explicit = {}) {
     model: explicit.model ?? s?.model ?? null,
     usedTool: explicit.usedTool ?? s?.usedTool ?? false,
     latencyMs: explicit.latencyMs ?? (s?.aiCalls ? s.latencyMs : null),
+    replyTo: explicit.replyTo ?? s?.replyTo ?? null,
   };
 }
 
