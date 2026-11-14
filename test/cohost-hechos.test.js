@@ -567,7 +567,8 @@ describe('plurales y vocabulario del directo', () => {
     const words = fs
       .readFileSync(file, 'utf8')
       .split('\n')
-      .filter((l) => l.trim() && !l.startsWith('#'));
+      .map((l) => l.trim()) // el .txt puede salir con CRLF en Windows
+      .filter((l) => l && !l.startsWith('#'));
     for (const w of [
       'caida',
       'tropiezo',

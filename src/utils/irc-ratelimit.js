@@ -1,3 +1,4 @@
+const messagesConfig = require('../../config/messages.json');
 const logger = require('./logger');
 const chatlog = require('./chatlog');
 const state = require('./state');
@@ -104,6 +105,17 @@ async function _sendNext() {
         `IRC: mensaje descartado por filtro de salida (${guard.reason}) [${origin}]: "${String(msg).slice(0, 80)}"`,
       );
       state.recordFilterDiscard('salida', String(guard.reason || 'salida'));
+      // Quien escribe un comando no se queda sin respuesta: si el filtro la descarta (y no era ya la de reserva), se avisa
+      if (origin === 'comando' && guard.reason !== 'offline' && !meta?.fallback) {
+        _queue.push({
+          sayFn,
+          channel,
+          client,
+          msg: messagesConfig.comando_descartado,
+          meta: { ...meta, fallback: true },
+          expiresAt,
+        });
+      }
       return false;
     }
     state.noteLusorums(lusorums.had);

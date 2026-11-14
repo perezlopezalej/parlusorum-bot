@@ -16,8 +16,9 @@ const ALLOWED_HOSTS = ['twitch.tv', 'igdb.com'];
 // Respuestas directas a un usuario que pueden salir con el canal offline
 const DIRECT_ORIGINS = new Set(['comando', 'dios_fua', 'chiste', 'quemeperdi', 'trivia']);
 
-// Orígenes cuyo texto puede coincidir legítimamente con lo que escribe el chat (la respuesta de la trivia)
-const ECHO_EXEMPT_ORIGINS = new Set(['trivia']);
+// Orígenes cuyo texto puede coincidir legítimamente con lo que escribe el chat: la respuesta de la trivia y las respuestas a
+// comandos (plantillas fijas con datos propios: un espectador que cita «desde hace 1 mes» no las puede silenciar)
+const ECHO_EXEMPT_ORIGINS = new Set(['trivia', 'comando']);
 
 // Solo cuenta como eco una copia larga: 6+ palabras seguidas, o 4+ que sean casi todo (80%+) lo que escribió el usuario.
 // Repetir parte de la pregunta (un juego, un nombre, "quién desarrolló X") es normal y no salta.
@@ -144,5 +145,6 @@ module.exports = {
   normalizeEcho,
   userPayload,
   DIRECT_ORIGINS,
+  ECHO_EXEMPT_ORIGINS,
   ECHO_WINDOW_MS,
 };

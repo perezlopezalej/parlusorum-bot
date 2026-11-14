@@ -127,3 +127,19 @@ describe('directo apagado', () => {
     assert.equal(canSpeak({ origin: 'otro', live: false, graceUntil: NOW - 1, now: NOW }), false);
   });
 });
+
+describe('respuestas a comandos y eco (directo del 13-11)', () => {
+  const tiempo =
+    '⏳ @gangar79, te tengo fichado desde hace 1 mes y 21 días (desde tu primer mensaje que registré, no desde el follow)';
+  const chat = recent('desde hace 1 mes JAJAJA');
+  test('!tiempo no cae por el eco de «desde hace 1 mes» de otro usuario', () => {
+    assert.equal(check(tiempo, { origin: 'comando', recent: chat }).ok, true);
+  });
+  test('el mismo texto sí cae si no es una respuesta a un comando', () => {
+    assert.equal(check(tiempo, { origin: 'mencion', recent: chat }).reason, 'eco');
+  });
+  test('los comandos siguen sin poder soltar insultos o enlaces', () => {
+    assert.equal(check('eres un nazi', { origin: 'comando' }).ok, false);
+    assert.equal(check('entra en https://malo.example/x', { origin: 'comando' }).reason, 'url');
+  });
+});

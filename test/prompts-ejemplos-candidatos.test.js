@@ -98,8 +98,12 @@ describe('prompts nuevos: sin prohibidas citadas', () => {
   });
 
   test('cohost: identidad corta y sin los últimos mensajes del bot', () => {
-    const p = style.buildCohostSystem({ form: style.COHOST_FORMS[1], examples: style.pickStyleExamples('cohost', 4) });
-    assert.ok(p.length / 3.6 < 600, `${Math.round(p.length / 3.6)} tokens`);
+    // Peor caso (los 4 ejemplos más largos), no uno al azar: así el presupuesto no depende de la suerte
+    const longest = [...style.loadExamples().cohost]
+      .sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length)
+      .slice(0, 4);
+    const p = style.buildCohostSystem({ form: style.COHOST_FORMS[1], examples: longest });
+    assert.ok(p.length / 3.6 < 650, `${Math.round(p.length / 3.6)} tokens`);
     assert.doesNotMatch(p, /TUS RESPUESTAS ANTERIORES/);
   });
 });

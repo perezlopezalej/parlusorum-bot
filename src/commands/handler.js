@@ -417,18 +417,26 @@ async function handleMuertes(client, channel, args, isMod, username) {
 async function handleTiempo(client, channel, username, userId, targetArg) {
   const key = `tiempo-${userId}`;
   const now = Date.now();
-  if (cooldowns.has(key) && now < cooldowns.get(key)) return;
+  if (cooldowns.has(key) && now < cooldowns.get(key)) {
+    client.say(channel, truncate(tiempoMsgs.cooldown.replace('{username}', username)));
+    return;
+  }
   cooldowns.set(key, now + 15 * 1000);
 
   const target =
     String(targetArg || '')
       .replace(/^@/, '')
       .trim() || username;
-  if (!/^\w{1,25}$/.test(target)) return;
   const isSelf = target.toLowerCase() === username.toLowerCase();
+  if (!isSelf && !/^\w{1,25}$/.test(target)) {
+    client.say(channel, truncate(tiempoMsgs.bad_name.replace('{username}', username)));
+    return;
+  }
   let user;
   try {
-    user = findUserByName(await loadUsers(), target);
+    const users = await loadUsers();
+    // Uno mismo se busca por user_id (el nick visible puede llevar caracteres que no son \w)
+    user = (isSelf && userId && users[userId]) || findUserByName(users, target);
   } catch (err) {
     logger.warn(`!tiempo: ${err.message}`);
     client.say(channel, truncate(tiempoMsgs.unavailable));

@@ -67,7 +67,10 @@
     "bad_format": "👹 Uso: !boss para ver el marcador. Los mods suman o restan con !boss y un número de 1 a {max}, o ponen a cero con !boss reset. !boss y el nombre de un juego da su total",
     "mods_only": "@{username} solo mods pueden sumar o restar jefes. Mira el total de un juego con !boss <juego>"
   },
+  "comando_descartado": "Eso no te lo puedo contestar ahora mismo, prueba otra vez en un rato 🤔",
   "tiempo": {
+    "cooldown": "⏳ @{username}, espera un momento antes de volver a preguntar",
+    "bad_name": "⏳ @{username}, ese nombre no me suena a un usuario de Twitch",
     "self": "⏳ @{username}, te tengo fichado desde hace {since} (desde tu primer mensaje que registré, no desde el follow)",
     "other": "⏳ A @{target} lo tengo fichado desde hace {since} (desde su primer mensaje que registré, no desde el follow)",
     "unknown": "⏳ No tengo ningún mensaje registrado de @{target} todavía",
