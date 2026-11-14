@@ -188,7 +188,26 @@ const VERB_ENDINGS = [
   ['iria', ['ir']],
   ['an', ['ar']],
   ['en', ['er', 'ir', 'ar']],
+  // presente en singular: solo cuenta si el infinitivo está en la lista («tropieza» → tropezar), así que «costra» no pasa
+  ['as', ['ar']],
+  ['es', ['er', 'ir', 'ar']],
+  ['a', ['ar']],
+  ['e', ['er', 'ir', 'ar']],
+  ['o', ['ar', 'er', 'ir']],
 ];
+// Verbos con cambio de raíz (e→ie, o→ue, u→ue, e→i): «tropieza», «empieza», «vuelve», «juega», «pide» → raíz del infinitivo
+function rootVariants(root) {
+  const out = new Set([root]);
+  const swap = (from, to) => {
+    const i = root.lastIndexOf(from);
+    if (i > 0) out.add(root.slice(0, i) + to + root.slice(i + from.length));
+  };
+  swap('ie', 'e');
+  swap('ue', 'o');
+  swap('ue', 'u');
+  swap('i', 'e');
+  return [...out];
+}
 function verbLemmas(k) {
   const out = [];
   for (const [end, infs] of VERB_ENDINGS) {
@@ -196,7 +215,10 @@ function verbLemmas(k) {
     const root = k.slice(0, -end.length);
     // futuro y condicional conservan el infinitivo entero («pelearemos» → pelear)
     const keep = /^(a|e|i)r(emos|an|ian|ia)$/.test(end);
-    for (const inf of infs) out.push(keep ? root + end.slice(0, 2) : root + inf);
+    for (const inf of infs) {
+      if (keep) out.push(root + end.slice(0, 2));
+      else for (const r of rootVariants(root)) out.push(r + inf);
+    }
   }
   return out;
 }

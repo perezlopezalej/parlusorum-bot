@@ -336,3 +336,41 @@ describe('revisor de datos del juego: no descarta lo que solo nombra el juego', 
     );
   });
 });
+
+describe('verbos con cambio de raíz en la regla `inventado`', () => {
+  const ctx = { allowed: ['Manu lleva cinco caídas hoy'], gameWords: ['shadow', 'colossus'], names: [] };
+  const lemmas = require('../src/ai/quality/copy').verbLemmas;
+
+  test('verbLemmas propone el infinitivo de e→ie, o→ue, u→ue y e→i', () => {
+    for (const [form, inf] of [
+      ['tropieza', 'tropezar'],
+      ['empieza', 'empezar'],
+      ['puede', 'poder'],
+      ['vuelve', 'volver'],
+      ['pierde', 'perder'],
+      ['pide', 'pedir'],
+      ['juega', 'jugar'],
+      ['sienten', 'sentir'],
+      ['duermes', 'dormir'],
+    ])
+      assert.ok(lemmas(form).includes(inf), `${form} → ${inf}`);
+  });
+
+  test('«tropieza» y compañeros ya no son detalles inventados', () => {
+    for (const t of [
+      '¿Manu se tropieza otra vez? Tropieza hasta con el FUA.',
+      'Manu empieza de nuevo con calma.',
+      'Manu vuelve al combate y pierde la paciencia.',
+      'Manu pide ayuda y el chat responde.',
+      'Manu sigue y duerme tranquilo.',
+    ])
+      assert.equal(q.inventedDetail(t, ctx), '', t);
+  });
+
+  test('lo inventado sigue cayendo', () => {
+    assert.equal(q.inventedDetail('Manu busca esa costra otra vez.', ctx), 'costra');
+    assert.equal(q.inventedDetail('Menudas Colosales.', ctx), 'Colosales');
+    assert.equal(q.inventedDetail('Camino hacia Valisthea.', ctx), 'Valisthea');
+    assert.equal(q.inventedDetail('Aquí tienes: Bahamut.', ctx), 'Bahamut');
+  });
+});
