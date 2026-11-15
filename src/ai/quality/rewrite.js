@@ -59,7 +59,7 @@ const stripEmojiEnabled = () => /^(1|true|si|sí|on)$/i.test(process.env.TTS_QUI
 // Última capa antes de enviar: lo que se cuele con formato de pantalla pasa a palabras que el lector dice bien.
 // «2h 49m» → «2 horas y 49 minutos», «30s» → «30 segundos», «#7» → «número 7», «nº» → «número», «+3» → «3 más»,
 // « — », « · », « | » y «→» → coma, «buenisimas» → «buenísimas». No toca @nicks, !comandos ni emotes.
-function speakable(text, { stripEmoji = stripEmojiEnabled() } = {}) {
+function speakableText(text, { stripEmoji = stripEmojiEnabled() } = {}) {
   if (typeof text !== 'string') return text;
   let t = text
     .replace(SPOKEN_HM_RE, (_, h, m) => spokenDuration(Number(h) * 60 + Number(m)))
@@ -83,6 +83,34 @@ function speakable(text, { stripEmoji = stripEmojiEnabled() } = {}) {
     .replace(/(\p{Extended_Pictographic}\uFE0F?)\.(?!\.)/gu, '$1') // «como un roble! 😂.»
     .replace(/ {2,}/g, ' ')
     .trim();
+}
+
+// Signos de apertura y cierre que casan (15-11: «¡… qué tal?» y frases que cierran con «?» o «!» sin abrir). Por frase:
+// «¡…?» pasa a «¿…?», «¿…!» a «¡…!» y, si cierra con «?» o «!» sin ningún signo de apertura, se abre al principio (tras los
+// @nombres). No toca comandos (!x), enlaces ni cierres mixtos («?!», «!?»).
+function fixOpeningMarks(text) {
+  if (typeof text !== 'string' || !/[!?]/.test(text) || /https?:\/\//i.test(text)) return text;
+  return text
+    .split(/(?<=[.!?…])(\s+)/)
+    .map((sentence) => {
+      if (!sentence.trim() || /^\s*!\p{L}/u.test(sentence)) return sentence;
+      const core = sentence.replace(/[^\p{L}\p{N}!?.…¡¿]+$/u, '');
+      const last = core.slice(-1);
+      if (last !== '!' && last !== '?') return sentence;
+      if (/[!?]/.test(core.slice(-2, -1))) return sentence; // cierre mixto («?!», «!?»)
+      const closer = last;
+      const open = closer === '?' ? '¿' : '¡';
+      const wrong = closer === '?' ? '¡' : '¿';
+      const head = /^(\s*["«(]*)([¡¿])/u.exec(sentence);
+      if (head) return head[2] === wrong ? sentence.replace(head[0], head[1] + open) : sentence;
+      if (/[¡¿]/.test(sentence)) return sentence; // abre en mitad de la frase: se deja
+      return sentence.replace(/^(\s*["«(]*(?:@\w+[,:]?\s+)*)/u, (m) => m + open);
+    })
+    .join('');
+}
+
+function speakable(text, opts) {
+  return typeof text === 'string' ? fixOpeningMarks(speakableText(text, opts)) : text;
 }
 
 // Último «¡FUA!» de cierre: solo en una de cada tres menciones (recentFlags = si cerraron así las últimas)
@@ -246,6 +274,7 @@ function limitLusorums(text, recentFlags = []) {
 module.exports = {
   oneLine,
   speakable,
+  fixOpeningMarks,
   spokenDuration,
   spokenSeconds,
   stripFillers,

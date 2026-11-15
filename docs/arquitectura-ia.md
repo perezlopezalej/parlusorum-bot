@@ -24,7 +24,7 @@ Memoria entre streams (`src/memory/handler.js`): la fila se fecha por el día de
 - **Menciones**: `patterns.botQuestionFor` da la pregunta del bot a la que se responde (padre del hilo, o la última pregunta del bot en 5 min); entra en el prompt como `<tu_pregunta>` y la regla `repregunta` descarta devolvérsela. `looksLikeJoke` añade una línea de tono para seguir el chiste.
 - **`!dios_fua`**: sin juego en la pregunta, «este título/juego» es el del directo (`refersToCurrentGame`); las preguntas de premisa o lore (`asksPremise`) se responden con el resumen en español de la caché (`buildPremiseReply`), sin modelo ni factcheck. `trimFuaTail` recorta la coletilla «; y el FUA, de…».
 - **Redacción**: reglas `partir` (siempre «partirse»), `juego_nombre` también para el título con artículo femenino (cohost, hook, timer, resumen y alertas: `vetAuto(texto, { game })`) y `chat` (el cohost no cuenta qué hace el chat si no hay hecho de chat).
-- **Lugares**: `unlistedPlace` detecta un lugar de escenario que no sale de los hechos, el juego ni la ficha. Modo sombra por defecto: el cohost solo registra «se habría descartado por lugar» en `bot.log`; con `COHOST_PLACE_RULE=on` descarta (regla `lugar`).
+- **Lugares**: `unlistedPlace` detecta un lugar de escenario que no sale de los hechos, el juego ni la ficha. Modo sombra por defecto: el cohost y las menciones solo registran «se habría descartado por lugar» en `bot.log` (las menciones siempre en sombra, sin descartar); con `COHOST_PLACE_RULE=on` descarta (regla `lugar`).
 - **Comandos**: `splitCommandArgs` (`src/commands/stats.js`) acepta `!boss+1` y `!muertes+1` sin espacio.
 
 ## Respuestas en hilo (opcional)

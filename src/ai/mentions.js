@@ -318,6 +318,7 @@ async function checkPatternMatch(client, channel, tags, message) {
           recentToUser,
           usedStructures: getUsedStructures(),
           botQuestion,
+          game: (await getCurrentGame().catch(() => null))?.game || '',
         });
         if (!check.ok) {
           fixKey = check.rule;
@@ -363,6 +364,15 @@ async function checkPatternMatch(client, channel, tags, message) {
           fixKey = 'sentido';
           continue;
         }
+        // Modo sombra de la regla de lugares («¿qué parte del desierto…?»): solo se registra, la respuesta se envía igual
+        const placeNote = quality.placeShadowNote(raw, [
+          question,
+          botQuestion,
+          lastBot,
+          mentionGame?.game || '',
+          ...userConv.map((m) => m.content),
+        ]);
+        if (placeNote) logger.info(`Mención: ${placeNote} en «${raw.slice(0, 80)}»`);
         answer = raw;
         fromAI = true;
       }

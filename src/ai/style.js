@@ -469,7 +469,8 @@ const FIX_BY_RULE = {
   sentido: 'Una sola idea, palabras sencillas, que se entienda a la primera.',
   tech: 'Responde con personalidad, como un colega del chat.',
   genero: 'Dirígete a ParLusorum sin género, con su nombre.',
-  consejos: 'Responde a lo que dice el usuario con una ocurrencia.',
+  consejos:
+    'Responde a lo que cuenta el usuario con una ocurrencia sobre su respuesta y cierra con una afirmación, sin hablar de trucos ni de consejos.',
   redirect: 'Responde a lo que dice el usuario con una ocurrencia.',
   dia: 'Habla del momento de ahora sin nombrar el día de la semana.',
   etnia: 'Haz la broma sobre la partida o el FUA.',
@@ -504,6 +505,7 @@ const FIX_BY_RULE = {
   modismo: 'Dilo con palabras llanas.',
   inventado: 'Cuenta solo lo que dicen los hechos, con palabras sencillas.',
   juego_nombre: 'Si nombras el juego, escribe su título completo.',
+  etiqueta: 'Escribe solo el mensaje, sin etiquetas ni dos puntos al empezar.',
   partir: 'Escribe «partirse» con su «se»: «el chat se parte».',
   chat: 'Habla de la partida o del FUA; lo que hace el chat solo si está en los hechos.',
   lugar: 'Cuenta solo los lugares que nombran los hechos.',

@@ -100,3 +100,102 @@ test('trimFuaTail recorta la coletilla «y el FUA, de…» y respeta lo demás',
   assert.equal(quality.trimFuaTail('Corto, y el FUA, de eso.'), 'Corto, y el FUA, de eso.');
   assert.equal(quality.trimFuaTail(''), '');
 });
+
+test('junkProblem: una etiqueta de instrucción al empezar se descarta', () => {
+  const { junkProblem } = require('../src/ai/quality/form');
+  const bad = [
+    'Dios Fua quejarse: aquí estoy, pero nadie nota mis FUA.',
+    'Pregunta: ¿quién tiene sueño en el chat?',
+    'Reacción: ¡menuda caída, Manu!',
+    'Vacile: Lusorums, sois lentos.',
+    'quejarse: nadie me hace caso',
+  ];
+  for (const t of bad) assert.equal(junkProblem(t)?.rule, 'etiqueta', t);
+  const good = [
+    'Dios Fua se queja: nadie nota mis FUA, qué cruz.',
+    'Manu tiene un plan: avanzar sin mirar atrás.',
+    'Ojo: el FUA no perdona ni una caída.',
+    '¿Quién se queja aquí? Dios Fua, claro.',
+  ];
+  for (const t of good) assert.equal(junkProblem(t)?.rule === 'etiqueta', false, t);
+});
+
+test('validateMention: el juego se nombra con el título completo y sin artículo femenino', () => {
+  const base = { question: 'dios fua en los dos', game: GAME };
+  const short = quality.validateMention('¿Qué te ha sorprendido más del día de Horizon?', base);
+  assert.equal(short.ok, false);
+  assert.equal(short.rule, 'juego_nombre');
+  assert.equal(quality.validateMention('Me encanta esa Horizon Forbidden West, Pao.', base).rule, 'juego_nombre');
+  assert.equal(quality.validateMention('¿Qué te ha sorprendido más de Horizon Forbidden West?', base).ok, true);
+  assert.equal(
+    quality.validateMention('¿Qué te ha sorprendido más del día de Horizon?', { question: 'hola' }).ok,
+    true,
+  );
+});
+
+test('fixOpeningMarks: signos de apertura y cierre que casan', () => {
+  const { fixOpeningMarks, speakable } = require('../src/ai/quality/rewrite');
+  const cases = [
+    ['¡Una hora de directo y ni un FUA, qué tal?', '¿Una hora de directo y ni un FUA, qué tal?'],
+    ['¿Menuda caída, Manu!', '¡Menuda caída, Manu!'],
+    ['Qué tal el mapa hoy?', '¿Qué tal el mapa hoy?'],
+    ['Menuda caída, Manu!', '¡Menuda caída, Manu!'],
+    ['@pao qué tal el sofá?', '@pao ¿qué tal el sofá?'],
+    ['¡Hola! ¿Qué tal? Vamos.', '¡Hola! ¿Qué tal? Vamos.'],
+    ['Hola, ¿qué tal?', 'Hola, ¿qué tal?'],
+    ['¿Qué haces?! Manu', '¿Qué haces?! Manu'],
+    ['Se acabó el directo. Menuda caída!', 'Se acabó el directo. ¡Menuda caída!'],
+    ['!boss+1', '!boss+1'],
+    ['Mira https://twitch.tv/x?a=1', 'Mira https://twitch.tv/x?a=1'],
+    ['Sin signos.', 'Sin signos.'],
+  ];
+  for (const [input, want] of cases) assert.equal(fixOpeningMarks(input), want, input);
+  assert.equal(speakable('¡Qué tal estáis, Lusorums?'), '¿Qué tal estáis, Lusorums?');
+});
+
+test('validateMention: «consejos» solo salta cuando el bot los ofrece, no cuando pregunta por los del usuario', () => {
+  const ok = [
+    '¡Pues claro, el FUA se pierde en los dos a la vez! ¿Algún truco para no tropezar con los enemigos?',
+    '¿Tienes algún consejo para Manu?',
+    '¿Qué tips usas tú para no perderte, Pao?',
+    'Qué bien te lo montas en el mapa.',
+  ];
+  const bad = [
+    'Si quieres más tips, pregúntame.',
+    'Te doy un consejo: esquiva siempre.',
+    'Un truco: no mires atrás.',
+    'El mejor truco es esquivar a tiempo.',
+    '¿Quieres un consejo para el jefe?',
+    'Esquiva y ya está, ese es el consejo.',
+  ];
+  for (const t of ok) assert.notEqual(quality.validateMention(t, { question: 'en los dos' }).rule, 'consejos', t);
+  for (const t of bad) assert.equal(quality.validateMention(t, { question: 'en los dos' }).rule, 'consejos', t);
+  // si el usuario los pide, no hay regla
+  assert.notEqual(
+    quality.validateMention('Te doy un consejo: esquiva.', { question: 'dame un consejo' }).rule,
+    'consejos',
+  );
+});
+
+test('placeShadowNote: avisa del lugar que no sale de lo dicho, sin descartar; vacío si sale o no hay lugar', () => {
+  assert.equal(
+    quality.placeShadowNote('¿Qué parte del desierto te ha atrapado más?', ['En los dos', GAME]),
+    'se habría descartado por lugar: «desierto»',
+  );
+  assert.equal(
+    quality.placeShadowNote('Manu se pierde en la selva.', ['En los dos']),
+    'se habría descartado por lugar: «selva»',
+  );
+  // lo que escribió el usuario o dijo el bot antes vale
+  assert.equal(quality.placeShadowNote('El desierto es enorme.', ['¿Te gusta el desierto?']), '');
+  assert.equal(quality.placeShadowNote('Qué bien te lo montas en el mapa.', ['En los dos']), '');
+});
+
+test('mentions.js solo registra el aviso de lugares: no lo usa para descartar', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/ai/mentions.js'), 'utf8');
+  const at = src.indexOf('placeShadowNote');
+  assert.ok(at > 0);
+  const around = src.slice(at, at + 400);
+  assert.match(around, /logger\.info\(`Mención: \$\{placeNote\}/);
+  assert.doesNotMatch(around, /placeNote[^\n]*\n[^\n]*continue/);
+});

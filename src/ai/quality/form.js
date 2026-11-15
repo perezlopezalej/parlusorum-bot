@@ -163,8 +163,23 @@ function wordsOf(text) {
 }
 
 // Devuelve { rule: 'basura', reason } o null. minWords: palabras mínimas (3 por defecto)
+// Etiqueta de instrucción al principio (15-11: «Dios Fua quejarse: aquí estoy…»): la forma o el hecho se coló en el texto.
+// Una forma del cohost («reacción», «pregunta», «vacile»…) o un infinitivo, con dos puntos, al empezar (tras «Dios Fua»).
+const LABEL_LEAK_RE =
+  /^[\s¡¿"«(]*(?:dios fua\s+)?(?:reacci[oó]n|exageraci[oó]n|pregunta|autoironi[aá]|vacile|giro|hecho|frase|forma|tarea|ejemplo|\p{L}{3,}(?:ar|er|ir)(?:se)?)\s*:\s/iu;
+
+function labelLeak(text) {
+  return LABEL_LEAK_RE.test(String(text || ''));
+}
+
 function junkProblem(text, { minWords = 3 } = {}) {
   const raw = String(text || '');
+  if (labelLeak(raw))
+    return {
+      rule: 'etiqueta',
+      reason:
+        'empieza con una etiqueta de instrucción («quejarse:», «pregunta:»); escribe solo el mensaje, sin etiquetas',
+    };
   const words = wordsOf(raw);
   if (words.length < minWords)
     return { rule: 'basura', reason: 'demasiado corto; escribe una frase completa en español' };

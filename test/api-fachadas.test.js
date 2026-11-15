@@ -102,6 +102,7 @@ const QUALITY = [
   'otherStreamer',
   'partirWithoutSe',
   'personalMatch',
+  'placeShadowNote',
   'plainWords',
   'positiveSummaryFallback',
   'reasksAnswer',

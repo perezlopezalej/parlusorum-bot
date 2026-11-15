@@ -11,6 +11,7 @@ const {
   REDIRECT_RE,
   SPORTS_RE,
   TIPS_RE,
+  offersTips,
   citesGameScore,
   claimsEnemyKills,
   disparagesGame,
@@ -574,10 +575,19 @@ const asksToRepeat = (question) => REPEAT_ASK_RE.test(String(question || ''));
 // ctx.names: nicks que pueden aparecer (quien escribe y el chat); no cuentan como mayúsculas raras
 // ctx.recentToUser: respuestas anteriores del bot a este usuario (sin repetir arranque, parecido ni cierre)
 // ctx.usedStructures: marcas del stream (la coletilla final no sale dos veces)
+// ctx.game: juego del directo (regla `juego_nombre`: título completo y sin artículo femenino; 15-11: «del día de Horizon»)
 // ctx.botQuestion: pregunta del bot a la que responde el usuario (regla `repregunta`: no se le devuelve la pregunta)
 function validateMention(
   text,
-  { question = '', player = 'manu', names = [], recentToUser = [], usedStructures = new Set(), botQuestion = '' } = {},
+  {
+    question = '',
+    player = 'manu',
+    names = [],
+    recentToUser = [],
+    usedStructures = new Set(),
+    botQuestion = '',
+    game = '',
+  } = {},
 ) {
   if (!text || text.length < 3) return { ok: false, rule: 'vacio', reason: 'vacío' };
   if (botQuestion && reasksAnswer(text, question))
@@ -603,6 +613,8 @@ function validateMention(
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   const style = styleProblem(text, { personal: false, minWords: 2, player, names, allowed: [question] });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
+  const gameName = gameNameReason(text, game);
+  if (gameName) return { ok: false, rule: 'juego_nombre', reason: gameName };
   if (mirrorsUser(text, question))
     return {
       ok: false,
@@ -625,7 +637,7 @@ function validateMention(
       ? 'repite la coletilla final que ya usaste con este usuario; cierra con otra idea o sin frase final'
       : '') || repeatedClosing(text, usedStructures);
   if (closing) return { ok: false, rule: 'cierre', reason: closing };
-  if (TIPS_RE.test(text) && !TIPS_RE.test(question))
+  if (offersTips(text) && !TIPS_RE.test(question))
     return { ok: false, rule: 'consejos', reason: 'ofrece consejos o tips que nadie ha pedido' };
   if (REDIRECT_RE.test(text) && !MECHANICS_RE.test(question))
     return {

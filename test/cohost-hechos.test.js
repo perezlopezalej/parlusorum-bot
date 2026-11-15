@@ -535,7 +535,7 @@ describe('ajustes del eval del 13-11', () => {
   test('speakable quita el punto suelto tras un emoji', () => {
     assert.equal(
       q.speakable('Manu sigue firme como un roble! 😂. parlus1X'),
-      'Manu sigue firme como un roble! 😂 parlus1X',
+      '¡Manu sigue firme como un roble! 😂 parlus1X', // el «!» sin abrir se abre al principio
     );
     assert.equal(q.speakable('Qué grande ❤️. FUA'), 'Qué grande ❤️ FUA');
     assert.equal(q.speakable('Y así... 😂...'), 'Y así... 😂...');

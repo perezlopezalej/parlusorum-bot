@@ -364,6 +364,13 @@ function unlistedPlace(text, allowed = []) {
   return norm([].concat(allowed).join(' ')).includes(root) ? '' : m[0];
 }
 
+// Aviso del modo sombra de la regla de lugares: «se habría descartado por lugar: «desierto»» o '' si no hay lugar inventado.
+// Solo para registrar en bot.log; nunca descarta nada (menciones y cohost).
+function placeShadowNote(text, allowed = []) {
+  const place = unlistedPlace(text, allowed);
+  return place ? `se habría descartado por lugar: «${place}»` : '';
+}
+
 // Anglicismos (data/anglicismos.txt: «palabra | cómo se dice»): «lads», «power», «vibes»… → { word, es } o null.
 // `allowed`: textos donde la palabra sí es legítima (el título del juego, lo que escribió quien pregunta).
 let anglicisms = null;
@@ -483,6 +490,18 @@ function claimsChannelOwner(text) {
 // Consejos y mecánicas que el usuario no ha pedido
 const TIPS_RE = /\b(tips?|consejos?|trucos?)\b/i;
 
+// ¿El bot OFRECE consejos («si quieres más tips», «te doy un consejo», «un truco: …», «el mejor truco es…»)? Preguntar al usuario
+// por los suyos («¿Algún truco para no caer?», 15-11) no es ofrecerlos: una frase que nombra consejos solo cuenta si no es una
+// pregunta o si en ella ofrece («¿quieres un consejo?»).
+const TIPS_OFFER_RE =
+  /\b(?:si (?:quieres|necesitas|te hace falta)|te (?:doy|dejo|paso|daré|ofrezco|recomiendo|regalo)|quieres (?:un|algún|unos|más)|aqu[ií] (?:va|tienes)|(?:mi|el|otro|un) (?:mejor )?(?:tips?|consejo|truco)\s*(?::|es\b)|m[aá]s (?:tips|consejos|trucos))\b|\b(?:tips?|consejos?|trucos?)\s*:/i;
+
+function offersTips(text) {
+  return String(text || '')
+    .split(/(?<=[.!?…])\s+/)
+    .some((sentence) => TIPS_RE.test(sentence) && (!/\?/.test(sentence) || TIPS_OFFER_RE.test(sentence)));
+}
+
 const REDIRECT_RE =
   /no me mola hablar de|no hablo de (?:mec[aá]nicas|juegos?)|prefiero no hablar de (?:mec[aá]nicas|juegos?)/i;
 
@@ -594,11 +613,13 @@ module.exports = {
   partirWithoutSe,
   claimsChatActivity,
   unlistedPlace,
+  placeShadowNote,
   MECHANICS_RE,
   leaksTech,
   mentionsSheet,
   mentionsGameFacts,
   TIPS_RE,
+  offersTips,
   REDIRECT_RE,
   genderedParlusorum,
   LATAM_RE,
