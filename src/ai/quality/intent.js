@@ -227,7 +227,52 @@ function asksBeyondSheet(text) {
   return hit ? { topic: hit.topic, label: hit.label, strong: hit.strong } : null;
 }
 
+// El usuario ha respondido a una pregunta del bot y el bot le devuelve la pregunta («¿Los dos qué, Pao?», «¿a qué te
+// refieres?»): la respuesta del usuario es la respuesta, y hay que reaccionar a ella. → true si el texto pregunta por lo
+// que el usuario ya ha contestado (`answer` = lo que escribió el usuario).
+const REASK_RE =
+  /\b(?:a que te refieres|que quieres decir|no (?:te )?(?:entiendo|pillo|sigo)|no (?:lo )?(?:entiendo|pillo)|que (?:me )?(?:quieres|querias) decir|explica(?:me|te)?|en que sentido)\b/;
+const ANSWER_STOP = new Set([
+  'que',
+  'cual',
+  'cuales',
+  'pues',
+  'pero',
+  'los',
+  'las',
+  'del',
+  'con',
+  'por',
+  'para',
+  'una',
+  'uno',
+]);
+
+function reasksAnswer(text, answer = '') {
+  const a = new Set(
+    norm(answer)
+      .replace(/@\S+/g, ' ')
+      .split(/[^a-z0-9ñ]+/)
+      .filter((w) => w.length >= 2),
+  );
+  if (!a.size) return false;
+  for (const sentence of String(text || '').split(/(?<=[?])\s*/)) {
+    if (!/\?/.test(sentence)) continue;
+    const s = norm(sentence)
+      .replace(/[¿?¡!.,;:«»"]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (REASK_RE.test(s)) return true;
+    const words = s.split(' ').filter((w) => w.length >= 2 && !ANSWER_STOP.has(w));
+    const asks = /\b(?:que|cual|cuales)\b/.test(s);
+    // «¿Los dos qué, Pao?»: una pregunta hecha solo con las palabras del usuario y un «qué»
+    if (asks && words.length && words.every((w) => a.has(w) || /^(?:pao|manu|lusorums?)$/.test(w))) return true;
+  }
+  return false;
+}
+
 module.exports = {
+  reasksAnswer,
   asksAboutPastStream,
   asksBeyondSheet,
   identityQuestion,

@@ -196,6 +196,24 @@ function classifyMessage(message, tags = {}, { botNames = [] } = {}) {
   return null;
 }
 
+// Pregunta del bot a la que responde el usuario (15-11: el cohost preguntó «¿te pierdes en el mapa o en el sofá?», Pao
+// contestó «En los dos» y el bot respondió «¿Los dos qué?»). Si el mensaje va en hilo a un mensaje del bot, ese mensaje;
+// si no, la última pregunta del bot de los últimos `windowMs` (5 min). history = [{ msg, ts }] (state.getBotHistory).
+const BOT_QUESTION_WINDOW_MS = 5 * 60 * 1000;
+
+function botQuestionFor(
+  tags = {},
+  history = [],
+  { botNames = [], now = Date.now(), windowMs = BOT_QUESTION_WINDOW_MS } = {},
+) {
+  const parentLogin = tags['reply-parent-user-login'];
+  const parentBody = tags['reply-parent-msg-body'];
+  if (parentLogin && parentBody && targetsFor(botNames).includes(lettersOnly(parentLogin)))
+    return String(parentBody).trim();
+  const last = [...history].reverse().find((e) => e && now - e.ts <= windowMs && /\?/.test(String(e.msg || '')));
+  return last ? String(last.msg).trim() : '';
+}
+
 // Provocaciones: solo la primera de cada usuario por ventana recibe réplica. until = fin de su ventana (0 si no tiene)
 function provocationGate(now, until = 0) {
   return now >= until;
@@ -228,6 +246,8 @@ function isStale(startedAt, now, maxMs) {
 }
 
 module.exports = {
+  BOT_QUESTION_WINDOW_MS,
+  botQuestionFor,
   mentionBudget,
   isStale,
   COOLDOWNS,

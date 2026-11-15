@@ -191,6 +191,7 @@ function buildMentionSystem({
   emoteLine = '',
   modeLine = '',
   lastBot = '',
+  botQuestion = '',
   examples = pickStyleExamples('mencion', 4),
 }) {
   return join(
@@ -203,6 +204,12 @@ function buildMentionSystem({
     block('glosario', MENTION_GLOSSARY),
     block('contexto', context),
     block('tu_ultimo_mensaje', lastBot),
+    block(
+      'tu_pregunta',
+      botQuestion
+        ? `Acabas de preguntar en el chat: «${botQuestion}». El mensaje del usuario es su respuesta a esa pregunta: reacciona a lo que contesta, dándola por entendida.`
+        : '',
+    ),
     block('quien_escribe', [role, tone].filter(Boolean).join(' ')),
     block('modo', modeLine),
     block('ajustes', emoteLine),
@@ -463,6 +470,7 @@ const FIX_BY_RULE = {
   etnia: 'Haz la broma sobre la partida o el FUA.',
   cierre: 'Termina con una idea distinta a tus cierres anteriores, o sin frase final.',
   espejo: 'Responde con algo tuyo, con tus propias palabras y sin repetir las del usuario.',
+  repregunta: 'El usuario ya ha contestado a tu pregunta: reacciona a su respuesta con una ocurrencia.',
   pregunta: 'Termina con una pregunta al chat.',
   cita: 'Cuenta lo ocurrido con tus propias palabras.',
   positivo: 'Cuenta el stream en positivo, con buen rollo y ánimo.',

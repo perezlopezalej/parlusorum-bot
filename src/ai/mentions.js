@@ -20,7 +20,15 @@ const {
 } = require('../utils/state');
 const factcheck = require('./factcheck');
 const { buildGameTemplate } = require('./game-template');
-const { classifyMessage, cooldownMs, cooldownGate, provocationGate, mentionBudget, isStale } = require('./patterns');
+const {
+  botQuestionFor,
+  classifyMessage,
+  cooldownMs,
+  cooldownGate,
+  provocationGate,
+  mentionBudget,
+  isStale,
+} = require('./patterns');
 const quality = require('./quality');
 const { sanitizeForAI } = require('../utils/filter');
 const { canMakeRequest } = require('../utils/ratelimit');
@@ -259,8 +267,11 @@ async function checkPatternMatch(client, channel, tags, message) {
       const recentBot = getBotHistory();
       const lastBot = recentBot.filter((e) => Date.now() - e.ts < 120000).slice(-1)[0]?.msg || '';
       const recentToUser = userConv.filter((m) => m.role === 'assistant').map((m) => m.content);
+      // Si responde a una pregunta del bot (en hilo o hecha hace menos de 5 min), el modelo la recibe como turno propio
+      const botQuestion = botQuestionFor(tags, recentBot, { botNames: [process.env.BOT_USERNAME], now });
       const system = buildMentionSystem({
         lastBot,
+        botQuestion,
         context: await buildContextText({ question }),
         role: await buildRoleText(userType, username, tags['user-id']),
         tone: buildToneText(question),
@@ -282,6 +293,7 @@ async function checkPatternMatch(client, channel, tags, message) {
             messages: [
               { role: 'system', content: `${system}${retryNote(fixKey)}` },
               ...userConv,
+              ...(botQuestion ? [{ role: 'assistant', content: botQuestion }] : []),
               { role: 'user', content: `${username}: ${question}` },
             ],
           },
@@ -299,6 +311,7 @@ async function checkPatternMatch(client, channel, tags, message) {
           names: [username, ...getChatterNames()],
           recentToUser,
           usedStructures: getUsedStructures(),
+          botQuestion,
         });
         if (!check.ok) {
           fixKey = check.rule;

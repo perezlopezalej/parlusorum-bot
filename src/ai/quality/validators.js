@@ -35,6 +35,7 @@ const {
   selfHelp,
 } = require('./lexicon');
 const { copiedFromChat, inventedDetail } = require('./copy');
+const { reasksAnswer } = require('./intent');
 const { factFor, factProblem, giroProblem, inventedQuote, unsupportedAttributes } = require('./facts');
 const {
   WORD_LIST_RE,
@@ -529,11 +530,18 @@ const asksToRepeat = (question) => REPEAT_ASK_RE.test(String(question || ''));
 // ctx.names: nicks que pueden aparecer (quien escribe y el chat); no cuentan como mayúsculas raras
 // ctx.recentToUser: respuestas anteriores del bot a este usuario (sin repetir arranque, parecido ni cierre)
 // ctx.usedStructures: marcas del stream (la coletilla final no sale dos veces)
+// ctx.botQuestion: pregunta del bot a la que responde el usuario (regla `repregunta`: no se le devuelve la pregunta)
 function validateMention(
   text,
-  { question = '', player = 'manu', names = [], recentToUser = [], usedStructures = new Set() } = {},
+  { question = '', player = 'manu', names = [], recentToUser = [], usedStructures = new Set(), botQuestion = '' } = {},
 ) {
   if (!text || text.length < 3) return { ok: false, rule: 'vacio', reason: 'vacío' };
+  if (botQuestion && reasksAnswer(text, question))
+    return {
+      ok: false,
+      rule: 'repregunta',
+      reason: 'el usuario responde a tu pregunta y le devuelves la pregunta; reacciona a su respuesta',
+    };
   if (leaksTech(text) || mentionsSheet(text))
     return {
       ok: false,

@@ -99,6 +99,7 @@ const QUALITY = [
   'personalMatch',
   'plainWords',
   'positiveSummaryFallback',
+  'reasksAnswer',
   'recapProblem',
   'recentlyNamedIn',
   'repeatedClosing',
