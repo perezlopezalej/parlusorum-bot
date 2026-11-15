@@ -290,7 +290,9 @@ async function runCohost(client, channel, moment = null) {
     const countIsTheNews = moment && ['first_death', 'record'].includes(moment.kind);
     const lastCitedDeaths =
       !countIsTheNews && quality.citesDeathCount(recentBot[recentBot.length - 1] || '', deathCount);
-    const deathLine = `${baseDeathLine}${lastCitedDeaths ? ' Esta vez deja fuera la cifra de caídas.' : ''}${raidLine}`;
+    // Caídas: una nueva se comenta una sola vez; el total (sin caídas nuevas), como mucho una vez por hora
+    const deathCommentedAt = getFactUse('muerte_nueva').at;
+    const offerDeathTotal = factDue(getFactUse('muertes_total').at, now);
 
     // Hechos del momento: lo único que el modelo, el selector y el revisor saben del directo. El primero (h1) es el que se
     // comenta: el suceso en cola o, en los libres, un tipo de hecho distinto al de los últimos comentarios.
@@ -321,6 +323,8 @@ async function runCohost(client, channel, moment = null) {
         citeDeaths: !lastCitedDeaths,
         offerTime,
         question,
+        deathCommentedAt,
+        offerDeathTotal,
       });
     let momentFacts = factsAvoiding(recentFactTypes);
     if (!momentFacts.length) {
@@ -328,6 +332,10 @@ async function runCohost(client, channel, moment = null) {
       logger.info('Co-host: sin hechos que comentar');
       return 'dropped';
     }
+    // El modelo solo ve la cifra de caídas si hay un hecho de caídas entre los ofrecidos; si no, ni la cifra ni el tema
+    const deathsOffered = () => momentFacts.some((f) => f.muertes);
+    const deathLine = () =>
+      `${deathsOffered() || deathCount === 0 ? baseDeathLine : 'Habla de la partida, del chat o del FUA.'}${lastCitedDeaths ? ' Esta vez deja fuera la cifra de caídas.' : ''}${raidLine}`;
     const reviewData = () =>
       `Juego: ${game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${gameFacts} Hechos del momento: ${momentFacts.map((f) => f.texto).join('. ')}.`;
     const validateCtx = {
@@ -383,7 +391,7 @@ async function runCohost(client, channel, moment = null) {
       }
       const system =
         buildCohostSystem({
-          deathLine,
+          deathLine: deathLine(),
           player: getPlayer(),
           mood,
           form,
@@ -411,6 +419,8 @@ async function runCohost(client, channel, moment = null) {
         allowedWords: [system, user, gameFacts],
         // el rato de directo solo se comenta si está entre los hechos ofrecidos (o si el propio suceso habla de él)
         timeOffered: momentFacts.some((f) => f.tipo === 'tiempo' || quality.talksStreamTime(f.texto)),
+        // las caídas solo se comentan si están entre los hechos ofrecidos (regla `caidas`)
+        deathsOffered: deathsOffered(),
       };
       const response = await aiChat('cohost', {
         max_tokens: COHOST_CANDIDATES === 3 ? 450 : 320, // cada candidato es un objeto { hecho, giro, frase }
@@ -511,6 +521,10 @@ async function runCohost(client, channel, moment = null) {
     if (!moment) recentFactTypes = [...recentFactTypes.filter((t) => t !== sentType), sentType].slice(-3);
     if (sentType === 'tiempo' || quality.talksStreamTime(reply)) markFactUse('tiempo', now);
     if (sentType === 'pregunta') markFactUse('pregunta', now);
+    const sentFact = quality.factFor(reply, momentFacts, replyFact);
+    if (sentFact?.muertes === 'nueva') markFactUse('muerte_nueva', now);
+    if (sentFact?.muertes === 'total' || (sentFact?.muertes && quality.citesDeathCount(reply, deathCount)))
+      markFactUse('muertes_total', now);
     client.say(channel, reply, { origin: 'cohost' });
     addBotMessage(reply);
     addCohostText(kindKey, reply);

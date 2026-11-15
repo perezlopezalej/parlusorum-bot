@@ -9,6 +9,7 @@ const {
   getStreamStartedAt,
   getStreamNarrative,
   markStructure,
+  markFactUse,
   getUsedStructures,
   getBotHistory,
   addBotMessage,
@@ -206,6 +207,10 @@ async function runTimerIA(client) {
     }
     if (msg) {
       for (const key of quality.streamMarks(msg, game)) markStructure(key);
+      if (quality.talksDeaths(msg)) {
+        markFactUse('muerte_nueva');
+        markFactUse('muertes_total'); // el cohost no vuelve a hablar de caídas justo después
+      }
       markNamed(quality.namesIn(msg, ['pao']));
       addBotMessage(msg);
       recentTimerIA.push(msg);

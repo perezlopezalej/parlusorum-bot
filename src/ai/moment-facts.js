@@ -10,6 +10,8 @@ const RECENT_MS = 10 * 60 * 1000;
 const MIN_MINUTES = 20; // antes de eso el rato de directo no es tema
 const FACT_GAP_MS = 60 * 60 * 1000; // el rato de directo y la pregunta sobre el juego se ofrecen como mucho una vez por hora
 
+const DEATH_MOMENTS = ['first_death', 'record', 'streak']; // sucesos de la cola del cohost que hablan de caídas
+
 const strip = (s) =>
   String(s || '')
     .toLowerCase()
@@ -226,7 +228,9 @@ function gameQuestion(sheet, { game = '', used = 0, premise = '' } = {}) {
 // primero, es «abierto» (no exige claves) y sustituye a los hechos de caídas y jefes. `citeDeaths`: false si el mensaje
 // anterior del bot ya dio la cifra de caídas. `player`: «Manu», «Pao» o «Manu y Pao».
 // `offerTime`: false si ya hubo un comentario de tiempo en la última hora (el hecho `tiempo` no se ofrece). `question`: dato de
-// la ficha para preguntar al chat (`gameQuestion`); solo entra si no hay sucesos ni charla que contar.
+// la ficha para preguntar al chat (`gameQuestion`); solo entra si no hay sucesos ni charla que contar. `deathCommentedAt`: cuándo
+// se comentaron caídas por última vez (las anteriores no vuelven como «acaba de caer»); `offerDeathTotal`: false si el total de
+// caídas ya se dijo en la última hora. Los hechos de caídas llevan `muertes: 'nueva' | 'total'`.
 // Una lista con el rato de directo como único hecho no da para comentar: se devuelve vacía (el cohost calla).
 // No inventa nada: cada hecho sale de un dato recibido. Puede devolver menos de 2 hechos si no hay datos.
 function buildMomentFacts({
@@ -244,27 +248,46 @@ function buildMomentFacts({
   citeDeaths = true,
   offerTime = true,
   question = null,
+  deathCommentedAt = 0,
+  offerDeathTotal = true,
 } = {}) {
   const facts = [];
   const push = (tipo, texto, extra = [], more = {}) =>
     facts.push({ tipo, texto, claves: keysOf(texto, extra), ...more });
   const many = / y /.test(player);
 
-  if (moment?.description) push('suceso', String(moment.description).replace(/[.\s]+$/, ''), [], { abierto: true });
+  if (moment?.description)
+    push('suceso', String(moment.description).replace(/[.\s]+$/, ''), [], {
+      abierto: true,
+      ...(DEATH_MOMENTS.includes(moment.kind) ? { muertes: 'nueva' } : {}),
+    });
   if (game) push('estado', `Juegan a ${game} y ${many ? 'juegan' : 'juega'} ${player}`, [game, ...KEYS.estado]);
   if (offerTime && Number.isFinite(minutes) && minutes >= MIN_MINUTES)
     push('tiempo', `Llevan ${approxDuration(minutes)} de directo`, KEYS.tiempo);
 
   const recent = (events || []).filter((e) => now - e.ts <= RECENT_MS);
-  const recentDeaths = recent.filter((e) => e.type === 'death').reduce((a, e) => a + unitsOf(e), 0);
+  // Una caída nueva se comenta una sola vez: solo cuentan las posteriores al último comentario de caídas (15-11: una única
+  // muerte en 2,5 horas se comentó 5 veces). El total, sin caídas nuevas, como mucho una vez por hora (`offerDeathTotal`).
+  const recentDeaths = recent
+    .filter((e) => e.type === 'death' && e.ts > deathCommentedAt)
+    .reduce((a, e) => a + unitsOf(e), 0);
   const recentBosses = recent.filter((e) => ['boss', 'victory'].includes(e.type)).length;
   if (!moment) {
     if (recentDeaths > 0) {
       const total =
-        citeDeaths && deathCount >= recentDeaths ? `; van ${plural(deathCount, 'caída', 'caídas')} hoy` : '';
-      push('suceso', `${player} ${many ? 'acaban' : 'acaba'} de caer${total}`, KEYS.caida);
-    } else if (deathCount > 0 && citeDeaths) {
-      push('suceso', `${player} ${many ? 'llevan' : 'lleva'} ${plural(deathCount, 'caída', 'caídas')} hoy`, KEYS.caida);
+        citeDeaths && offerDeathTotal && deathCount >= recentDeaths
+          ? `; van ${plural(deathCount, 'caída', 'caídas')} hoy`
+          : '';
+      push('suceso', `${player} ${many ? 'acaban' : 'acaba'} de caer${total}`, KEYS.caida, { muertes: 'nueva' });
+    } else if (deathCount > 0 && citeDeaths && offerDeathTotal) {
+      push(
+        'suceso',
+        `${player} ${many ? 'llevan' : 'lleva'} ${plural(deathCount, 'caída', 'caídas')} hoy`,
+        KEYS.caida,
+        {
+          muertes: 'total',
+        },
+      );
     }
     if (recentBosses > 0) push('suceso', 'Se acaba de superar un jefe', KEYS.jefe);
     else if (bosses > 0)

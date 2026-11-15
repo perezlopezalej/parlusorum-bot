@@ -52,6 +52,8 @@ const {
   citesViewers,
   exactMinutes,
   mentionsUnrecordedDeaths,
+  talksDeaths,
+  againDeathWrong,
   talksStreamTime,
   wrongDayPart,
   wrongWeekday,
@@ -184,7 +186,8 @@ const VIEWERS_REASON =
 // ctx.facts/hecho/giro: hechos del momento, el que declara el candidato y su giro (reglas `hecho` y `giro`).
 // ctx.chatLines/allowedWords/gameWords: regla `copia`. ctx.game/channelGames: sin nombrar otros juegos.
 // ctx.timeOffered: false si el rato de directo no está entre los hechos ofrecidos (regla `tiempo`: como mucho un comentario
-// de tiempo por hora); null no comprueba nada. ctx.examples: textos de los ejemplos del prompt (regla `ejemplo`).
+// de tiempo por hora); null no comprueba nada. ctx.deathsOffered: false si las caídas no están entre los hechos ofrecidos (regla
+// `caidas`); «otra caída» con menos de 2 en el contador falla siempre (regla `otra`). ctx.examples: textos de los ejemplos del prompt (regla `ejemplo`).
 // Devuelve { ok, reason, soft }. soft = fallo leve (nombre repetido, fórmula, parecido, juicio del ambiente):
 // se reintenta una vez y, si persiste, se envía igual. Lo grave (soft ausente) se descarta.
 function validateCohost(
@@ -208,6 +211,7 @@ function validateCohost(
     allowedWords = [],
     gameWords = [],
     timeOffered = null,
+    deathsOffered = null,
     examples = [],
   } = {},
 ) {
@@ -217,6 +221,14 @@ function validateCohost(
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount))
     return { ok: false, rule: 'muertes', reason: 'menciona muertes que no están en el contador' };
+  if (deathsOffered === false && talksDeaths(text))
+    return {
+      ok: false,
+      rule: 'caidas',
+      reason: 'habla de caídas y no están entre los hechos ofrecidos; cuenta otro hecho de la lista',
+    };
+  if (againDeathWrong(text, deathCount))
+    return { ok: false, rule: 'otra', reason: 'dice «otra caída» y es la primera del directo' };
   const style = styleProblem(text, { player, now: new Date(now), allowed: [game] });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
   const twist = giroProblem(giro);
@@ -338,6 +350,8 @@ function vetAuto(text) {
 }
 
 // Hook anti-silencio: voz de Dios Fua, sin deporte, sin muertes inventadas ni repetir los últimos hooks
+const AGAIN_DEATH_REASON = 'dice «otra caída» y es la primera del directo; no hables de repetición';
+
 const DEATH_REPEAT_REASON =
   'el mensaje anterior del bot ya citó el número de muertes; no lo cites ahora, habla de otra cosa';
 
@@ -363,6 +377,7 @@ function validateHook(
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   if (mentionsUnrecordedDeaths(text, deathCount, extraDeathNumbers))
     return { ok: false, reason: 'menciona muertes que no están en el contador' };
+  if (againDeathWrong(text, deathCount)) return { ok: false, reason: AGAIN_DEATH_REASON };
   if (exactMinutes(text)) return { ok: false, reason: EXACT_MINUTES_REASON };
   if (citesViewers(text)) return { ok: false, reason: VIEWERS_REASON };
   if (tooSimilar(text, recent)) return { ok: false, reason: 'se parece demasiado a un hook reciente' };
@@ -431,6 +446,7 @@ function validateTimerIA(
   if (mentionsUnrecordedDeaths(text, deathCount, extraDeathNumbers))
     return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
+  if (againDeathWrong(text, deathCount)) return { ok: false, reason: AGAIN_DEATH_REASON };
   if (mentionsGenre(text) && recent.some(mentionsGenre))
     return {
       ok: false,

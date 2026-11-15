@@ -15,6 +15,7 @@ const {
   addBotMessage,
   getDeathCount,
   markStructure,
+  markFactUse,
   getUsedStructures,
   claimHookPause,
 } = require('../utils/state');
@@ -183,6 +184,10 @@ async function checkChatHook(client, channel) {
       recentHooks.push(text);
       if (recentHooks.length > 12) recentHooks.shift();
       for (const key of quality.streamMarks(text, game)) markStructure(key);
+      if (quality.talksDeaths(text)) {
+        markFactUse('muerte_nueva');
+        markFactUse('muertes_total'); // el cohost no vuelve a hablar de caídas justo después
+      }
       addBotMessage(text);
       client.say(channel, text, { origin: 'hook' });
       return;

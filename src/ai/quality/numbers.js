@@ -23,6 +23,19 @@ function mentionsUnrecordedDeaths(text, deathCount, extraNumbers = []) {
   return nums.some((n) => n !== deathCount && !extraNumbers.includes(n));
 }
 
+// ¿El texto habla de caídas o muertes? (15-11: con una sola muerte en 2,5 horas el cohost la comentó 5 veces)
+function talksDeaths(text) {
+  return DEATH_WORDS_RE.test(String(text || ''));
+}
+
+// «Otra muerte», «una caída más», «vuelve a caer»: solo vale si ya había alguna antes (contador de 2 o más)
+const AGAIN_DEATH_RE =
+  /(?<![\p{L}\p{N}])(?:(?:otra|otro|nueva|segunda)\s+(?:muerte|ca[ií]da|tropiezo|vez al suelo)|(?:muerte|ca[ií]da|tropiezo)\s+m[aá]s|vuelve a (?:caer|morir)|de nuevo (?:en el suelo|por los suelos)|otra vez (?:al suelo|por los suelos))(?![\p{L}\p{N}])/iu;
+
+function againDeathWrong(text, deathCount = 0) {
+  return Number(deathCount) < 2 && AGAIN_DEATH_RE.test(String(text || ''));
+}
+
 // --- Números en palabras (0-999): para detectar que se cita el contador de muertes y los mal escritos ("cuarentay siete") ---
 const UNITS_ES = [
   'cero',
@@ -270,6 +283,8 @@ module.exports = {
   wrongWeekday,
   wrongDayPart,
   mentionsUnrecordedDeaths,
+  talksDeaths,
+  againDeathWrong,
   citesDeathCount,
   exactMinutes,
   talksStreamTime,
