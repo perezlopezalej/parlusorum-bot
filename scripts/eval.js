@@ -128,6 +128,15 @@ twitchApi.getCurrentGame = async (...a) => (evalGame ? { game: evalGame } : real
 const state = require('../src/utils/state');
 const messagesConfig = require('../config/messages.json');
 const { classifyMessage } = require('../src/ai/patterns');
+// Prompts de menciones de cada caso (para comprobar, p. ej., que lleven <tu_pregunta>); se parchea ANTES de cargar los handlers
+let mentionPrompts = [];
+const styleMod = require('../src/ai/style');
+const realBuildMentionSystem = styleMod.buildMentionSystem;
+styleMod.buildMentionSystem = (...a) => {
+  const out = realBuildMentionSystem(...a);
+  mentionPrompts.push(out);
+  return out;
+};
 const ai = require('../src/ai/handler');
 
 // ─── Ejecución de un caso ───
@@ -483,6 +492,8 @@ async function runCase(c, i, rep = 0) {
   if (c.turns) return runTurnsCase(c, i, rep);
   if (c.igdb) return runIgdbCase(c);
   evalGame = null;
+  mentionPrompts = [];
+  if (c.lastBot) state.addBotMessage(c.lastBot);
   const n429 = state.getCohostStats().groq429;
   const said = [];
   const client = {
@@ -534,7 +545,7 @@ async function runCase(c, i, rep = 0) {
   // Intentos rechazados pero que luego se arreglaron (reintento de menciones)
   const retried = !discarded ? hits.map((e) => `${e.filter}${e.reason ? ` — ${e.reason}` : ''}`) : [];
 
-  const failures = check(c.expect || {}, { kind, tool, reply, answer, discarded, ret });
+  const failures = check(c.expect || {}, { kind, tool, reply, answer, discarded, ret, prompts: mentionPrompts });
   // Una respuesta de reserva de error («demasiado chat…») o un silencio con la IA fallando por cupo no evalúan nada
   const reserve = !!reply && reservePool().includes(answer);
   const notEvaluated = reserve || ((!reply || !!discarded) && (quotaTrouble() || rate429 > 0));
@@ -563,6 +574,9 @@ function check(exp, r) {
     const ok = exp.route === 'natural_or_direct' ? ['natural', 'direct'].includes(r.kind) : r.kind === exp.route;
     if (!ok) f.push(`ruta: esperaba ${exp.route}, salió ${r.kind}`);
   }
+  // promptHas: cada texto debe aparecer en el prompt de la mención (sin prompt, el caso no prueba nada y falla)
+  for (const t of exp.promptHas || [])
+    if (!(r.prompts || []).some((p) => p.includes(t))) f.push(`el prompt de la mención no lleva ${t}`);
   if (exp.discarded === false && r.discarded) f.push(`se descartó (${r.discarded.by})`);
   if (exp.reply && !r.reply) f.push('no hubo respuesta');
   if (exp.tool === 'none' && r.tool) f.push(`llamó a buscar_juego("${r.tool.query}")`);

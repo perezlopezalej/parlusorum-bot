@@ -297,12 +297,11 @@
   {
     "id": "mencion-juego-igdb",
     "input": "dios fua cuéntame de qué va Silent Hill F",
-    "note": "Fase 3: una mención que pide un juego se responde con los datos de IGDB (sin IA ni redirección).",
+    "note": "Fase 3: una mención que pide un juego se responde con los datos de IGDB (sin IA ni redirección). Desde el 15-11 «de qué va» se responde con el resumen en español cacheado (sin la invitación a !dios_fua) y, sin resumen, con la plantilla.",
     "expect": {
       "route": "direct",
       "reply": true,
       "matchAny": ["Silent Hill"],
-      "matchAll": ["!dios_fua"],
       "notFromPool": ["mention_game_redirect", "mention_not_understood"]
     }
   },
@@ -936,11 +935,12 @@
     "lastBot": "¿Te pierdes en el mapa o en el sofá?",
     "game": "Horizon Forbidden West",
     "deaths": 1,
-    "note": "15-11: el usuario responde a la pregunta del bot; no se le devuelve la pregunta. Informativo: depende de que el eval simule el hilo.",
-    "informativo": true,
+    "note": "15-11: el usuario responde a la pregunta del bot (lastBot); el prompt lleva <tu_pregunta> y no se le devuelve la pregunta.",
+    "informativo": false,
     "expect": {
       "reply": true,
-      "matchNone": ["¿Los dos qu[eé]"]
+      "matchNone": ["¿Los dos qu[eé]"],
+      "promptHas": ["<tu_pregunta>", "en el mapa o en el sofá"]
     }
   },
   {
