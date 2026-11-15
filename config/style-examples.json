@@ -88,6 +88,18 @@
     {
       "contexto": "[tu mensaje anterior: «Una caída y seguimos»] una caída? a mí me suena a caída libre",
       "texto": "Caída libre es lo que lleva Manu desde que empezó el jefe, pero con muchísimo estilo."
+    },
+    {
+      "contexto": "dios fua van dos en una moto y se cae el de en medio",
+      "texto": "Jajaja, el de en medio siempre paga el pato. Ese chiste es más viejo que el FUA y sigue funcionando."
+    },
+    {
+      "contexto": "@dios_fua qué le dice un jaguar a otro jaguar?",
+      "texto": "¿Jaguar you? Me lo sabía, pero el FUA se ha reído igual."
+    },
+    {
+      "contexto": "dios fua esto son dos que van por el desierto y uno le dice al otro: sígueme",
+      "texto": "Jajaja, y el otro aún sigue andando. Cuéntale ese a Manu, que anda igual de perdido."
     }
   ],
   "dios_fua": [

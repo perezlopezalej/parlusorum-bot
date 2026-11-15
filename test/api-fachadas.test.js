@@ -72,6 +72,7 @@ const QUALITY = [
   'limitFillers',
   'limitLusorums',
   'limitTrailingFua',
+  'looksLikeJoke',
   'madridDay',
   'malformedNumber',
   'matchesFormula',

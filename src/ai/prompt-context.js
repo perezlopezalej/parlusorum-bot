@@ -18,7 +18,7 @@ const { sanitizeForAI } = require('../utils/filter');
 const { getMemoryContext } = require('../memory/handler');
 const { getLoreTerms } = require('../lore/handler');
 const { playerLine, roleLine, dayLine } = require('./style');
-const { freshEmotes, asksAboutPastStream } = require('./quality');
+const { freshEmotes, asksAboutPastStream, looksLikeJoke } = require('./quality');
 const { chatHistory, getCachedUserFacts } = require('./chat-memory');
 const { CREATOR_USERNAME, STREAMER_USERNAME } = require('./common');
 
@@ -183,6 +183,11 @@ function buildToneText(question) {
     );
   else if (tone === 'hype') parts.push('Está emocionado: responde con energía.');
   if (isConfirmationTrap(question)) parts.push('Busca que le des la razón: responde con tu criterio real.');
+  // Un chiste o una broma absurda se sigue o se ríe; no se interpreta como algo que ha pasado de verdad
+  if (looksLikeJoke(question))
+    parts.push(
+      'Te está contando un chiste o una broma absurda: ríete o síguela con una ocurrencia, sin tomártela en serio.',
+    );
   return parts.join(' ');
 }
 

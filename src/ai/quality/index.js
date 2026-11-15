@@ -139,6 +139,7 @@ const {
   asksAboutPastStream,
   asksBeyondSheet,
   reasksAnswer,
+  looksLikeJoke,
 } = require('./intent');
 const {
   inventedQuote,
@@ -290,6 +291,7 @@ module.exports = {
   mentionsGameName,
   asksBeyondSheet,
   reasksAnswer,
+  looksLikeJoke,
   talksStreamTime,
   copiesExample,
   wornMould,

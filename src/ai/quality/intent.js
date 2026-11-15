@@ -271,7 +271,33 @@ function reasksAnswer(text, answer = '') {
   return false;
 }
 
+// Chistes y bromas absurdas (15-11: «van dos en una moto y se cae el de en medio» se respondió al pie de la letra): se
+// reconocen por sus moldes («van dos…», «esto son…», «qué le dice…», «el colmo de…», «sabes cuál es…», «toc toc») y por
+// los chistes del absurdo con cantidades imposibles («dos» y «el de en medio»). Si lo es, se ríe o se sigue la broma.
+const JOKE_RES = [
+  /\b(?:van|iban|estan|estaban|hay|habia|entran|entraron)\s+(?:dos|tres|un\s+\p{L}+(?:\s+y\s+(?:un|una)\s+\p{L}+)?|una\s+\p{L}+(?:\s+y\s+(?:un|una)\s+\p{L}+)?)\b.{0,60}\b(?:y\s+(?:se|le|les|uno)\b|dice|dijo|pregunta|contesta)/u,
+  /\besto (?:son|es|era|eran)\s+(?:dos|tres|un|una)\b/u,
+  /\bque le (?:dice|dijo|pregunta|pregunto|responde|contesta)\s+(?:un|una|el|la|los|las)\b/u,
+  /\bel colmo de\b/u,
+  /\b(?:sabes|sabeis|conoces|conoceis)\s+(?:cual es\s+)?(?:el chiste|el colmo|la diferencia entre)\b/u,
+  /\bcomo se llama\s+(?:el|la|un|una)\b.{0,50}\?/u,
+  /\btoc\s+toc\b/u,
+  /\bse cae el de (?:en\s*medio|enmedio|el medio)\b/u,
+  /\bte (?:cuento|se) un chiste\b|\bun chiste\b.{0,30}:/u,
+];
+
+function looksLikeJoke(text) {
+  const t = norm(text)
+    .replace(/@\S+/g, ' ')
+    .replace(/\b(?:dios\s*fua|dios_fua)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!t) return false;
+  return JOKE_RES.some((re) => re.test(t));
+}
+
 module.exports = {
+  looksLikeJoke,
   reasksAnswer,
   asksAboutPastStream,
   asksBeyondSheet,
