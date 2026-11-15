@@ -19,7 +19,8 @@ const {
   getMentionFuaHistory,
 } = require('../utils/state');
 const factcheck = require('./factcheck');
-const { buildGameTemplate } = require('./game-template');
+const { buildGameTemplate, buildPremiseReply } = require('./game-template');
+const { summarizeGameEs } = require('./game-sheet');
 const {
   botQuestionFor,
   classifyMessage,
@@ -232,8 +233,13 @@ async function checkPatternMatch(client, channel, tags, message) {
       const gameQuery = quality.extractGameQuery(question);
       if (gameQuery) {
         const lookup = await buscarJuegoLookup(gameQuery.name, question);
-        if (lookup.info) answer = buildGameTemplate(lookup.info, messagesConfig.mention_game_quips);
-        else if (lookup.unavailable) answer = pickRandom(messagesConfig.mention_game_redirect);
+        if (lookup.info) {
+          // «De qué va X»: el resumen en español de la caché; si no hay, la plantilla de datos
+          const premise = quality.asksPremise(question)
+            ? buildPremiseReply(lookup.info, await summarizeGameEs(lookup.info))
+            : '';
+          answer = premise || buildGameTemplate(lookup.info, messagesConfig.mention_game_quips);
+        } else if (lookup.unavailable) answer = pickRandom(messagesConfig.mention_game_redirect);
         else if (gameQuery.strict) answer = pickRandom(messagesConfig.mention_not_understood);
       }
     }

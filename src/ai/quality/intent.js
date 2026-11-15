@@ -296,7 +296,28 @@ function looksLikeJoke(text) {
   return JOKE_RES.some((re) => re.test(t));
 }
 
+// «¿Qué me puedes decir de este título?» (14-11: respondió «No sé a qué título te refieres»): sin nombre de juego, «este
+// título / este juego» es el del directo. Solo cuenta si además pide información (no «el juego está difícil»).
+const CURRENT_GAME_REF_RE = /\b(?:este|ese|el|del|al)\s+(?:titulo|juego|jueguito)\b|\bde que va (?:esto|esta cosa)\b/;
+const INFO_CUE_RE =
+  /\b(?:que me puedes decir|que puedes decirme|que puedes decir|que sabes|dime|cuentame|cuentanos|hablame|habla(?:nos)?|de que va|de que trata|que opinas|que tal es|que te parece|conoces|lore|historia|trama|argumento|premisa|sinopsis|como es)\b/;
+
+function refersToCurrentGame(text) {
+  const t = norm(text).replace(/[¿?¡!.,;:]/g, ' ');
+  return CURRENT_GAME_REF_RE.test(t) && INFO_CUE_RE.test(t);
+}
+
+// «¿De qué va?», «¿cuál es el lore?»: se responde con el resumen en español del juego (caché de game-sheet), no con la plantilla
+const PREMISE_RE =
+  /\b(?:de que (?:va|trata|iba)|el lore|la trama|el argumento|la premisa|la sinopsis|la historia|que historia|cual es la historia|lore)\b/;
+
+function asksPremise(text) {
+  return PREMISE_RE.test(norm(text).replace(/[¿?¡!.,;:]/g, ' '));
+}
+
 module.exports = {
+  refersToCurrentGame,
+  asksPremise,
   looksLikeJoke,
   reasksAnswer,
   asksAboutPastStream,

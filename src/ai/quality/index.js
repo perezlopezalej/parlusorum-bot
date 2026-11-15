@@ -140,6 +140,8 @@ const {
   asksBeyondSheet,
   reasksAnswer,
   looksLikeJoke,
+  refersToCurrentGame,
+  asksPremise,
 } = require('./intent');
 const {
   inventedQuote,
@@ -292,6 +294,8 @@ module.exports = {
   asksBeyondSheet,
   reasksAnswer,
   looksLikeJoke,
+  refersToCurrentGame,
+  asksPremise,
   talksStreamTime,
   copiesExample,
   wornMould,

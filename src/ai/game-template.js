@@ -17,4 +17,12 @@ function buildGameTemplate(info, quips = [], pick = (arr) => arr[Math.floor(Math
   return `${facts}. ${quip}`.trim();
 }
 
-module.exports = { buildGameTemplate };
+// «¿De qué va?» / «¿cuál es el lore?»: el título y el resumen en español de la caché (game-sheet), sin los datos de la ficha.
+// → '' si no hay resumen (entonces vale la plantilla de datos).
+function buildPremiseReply(info, summary) {
+  const text = String(summary || '').trim();
+  if (!info?.name || !text) return '';
+  return `${info.name}: ${text.replace(/\s+/g, ' ')}`;
+}
+
+module.exports = { buildGameTemplate, buildPremiseReply };

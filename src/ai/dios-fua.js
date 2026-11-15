@@ -5,8 +5,8 @@ const twitchApi = require('../twitch/api');
 const { lookupGameInfo } = twitchApi;
 const { isSilenced, addBotMessage, getChatterNames } = require('../utils/state');
 const factcheck = require('./factcheck');
-const { buildGameTemplate } = require('./game-template');
-const { buildGameSheet, leaksSheetRaw } = require('./game-sheet');
+const { buildGameTemplate, buildPremiseReply } = require('./game-template');
+const { buildGameSheet, leaksSheetRaw, summarizeGameEs } = require('./game-sheet');
 const quality = require('./quality');
 const { spokenSeconds } = quality;
 const { sanitizeForAI } = require('../utils/filter');
@@ -207,13 +207,30 @@ async function handleQuestion(client, channel, tags, args) {
     const qMaxTokens = qModeConfig.max_tokens ?? 150;
     // Si la pregunta nombra un juego, su ficha de IGDB se busca ANTES de llamar al modelo y se le pasa siempre (como en las menciones):
     // no se depende de que el modelo llame a buscar_juego. Sin ficha (no hay nombre o IGDB no lo conoce) sigue el flujo con la herramienta.
-    const gameName = quality.extractGameMention(question);
+    // «¿Qué me puedes decir de este título?» sin nombre: es el juego del directo (14-11 respondió «no sé a qué título te refieres»)
+    const aboutCurrent =
+      !quality.extractGameMention(question) && !!currentGame && quality.refersToCurrentGame(question);
+    const gameName = aboutCurrent ? currentGame : quality.extractGameMention(question);
     const pre = gameName ? await buscarJuegoLookup(gameName, question) : null;
     const prefetched = !!pre?.info;
     if (prefetched) {
       chatlog.noteTool('buscar_juego');
+      // «De qué va» y el lore: el resumen en español de la caché, sin pasar por el modelo ni por la plantilla de datos
+      if (quality.asksPremise(question)) {
+        const premise = buildPremiseReply(pre.info, await summarizeGameEs(pre.info));
+        if (premise) {
+          logger.info(`!dios_fua: resumen en español de "${pre.info.name}" (pregunta por de qué va)`);
+          client.say(channel, truncate(`@${username} ${premise}`, questionMode.max_chars ?? TWITCH_MAX_LENGTH));
+          addBotMessage(premise);
+          questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
+          return;
+        }
+      }
       const last = messages[messages.length - 1];
-      last.content = `<ficha_igdb>\n${pre.text}\n</ficha_igdb>\n${last.content}`;
+      const refNote = aboutCurrent
+        ? `El juego del directo es «${currentGame}»: «este título» o «este juego» se refiere a él.\n`
+        : '';
+      last.content = `<ficha_igdb>\n${pre.text}\n</ficha_igdb>\n${refNote}${last.content}`;
     }
     let response = await aiChat('diosfua', {
       max_tokens: qMaxTokens,
