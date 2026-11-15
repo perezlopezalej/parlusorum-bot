@@ -959,11 +959,16 @@
     "input": "!dios_fua que me puedes decir de este titulo ?",
     "game": "Horizon Forbidden West",
     "deaths": 1,
-    "note": "14-11: «este título» es el juego del directo, no «no sé a qué título te refieres».",
+    "note": "14-11: «este título» es el juego del directo, no «no sé a qué título te refieres». Falla si el bot no sabe cuál es el juego del directo (el eval fija c.game).",
     "expect": {
       "route": "question",
       "reply": true,
-      "matchNone": ["no s[eé] a qu[eé] t[ií]tulo"]
+      "matchNone": [
+        "no s[eé] a qu[eé] t[ií]tulo",
+        "qu[eé] (t[ií]tulo|juego)\b[^.?]{0,25}(en mente|te refieres|tenías)",
+        "nombre del juego",
+        "sin nombre"
+      ]
     }
   },
   {
@@ -971,11 +976,16 @@
     "input": "!dios_fua de que va este juego?",
     "game": "Horizon Forbidden West",
     "deaths": 1,
-    "note": "De qué va: resumen en español, sin coletillas del FUA.",
+    "note": "De qué va: resumen en español, sin coletillas del FUA. Falla si el bot no sabe cuál es el juego del directo (el eval fija c.game).",
     "expect": {
       "route": "question",
       "reply": true,
-      "matchNone": ["y el FUA, de que"]
+      "matchNone": [
+        "y el FUA, de que",
+        "qu[eé] (t[ií]tulo|juego)\b[^.?]{0,25}(en mente|te refieres|tenías)",
+        "nombre del juego",
+        "sin nombre"
+      ]
     }
   },
   {

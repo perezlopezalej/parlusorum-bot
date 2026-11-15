@@ -48,3 +48,16 @@ describe('asksPremise y buildPremiseReply', () => {
     assert.equal(buildPremiseReply(null, 'algo'), '');
   });
 });
+
+test('buildPremiseReply no repite el título si el resumen ya empieza por él', () => {
+  const info = { name: 'Silent Hill f' };
+  assert.equal(
+    buildPremiseReply(info, 'Silent Hill f es un survival horror ambientado en el Japón rural.'),
+    'Silent Hill f es un survival horror ambientado en el Japón rural.',
+  );
+  assert.equal(buildPremiseReply(info, 'silent hill F  es un survival.'), 'silent hill F es un survival.');
+  assert.equal(
+    buildPremiseReply(info, 'Un survival horror en el Japón rural.'),
+    'Silent Hill f: Un survival horror en el Japón rural.',
+  );
+});

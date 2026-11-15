@@ -491,7 +491,7 @@ async function runCase(c, i, rep = 0) {
   if (c.gen) return runGenCase(c);
   if (c.turns) return runTurnsCase(c, i, rep);
   if (c.igdb) return runIgdbCase(c);
-  evalGame = null;
+  evalGame = c.game || null; // el caso fija el juego del directo (sin él, el de siempre)
   mentionPrompts = [];
   if (c.lastBot) state.addBotMessage(c.lastBot);
   const n429 = state.getCohostStats().groq429;

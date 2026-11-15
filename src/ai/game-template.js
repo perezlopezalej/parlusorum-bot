@@ -22,7 +22,10 @@ function buildGameTemplate(info, quips = [], pick = (arr) => arr[Math.floor(Math
 function buildPremiseReply(info, summary) {
   const text = String(summary || '').trim();
   if (!info?.name || !text) return '';
-  return `${info.name}: ${text.replace(/\s+/g, ' ')}`;
+  const body = text.replace(/\s+/g, ' ');
+  // si el resumen ya empieza por el título («Silent Hill f es un survival…»), no se repite delante
+  const plain = (t) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return plain(body).startsWith(plain(info.name)) ? body : `${info.name}: ${body}`;
 }
 
 module.exports = { buildGameTemplate, buildPremiseReply };
