@@ -99,6 +99,18 @@ function limitTrailingFua(text, recentFlags = []) {
   return { text: out, had: false };
 }
 
+// Coletilla final «; y el FUA, de que no hay nada original» (15-11): tras una respuesta completa, el modelo pega un cierre con
+// el FUA que no aporta. Se recorta si lo que queda es una frase entera (≥ 20 caracteres); si no, se deja como está.
+const FUA_TAIL_RE = /\s*[;,]\s*y el FUA,?\s+(?:de|con|sin|por|en)\s[^.!?;]*[.!?…]*\s*$/i;
+
+function trimFuaTail(text) {
+  const t = String(text || '');
+  if (!FUA_TAIL_RE.test(t)) return t;
+  const out = t.replace(FUA_TAIL_RE, '').trimEnd();
+  if (out.length < 20 || isCutOff(out)) return t;
+  return /[.!?…\p{Extended_Pictographic}]$/u.test(out) ? out : out + '.';
+}
+
 // Nombres ya citados: si la frase empieza con ellos como vocativo ("Mujica90, ...") se quitan; en otro sitio no hay arreglo (null)
 function stripLeadingNames(text, names) {
   let t = String(text || '');
@@ -241,6 +253,7 @@ module.exports = {
   hasLusorums,
   limitLusorums,
   limitTrailingFua,
+  trimFuaTail,
   stripLeadingNames,
   positiveSummaryFallback,
   fixMentions,

@@ -290,6 +290,80 @@ function abbreviatedGame(text, game = '') {
   return hit || '';
 }
 
+// Título sin tildes, signos ni paréntesis, para comparar
+const plainTitle = (s) =>
+  norm(String(s || '').replace(/\(.*?\)/g, ' '))
+    .replace(/[^a-z0-9ñ ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// El juego va en masculino («el juego»): «esa Horizon Forbidden West» (15-11) → el trozo con artículo femenino, o ''
+const FEMININE_ARTICLES = 'la|una|esa|esta|aquella|otra|toda la';
+function genderedGameTitle(text, game = '') {
+  const title = plainTitle(game);
+  if (!title || title === 'desconocido') return '';
+  const m = new RegExp(`(?:^| )((?:${FEMININE_ARTICLES}) ${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?= |$)`).exec(
+    plainTitle(text),
+  );
+  return m ? m[1] : '';
+}
+
+// «partir» sin «se» (15-11: «el chat no para de partir»): la expresión es «partirse». «a partir de» y «partir» a secas no se tocan
+const PARTIR_RE =
+  /(?<![\p{L}])(?:(?:para|paran|parar|deja|dejan|dejar)\s+de\s+partir|(?:est[aá]n?|sigue[n]?|anda[n]?)\s+partiendo(?!\s+de(?![\p{L}])))(?![\p{L}])/iu;
+
+function partirWithoutSe(text) {
+  return PARTIR_RE.test(String(text || ''));
+}
+
+// Lo que hace el chat solo se cuenta si está entre los hechos (15-11: «el chat no para de gritar FUA» sin que nadie lo escribiera)
+const CHAT_ACTIVITY_RE =
+  /(?<![\p{L}])(?:el chat|los lusorums)(?:\s+\p{L}+){0,2}?\s+(?:no para(?:n)? de|sigue[n]?|est[áa]n|est[á]|se (?:parte[n]?|pone[n]?|ha[n]? puesto|queja[n]?)|grita[n]?|pide[n]?|pidi[oó]|spamea[n]?|escribe[n]?|repite[n]?|r[ií]e[n]?|aplaude[n]?|ha[n]? (?:empezado|vuelto)|manda[n]?|llena[n]?)(?![\p{L}])/iu;
+
+function claimsChatActivity(text) {
+  return CHAT_ACTIVITY_RE.test(String(text || ''));
+}
+
+// Lugares de escenario («cruzar el desierto», 15-11): si el texto nombra uno que no sale de los datos permitidos (hechos, juego,
+// ficha), es un detalle inventado. Lista corta y editable. Devuelve el lugar o ''.
+const PLACE_WORDS = [
+  'desierto',
+  'selva',
+  'jungla',
+  'bosque',
+  'monta[ñn]as?',
+  'cueva',
+  'caverna',
+  'oc[eé]ano',
+  'pantano',
+  'glaciar',
+  'nieve',
+  'volc[aá]n',
+  'isla',
+  'templo',
+  'ruinas',
+  'mazmorra',
+  'valle',
+  'tundra',
+  'pradera',
+  'aldea',
+  'ca[ñn][oó]n',
+  'acantilado',
+  'lago',
+  'cascada',
+  'fortaleza',
+  'laberinto',
+  'castillo',
+];
+const PLACE_RE = new RegExp(`(?<![\\p{L}])(?:${PLACE_WORDS.join('|')})(?![\\p{L}])`, 'iu');
+
+function unlistedPlace(text, allowed = []) {
+  const m = PLACE_RE.exec(String(text || ''));
+  if (!m) return '';
+  const root = norm(m[0]).replace(/s$/, '');
+  return norm([].concat(allowed).join(' ')).includes(root) ? '' : m[0];
+}
+
 // Anglicismos (data/anglicismos.txt: «palabra | cómo se dice»): «lads», «power», «vibes»… → { word, es } o null.
 // `allowed`: textos donde la palabra sí es legítima (el título del juego, lo que escribió quien pregunta).
 let anglicisms = null;
@@ -516,6 +590,10 @@ module.exports = {
   selfHelp,
   mentionsOtherGame,
   abbreviatedGame,
+  genderedGameTitle,
+  partirWithoutSe,
+  claimsChatActivity,
+  unlistedPlace,
   MECHANICS_RE,
   leaksTech,
   mentionsSheet,

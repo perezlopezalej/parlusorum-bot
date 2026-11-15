@@ -26,6 +26,10 @@ const {
   mentionsGenre,
   mentionsMechanics,
   abbreviatedGame,
+  genderedGameTitle,
+  partirWithoutSe,
+  claimsChatActivity,
+  unlistedPlace,
   anglicism,
   ANGLICISM_REASON,
   mentionsOtherGame,
@@ -116,6 +120,11 @@ function styleProblem(
     };
   if (ETHNIC_RE.test(t))
     return { rule: 'etnia', reason: 'usa una expresión con etnias o pueblos; haz la broma sobre la partida o el FUA' };
+  if (partirWithoutSe(t))
+    return {
+      rule: 'partir',
+      reason: 'usa «partir» sin «se»; la expresión es «partirse» («el chat se parte», «no paran de partirse»)',
+    };
   if (hasElongation(t))
     return { rule: 'ruido', reason: 'copia letras alargadas o ruido del chat ("parrrrr"); escribe palabras normales' };
   if (wrongDayPart(t, now))
@@ -161,13 +170,16 @@ function styleProblem(
   return null;
 }
 
-// Aviso automático (inicio de stream, encuestas, avisos): mismo tono que el resto, sin comprobar nombres ni muertes
-function validateAuto(text) {
+// Aviso automático (inicio de stream, encuestas, avisos): mismo tono que el resto, sin comprobar nombres ni muertes.
+// `game`: si se da, el título se nombra completo y sin artículo femenino (la bienvenida del 15-11 dijo «Horizon» a secas)
+function validateAuto(text, { game = '' } = {}) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
   const style = styleProblem(text, { personal: false });
   if (style) return { ok: false, reason: style.reason };
+  const title = gameNameReason(text, game);
+  if (title) return { ok: false, reason: title };
   return { ok: true };
 }
 
@@ -176,6 +188,18 @@ const INVENTED_REASON = (w) =>
 
 const ABBREVIATED_REASON = (w, game) =>
   `abrevia el nombre del juego («${w}»); si lo nombras, escribe el título completo («${game}»)`;
+
+const GENDERED_TITLE_REASON = (w, game) =>
+  `pone el título en femenino («${w}»); el juego es masculino: di «el juego» o escribe «${game}» sin artículo femenino`;
+
+// Motivo de rechazo si el título del juego va abreviado o con artículo femenino ('' si está bien o no hay juego)
+function gameNameReason(text, game) {
+  if (!game) return '';
+  const abbreviated = abbreviatedGame(text, game);
+  if (abbreviated) return ABBREVIATED_REASON(abbreviated, game);
+  const gendered = genderedGameTitle(text, game);
+  return gendered ? GENDERED_TITLE_REASON(gendered, game) : '';
+}
 
 const EXACT_MINUTES_REASON =
   'cita los minutos exactos del directo; usa una expresión aproximada («casi dos horas», «un buen rato»)';
@@ -214,6 +238,8 @@ function validateCohost(
     timeOffered = null,
     deathsOffered = null,
     examples = [],
+    placeRule = false,
+    placeAllowed = [],
   } = {},
 ) {
   if (!text || text.length < 8) return { ok: false, rule: 'vacio', reason: 'vacío o demasiado corto' };
@@ -236,6 +262,24 @@ function validateCohost(
   if (twist) return { ok: false, rule: 'giro', reason: twist };
   const fact = factProblem(text, { facts, hecho });
   if (fact) return { ok: false, rule: 'hecho', reason: fact };
+  // lo que hace el chat solo se cuenta si hay un hecho de chat entre los ofrecidos (15-11: «el chat no para de gritar FUA»)
+  if (facts.length && !facts.some((f) => f.tipo === 'chat') && claimsChatActivity(text))
+    return {
+      ok: false,
+      rule: 'chat',
+      reason: 'dice qué hace el chat y no está entre los hechos; habla de la partida o del FUA, no del chat',
+    };
+  // lugares de escenario que no salen de los hechos ni de la ficha (15-11: «cruzar el desierto»). Solo descarta con
+  // `placeRule` activa (COHOST_PLACE_RULE=on); en modo sombra el cohost solo lo registra (ver cohost.js)
+  if (placeRule) {
+    const place = unlistedPlace(text, [...facts.map((f) => f.texto), game, ...placeAllowed]);
+    if (place)
+      return {
+        ok: false,
+        rule: 'lugar',
+        reason: `nombra un lugar («${place}») que no sale de los hechos; cuenta solo lo que dicen los hechos`,
+      };
+  }
   if (timeOffered === false && talksStreamTime(text))
     return {
       ok: false,
@@ -277,8 +321,8 @@ function validateCohost(
       })
     : '';
   if (invented) return { ok: false, rule: 'inventado', reason: INVENTED_REASON(invented) };
-  const abbreviated = abbreviatedGame(text, game);
-  if (abbreviated) return { ok: false, rule: 'juego_nombre', reason: ABBREVIATED_REASON(abbreviated, game) };
+  const gameName = gameNameReason(text, game);
+  if (gameName) return { ok: false, rule: 'juego_nombre', reason: gameName };
   if (lastCitedDeaths && citesDeathCount(text, deathCount))
     return { ok: false, rule: 'contador', reason: DEATH_REPEAT_REASON };
   const gameProblem = gameTalkProblem(text);
@@ -343,9 +387,9 @@ function validateCohost(
 }
 
 // Para avisos con IA (bienvenida, encuestas, raids, subs): devuelve el texto limpio o lanza para que actúe la reserva fija
-function vetAuto(text) {
+function vetAuto(text, opts = {}) {
   const t = String(text || '').trim();
-  const check = validateAuto(t);
+  const check = validateAuto(t, opts);
   if (!check.ok) throw new Error(`mensaje automático descartado (${check.reason})`);
   return t;
 }
@@ -385,8 +429,8 @@ function validateHook(
   if (usedStructures.has(METAPHOR_MARK) && isMetaphor(text)) return { ok: false, reason: METAPHOR_REASON };
   const style = styleProblem(text, { player, now: new Date(now), allowed: [game] });
   if (style) return { ok: false, reason: style.reason };
-  const abbreviated = abbreviatedGame(text, game);
-  if (abbreviated) return { ok: false, reason: ABBREVIATED_REASON(abbreviated, game) };
+  const gameName = gameNameReason(text, game);
+  if (gameName) return { ok: false, reason: gameName };
   const talk = gameTalkProblem(text);
   if (talk) return { ok: false, reason: talk };
   return { ok: true };
@@ -502,8 +546,8 @@ function validateTimerIA(
       })
     : '';
   if (invented) return { ok: false, reason: INVENTED_REASON(invented) };
-  const abbreviated = abbreviatedGame(text, currentGame);
-  if (abbreviated) return { ok: false, reason: ABBREVIATED_REASON(abbreviated, currentGame) };
+  const gameName = gameNameReason(text, currentGame);
+  if (gameName) return { ok: false, reason: gameName };
   if (matchesFormula(text) && repeatsFormula(text, recent))
     return { ok: false, reason: 'repite una fórmula que ya usaste' };
   if (tooSimilar(text, recent, 0.5))

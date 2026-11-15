@@ -90,6 +90,10 @@ const COHOST_NAME_WINDOW = parseInt(process.env.COHOST_NAME_WINDOW_MS || '900000
 
 const COHOST_CANDIDATES = parseInt(process.env.COHOST_CANDIDATES || '3', 10) === 2 ? 2 : 3; // candidatos por llamada del cohost (3 por defecto; 2 gasta menos tokens)
 
+// Regla de lugares («cruzar el desierto» sin que salga de los hechos): en modo SOMBRA no descarta nada y solo deja en bot.log
+// «se habría descartado por lugar: …». Se activa con COHOST_PLACE_RULE=on cuando los avisos de un par de directos cuadren.
+const PLACE_RULE_ACTIVE = String(process.env.COHOST_PLACE_RULE || '').toLowerCase() === 'on';
+
 // --- Co-host ---
 let cohostRunning = false;
 
@@ -421,6 +425,8 @@ async function runCohost(client, channel, moment = null) {
         timeOffered: momentFacts.some((f) => f.tipo === 'tiempo' || quality.talksStreamTime(f.texto)),
         // las caídas solo se comentan si están entre los hechos ofrecidos (regla `caidas`)
         deathsOffered: deathsOffered(),
+        placeRule: PLACE_RULE_ACTIVE,
+        placeAllowed: [gameFacts],
       };
       const response = await aiChat('cohost', {
         max_tokens: COHOST_CANDIDATES === 3 ? 450 : 320, // cada candidato es un objeto { hecho, giro, frase }
@@ -463,6 +469,13 @@ async function runCohost(client, channel, moment = null) {
         },
       );
       for (const f of failures) logger.info(`Co-host descartado (${f.reason}): ${f.text.slice(0, 80)}`);
+      if (!PLACE_RULE_ACTIVE) {
+        // modo sombra: se avisa de los lugares que no salen de los hechos sin descartar el candidato
+        for (const r of ranked) {
+          const place = quality.unlistedPlace(r.text, [...attemptCtx.facts.map((f) => f.texto), game, gameFacts]);
+          if (place) logger.info(`Co-host: se habría descartado por lugar: «${place}» en «${r.text.slice(0, 80)}»`);
+        }
+      }
       if (ranked.length) {
         // Un modelo pequeño elige el mejor comparándolos con los mismos hechos, o dice que ninguno vale (entonces se calla)
         const pick = await pickBest(

@@ -407,9 +407,11 @@ async function handleQuestion(client, channel, tags, args) {
       questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);
       return;
     }
-    answer = String(answer)
-      .replace(/\s*\n+\s*/g, ' ')
-      .trim(); // una sola línea
+    answer = quality.trimFuaTail(
+      String(answer)
+        .replace(/\s*\n+\s*/g, ' ')
+        .trim(), // una sola línea
+    );
     client.say(channel, truncate(`@${username} ${answer}`, qMaxChars));
     addBotMessage(truncate(answer, qMaxChars));
     questionCooldowns.set(userId, now + QUESTION_COOLDOWN_MS);

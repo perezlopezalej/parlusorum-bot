@@ -2,7 +2,7 @@
 // Directo del 13-11: «Pao en la grada» jugando Manu, «Final Fantasy trece» por FINAL FANTASY XVI, «el chat de España»,
 // «todo fue copiar y pegar», «madrugada larga de 4 horas y casi 3». Módulo puro.
 const { norm, plainWords } = require('./text');
-const { abbreviatedGame, mentionsOtherGame } = require('./lexicon');
+const { abbreviatedGame, genderedGameTitle, mentionsOtherGame } = require('./lexicon');
 const { inventedDetail } = require('./copy');
 const { citesViewers, exactMinutes } = require('./numbers');
 
@@ -128,6 +128,12 @@ function recapProblem(
     return {
       rule: 'juego_nombre',
       reason: `abrevia el nombre del juego o lo escribe distinto («${abbreviated}»); escribe el título tal cual («${game}»)`,
+    };
+  const gendered = genderedGameTitle(t, game);
+  if (gendered)
+    return {
+      rule: 'juego_nombre',
+      reason: `abrevia el nombre del juego o lo escribe distinto: pone el título en femenino («${gendered}»); el juego es masculino, escribe «${game}» sin artículo femenino`,
     };
   const otherGame = game ? mentionsOtherGame(t, game, channelGames) : null;
   if (otherGame)

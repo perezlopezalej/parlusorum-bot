@@ -385,7 +385,7 @@ async function checkPatternMatch(client, channel, tags, message) {
     }
     if (!isProvocation && fromAI) {
       // el «¡FUA!» de cierre no es una costumbre: solo en 1 de cada 3 menciones
-      const closing = quality.limitTrailingFua(answer, getMentionFuaHistory());
+      const closing = quality.limitTrailingFua(quality.trimFuaTail(answer), getMentionFuaHistory());
       answer = closing.text;
       noteMentionFua(closing.had);
     }

@@ -154,7 +154,12 @@ async function checkFirstMessage(client, channel, tags) {
         throttleSay(
           client,
           channel,
-          truncate(quality.insertUsername(quality.vetAuto(response.choices[0].message.content), username)),
+          truncate(
+            quality.insertUsername(
+              quality.vetAuto(response.choices[0].message.content, { game: gameInfo?.game || '' }),
+              username,
+            ),
+          ),
         );
       } catch {
         throttleSay(client, channel, pick(welcomeMessages).replace('{username}', username));
@@ -475,7 +480,9 @@ async function onRaid(client, channel, username, viewers) {
         },
         { names: [username] },
       );
-      const text = quality.fixMentions(quality.vetAuto(response.choices[0].message.content), [username]);
+      const text = quality.fixMentions(quality.vetAuto(response.choices[0].message.content, { game: game || '' }), [
+        username,
+      ]);
       if (text && text.toLowerCase().includes(`@${key}`)) msg = truncate(text);
     } catch (err) {
       logger.error(`Error en raid IA: ${err.message}`);

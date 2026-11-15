@@ -252,7 +252,12 @@ function buildAlertSystem({
     IDENTITY,
     block('forma', 'Una o dos frases cortas en español de España.'),
     renderExamples(examples),
-    block('evento', [event, game ? `Estaban en «${game}».` : ''].filter(Boolean).join(' ')),
+    block(
+      'evento',
+      [event, game ? `Estaban en «${game}» (si lo nombras, el título entero, sin artículo femenino).` : '']
+        .filter(Boolean)
+        .join(' '),
+    ),
     block('ajustes', `Menos de ${maxChars} caracteres. ${nameRule} ${extra}`.replace(/\s+/g, ' ').trim()),
     block('tarea', ALERT_TASKS[type] || 'Cuenta el evento con la voz de Dios Fua.'),
   );
@@ -499,6 +504,9 @@ const FIX_BY_RULE = {
   modismo: 'Dilo con palabras llanas.',
   inventado: 'Cuenta solo lo que dicen los hechos, con palabras sencillas.',
   juego_nombre: 'Si nombras el juego, escribe su título completo.',
+  partir: 'Escribe «partirse» con su «se»: «el chat se parte».',
+  chat: 'Habla de la partida o del FUA; lo que hace el chat solo si está en los hechos.',
+  lugar: 'Cuenta solo los lugares que nombran los hechos.',
   jugador: 'Habla solo de quien juega según los hechos.',
   chat_ajeno: 'Habla del chat del canal, los Lusorums, y de lo que dicen los hechos.',
   duracion: 'Di la duración que dan los hechos, con sus mismas palabras.',
@@ -515,7 +523,8 @@ const FIX_BY_REASON = [
   [/no es la del directo/i, 'hora'],
   [/met[aá]fora/i, 'metafora'],
   [/frase hecha/i, 'modismo'],
-  [/abrevia el nombre del juego/i, 'juego_nombre'],
+  [/abrevia el nombre del juego|t[ií]tulo en femenino/i, 'juego_nombre'],
+  [/«partir» sin «se»/i, 'partir'],
   [/no sale de los hechos/i, 'inventado'],
   [/copia del chat/i, 'copia'],
   [/coletilla/i, 'cierre'],
