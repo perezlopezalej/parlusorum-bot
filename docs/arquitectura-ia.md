@@ -34,3 +34,7 @@ Memoria entre streams (`src/memory/handler.js`): la fila se fecha por el día de
 ## Reacciones del chat: solo para revisión humana
 
 `reactions.js` puntúa cómo reacciona el chat a cada mensaje del bot y el resumen de fin de stream lista «Con más reacción (revisar a mano: puede ser risa por un fallo)» (antes «Gustaron»). Esa lista y `quality_log.liked` no alimentan ningún prompt ni `config/style-examples.json`: los ejemplos se eligen a mano. Lo vigila `test/reactions.test.js`.
+
+## Redes sociales (sin IA)
+
+`!redes`, `!discord` y `!tiktok` responden con los enlaces de `config/redes.json` (`src/commands/redes.js`). Van con el origen `redes`, y solo con ese origen el filtro de salida (`output-guard.js`) deja pasar los dominios exactos de ese JSON (`discord.gg`, `tiktok.com`, sin subdominios), además de `twitch.tv` e `igdb.com`; con cualquier otro origen un enlace sigue descartándose. El aviso periódico (`plantillas.json` → `redes_recordatorio`) no lleva enlaces, porque el lector de voz del canal los leería letra a letra: invita a escribir `!redes`. Sale cada 60 min (`REDES_INTERVAL_MS`), desfasado 30 min del recordatorio del follow, con directo, pasados 10 min y respetando `!silencio`, `!fua_callate` y el modo reactivo (origen `timer`).

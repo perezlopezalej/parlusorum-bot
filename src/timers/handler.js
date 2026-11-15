@@ -32,6 +32,8 @@ const factcheck = require('../ai/factcheck');
 const { lookupGameInfo } = require('../twitch/api');
 const { buildTimerSystem, retryNote, dayLine } = require('../ai/style');
 const { truncate } = require('../utils/groq-utils');
+const { template } = require('../utils/plantillas');
+const redes = require('../commands/redes');
 const { aiChat } = require('../utils/ai-router');
 const MIN_CHAT_FOR_SUMMARY = 15; // mensajes en la ventana para contar solo de qué ha hablado el chat
 const MIN_USERS_FOR_TOPIC = 3; // usuarios distintos en el mismo tema para que entre en el resumen
@@ -72,6 +74,23 @@ const recentTimerIA = [];
 const timerRefs = [];
 let lastMessages = [];
 let streamDurationInterval = null;
+let redesOffsetRef = null;
+let redesInterval = null;
+
+// Aviso periódico de las redes: SIN enlaces (el lector de voz los leería letra a letra), solo invita a escribir !redes
+function sendRedesReminder(client) {
+  if (
+    !redes.reminderDue({
+      live: isLiveViaEventSub(),
+      silenced: isSilenced(),
+      reactive: isReactive(),
+      startedAt: getStreamStartedAt(),
+    })
+  )
+    return;
+  const msg = template('redes_recordatorio');
+  enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, truncate(msg))));
+}
 
 // Un comentario IA con el resumen de la última media hora. Devuelve el texto enviado ('' si no se envió nada).
 async function runTimerIA(client) {
@@ -267,6 +286,17 @@ function start(client, config) {
     40 * 60 * 1000,
   );
 
+  // Aviso de redes: desplazado media hora respecto al recordatorio del follow para que se alternen
+  redesOffsetRef = setTimeout(() => {
+    redesOffsetRef = null;
+    redesInterval = setInterval(
+      withOrigin('timer', () => sendRedesReminder(client)),
+      redes.REMINDER_INTERVAL_MS,
+    );
+    redesInterval.unref?.();
+  }, redes.REMINDER_OFFSET_MS);
+  redesOffsetRef.unref?.();
+
   // Timer IA: resumen de la última media hora. El código reúne lo que ha pasado (caídas, jefes, tema del chat) y la IA
   // lo cuenta con gracia en una frase. Si no ha pasado nada relevante, no se envía nada.
   timerRefs.push(
@@ -286,6 +316,9 @@ function stop() {
     clearTimeout(timerDrainRef);
     timerDrainRef = null;
   }
+  if (redesOffsetRef) clearTimeout(redesOffsetRef);
+  if (redesInterval) clearInterval(redesInterval);
+  redesOffsetRef = redesInterval = null;
   if (streamDurationInterval) {
     clearInterval(streamDurationInterval);
     streamDurationInterval = null;
@@ -293,4 +326,4 @@ function stop() {
   logger.info('⏹️ Timers detenidos');
 }
 
-module.exports = { start, stop, enqueueTimerMessage, runTimerIA };
+module.exports = { start, stop, enqueueTimerMessage, runTimerIA, sendRedesReminder };

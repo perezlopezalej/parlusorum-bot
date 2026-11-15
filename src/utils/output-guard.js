@@ -5,20 +5,22 @@
  *  - eco: el bot no repite literalmente lo que escribió un usuario
  *  - ofensivo: términos de filter.js (sin las frases de inyección, que solo valen para la entrada)
  *  - etnia: expresiones con etnias o pueblos («gitano»…); solo !dios_fua las dice si el usuario las nombró
- *  - URL: ningún enlace salvo dominios de confianza (twitch.tv, igdb.com)
+ *  - URL: ningún enlace salvo dominios de confianza (twitch.tv, igdb.com); los de config/redes.json (dominio exacto) solo
+ *    en las respuestas de !redes, !discord y !tiktok (origen 'redes')
  *  - directo: sin directo, solo hablan las respuestas a comandos (y el cierre del stream, con margen)
  */
 const { containsOffensive } = require('./filter');
 const { mentionsEthnicTerms } = require('../ai/quality/lexicon');
+const { allowedHosts: redesHosts } = require('../commands/redes');
 
 const ALLOWED_HOSTS = ['twitch.tv', 'igdb.com'];
 
 // Respuestas directas a un usuario que pueden salir con el canal offline
-const DIRECT_ORIGINS = new Set(['comando', 'dios_fua', 'chiste', 'quemeperdi', 'trivia']);
+const DIRECT_ORIGINS = new Set(['comando', 'redes', 'dios_fua', 'chiste', 'quemeperdi', 'trivia']);
 
 // Orígenes cuyo texto puede coincidir legítimamente con lo que escribe el chat: la respuesta de la trivia y las respuestas a
 // comandos (plantillas fijas con datos propios: un espectador que cita «desde hace 1 mes» no las puede silenciar)
-const ECHO_EXEMPT_ORIGINS = new Set(['trivia', 'comando']);
+const ECHO_EXEMPT_ORIGINS = new Set(['trivia', 'comando', 'redes']);
 
 // Solo cuenta como eco una copia larga: 6+ palabras seguidas, o 4+ que sean casi todo (80%+) lo que escribió el usuario.
 // Repetir parte de la pregunta (un juego, un nombre, "quién desarrolló X") es normal y no salta.
@@ -43,10 +45,11 @@ function hostOf(match) {
     .toLowerCase();
 }
 
-// Devuelve la primera URL no permitida del texto, o null
-function findDisallowedUrl(text) {
+// Devuelve la primera URL no permitida del texto, o null. exactHosts: dominios que valen tal cual (sin subdominios)
+function findDisallowedUrl(text, exactHosts = []) {
   for (const m of String(text || '').match(URL_RE) || []) {
     const host = hostOf(m);
+    if (exactHosts.includes(host)) continue;
     if (!ALLOWED_HOSTS.some((d) => host === d || host.endsWith(`.${d}`))) return m;
   }
   return null;
@@ -132,7 +135,7 @@ function checkOutbound(
   if (!canSpeak({ origin, live, graceUntil, now })) return { ok: false, reason: 'offline' };
   if (containsOffensive(text)) return { ok: false, reason: 'ofensivo' };
   if (blockedEthnic(text, origin, recent, now)) return { ok: false, reason: 'etnia' };
-  if (findDisallowedUrl(text)) return { ok: false, reason: 'url' };
+  if (findDisallowedUrl(text, origin === 'redes' ? redesHosts() : [])) return { ok: false, reason: 'url' };
   if (!ECHO_EXEMPT_ORIGINS.has(origin) && findEcho(text, recent, now, names)) return { ok: false, reason: 'eco' };
   return { ok: true };
 }

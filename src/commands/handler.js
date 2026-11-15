@@ -50,6 +50,7 @@ const { parseMinutes, parseMode, clockMadrid, MAX_MUTE_MIN } = require('../utils
 const { truncate } = require('../utils/groq-utils');
 const { spokenDuration, spokenSeconds } = require('../ai/quality');
 const { template } = require('../utils/plantillas');
+const redes = require('./redes');
 const { getSummary, trackCommand, resetStreamMetrics } = require('../utils/metrics');
 const { isLiveViaEventSub, getStreamUptime, getViewersWithAppToken } = require('../eventsub');
 const channelConfig = require('../../config/channel.json');
@@ -102,6 +103,10 @@ async function handle(client, channel, tags, command, args, config) {
   switch (command) {
     case 'lurk':
       return handleLurk(client, channel, tags);
+    case 'redes':
+    case 'discord':
+    case 'tiktok':
+      return handleRedes(client, channel, command, userId);
     case 'uptime':
       return handleUptime(client, channel);
     case 'juego':
@@ -223,6 +228,13 @@ function handleLurk(client, channel, tags) {
 }
 
 const botStartTime = Date.now();
+// Los enlaces solo salen en la respuesta (origen 'redes'); si el JSON no trae el enlace, no se contesta
+function handleRedes(client, channel, command, userId) {
+  const text = redes.replyFor(command);
+  if (!text || redes.onCooldown(cooldowns, userId)) return;
+  client.say(channel, truncate(text));
+}
+
 function handleUptime(client, channel) {
   const streamUptime = isLiveViaEventSub() ? getStreamUptime() : null;
   if (streamUptime) {

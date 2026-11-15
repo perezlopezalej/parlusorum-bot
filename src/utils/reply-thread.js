@@ -5,7 +5,7 @@
 // Módulo puro, sin estado ni I/O.
 
 // Orígenes que responden a un mensaje concreto de un usuario
-const REPLY_ORIGINS = new Set(['comando', 'dios_fua', 'mencion', 'chiste', 'quemeperdi']);
+const REPLY_ORIGINS = new Set(['comando', 'redes', 'dios_fua', 'mencion', 'chiste', 'quemeperdi']);
 
 const enabled = (env = process.env) => /^(1|true|on|si|sí)$/i.test(String(env.CHAT_REPLY_THREAD || '').trim());
 

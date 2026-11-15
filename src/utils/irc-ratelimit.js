@@ -119,7 +119,7 @@ async function _sendNext() {
       );
       state.recordFilterDiscard('salida', String(guard.reason || 'salida'));
       // Quien escribe un comando no se queda sin respuesta: si el filtro la descarta (y no era ya la de reserva), se avisa
-      if (origin === 'comando' && guard.reason !== 'offline' && !meta?.fallback) {
+      if ((origin === 'comando' || origin === 'redes') && guard.reason !== 'offline' && !meta?.fallback) {
         _queue.push({
           sayFn,
           channel,

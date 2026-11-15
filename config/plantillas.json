@@ -70,5 +70,10 @@
     "📊 Encuesta terminada: ganó \"{winner}\" con {pct}% de los votos (¡muy reñido!) 😮",
     "📊 ¡Por los pelos! \"{winner}\" gana con {pct}%. ¡Qué reñido! 🔥",
     "🗳️ Final apretadísimo: \"{winner}\" se lleva la encuesta con {pct}%. 😱"
+  ],
+  "redes_recordatorio": [
+    "💬 Tenemos Discord y TikTok: escribid !redes y os paso los enlaces. ¡FUA!",
+    "🎵 ¿Sabíais que el canal tiene Discord y TikTok? Con !redes os los paso.",
+    "📲 Si queréis seguirnos fuera de Twitch, escribid !redes y os digo dónde. 💜"
   ]
 }

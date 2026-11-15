@@ -193,5 +193,9 @@
     "modo_reactivo": "🎧 Modo reactivo: solo contesto a menciones y comandos. Lo quita @{username} con !fua_modo normal.",
     "modo_normal": "💬 Modo normal: vuelvo a comentar el directo. ¡FUA!",
     "modo_usage": "@{username} uso: !fua_modo reactivo o !fua_modo normal. Ahora: {current}."
+  },
+  "redes": {
+    "discord": "💬 Discord: {url}",
+    "tiktok": "🎵 TikTok: {url}"
   }
 }

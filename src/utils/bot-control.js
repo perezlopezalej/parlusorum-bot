@@ -23,7 +23,7 @@ function parseMode(arg) {
 // En modo reactivo el bot no inicia nada: solo responde a menciones, comandos y eventos del canal (sub, raid, follow...)
 const REACTIVE_BLOCKED = new Set(['cohost', 'hook', 'timer', 'timer_ia', 'highlight', 'emote_spam', 'caps_rage']);
 // Con silencio solo salen las respuestas de comandos (p. ej. la del propio !silencio) y los mensajes sin origen
-const SILENCE_ALLOWED = new Set(['comando', 'otro']);
+const SILENCE_ALLOWED = new Set(['comando', 'redes', 'otro']);
 
 // Respaldo en la cola de salida: motivo por el que un mensaje no debe salir, o null
 function outboundBlock(origin, { silenced = false, reactive = false } = {}) {

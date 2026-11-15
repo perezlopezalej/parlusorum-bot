@@ -73,7 +73,14 @@ describe('planReply', () => {
         text: 'hola, qué tal',
         replyTo: 'msg-1',
       });
-    assert.deepEqual([...thread.REPLY_ORIGINS].sort(), ['chiste', 'comando', 'dios_fua', 'mencion', 'quemeperdi']);
+    assert.deepEqual([...thread.REPLY_ORIGINS].sort(), [
+      'chiste',
+      'comando',
+      'dios_fua',
+      'mencion',
+      'quemeperdi',
+      'redes',
+    ]);
   });
 
   test('otros orígenes (cohost, alertas, hooks…), mensajes sin destinatario y sin API: sin hilo', () => {

@@ -440,6 +440,9 @@ client.on('message', async (channel, tags, message, self) => {
     if (command === 'quemeperdi')
       return runWithOrigin('quemeperdi', () => ai.handleQueMePerdi(client, channel, tags), replyOpt);
 
+    if (['redes', 'discord', 'tiktok'].includes(command))
+      return runWithOrigin('redes', () => commands.handle(client, channel, tags, command, args, config), replyOpt);
+
     await runWithOrigin('comando', () => commands.handle(client, channel, tags, command, args, config), replyOpt);
   } catch (err) {
     logger.error(`Message handler error [${username}]: ${err.message}`);

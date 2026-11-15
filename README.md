@@ -11,7 +11,7 @@ Bot de Twitch con IA para el canal «parlusorum»: comenta el directo como un co
 - **Cohost con criterio**: comenta jefes, muertes y rachas, y de vez en cuando saca un tema libre. Cada comentario pasa por reglas de calidad en código, un selector con otro modelo y una revisión de datos antes de llegar al chat; si ninguno convence, se calla.
 - **Respuestas con datos reales**: `!dios_fua` y las menciones consultan IGDB antes de contestar, así que no inventan fechas, estudios ni países.
 - **Memoria entre streams**: al acabar el directo, la IA resume lo ocurrido; los últimos resúmenes y el lore del canal (aprobado por un mod) entran en el contexto.
-- **Trivia, alertas y comandos de stream**: trivia por juego con pistas y ranking, subs, raids, follows, hype train y predicciones con plantillas fijas, y comandos como `!muertes`, `!boss`, `!quemeperdi`, `!clip` o `!so`.
+- **Trivia, alertas y comandos de stream**: trivia por juego con pistas y ranking, subs, raids, follows, hype train y predicciones con plantillas fijas, y comandos como `!muertes`, `!boss`, `!quemeperdi`, `!clip`, `!so` o `!redes` (Discord y TikTok, enlaces en `config/redes.json`).
 - **Controles en vivo**: `!fua_callate <min>` y `!fua_modo reactivo|normal` para que el streamer lo silencie o lo deje solo reactivo.
 - **Privacidad por diseño**: datos por ID de Twitch, caducidad automática y borrado a petición.
 

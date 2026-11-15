@@ -22,6 +22,9 @@
       "name": "fua_olvidame",
       "help": "Borra todos tus datos del bot (chat, registro, estadísticas, memoria y lore que te mencione)."
     },
+    { "name": "redes", "help": "Enlaces de las redes del canal (Discord y TikTok)." },
+    { "name": "discord", "help": "Enlace del Discord del canal." },
+    { "name": "tiktok", "help": "Enlace del TikTok del canal." },
     { "name": "privacidad", "help": "Qué guarda el bot, cuánto tiempo y cómo borrarlo." },
     { "name": "comandos", "help": "Lista de comandos disponibles." },
     { "name": "ayuda", "help": "Ayuda de un comando. Uso: !ayuda [comando]" },
