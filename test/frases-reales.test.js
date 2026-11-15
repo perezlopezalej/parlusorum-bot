@@ -65,6 +65,8 @@ function verdict(c) {
         ...ctx,
         game: ctx.currentGame,
         timeOffered: c.timeOffered ?? null,
+        facts: c.facts || [],
+        hecho: c.hecho || '',
         examples: c.examples ? loadExamples().cohost.map((e) => e.texto) : [],
       }).ok;
     case 'timer_ia':
@@ -77,6 +79,7 @@ function verdict(c) {
         player: ctx.player,
         names: c.names || [],
         recentToUser: c.recentToUser || [],
+        botQuestion: c.botQuestion || '',
         usedStructures: ctx.usedStructures,
       }).ok;
     case 'inject':

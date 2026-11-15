@@ -1016,5 +1016,152 @@
     "expect": {
       "rejected": true
     }
+  },
+  {
+    "id": "f15-otra-muerte-primera",
+    "filter": "cohost",
+    "input": "¡Otra muerte! Manu se despeña de nuevo y el FUA lo mira.",
+    "note": "Directo 15-11: «otra muerte» siendo la primera caída.",
+    "game": "Horizon Forbidden West",
+    "deaths": 1,
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f15-sin-caidas-control",
+    "filter": "cohost",
+    "input": "Manu sigue explorando el mapa con calma.",
+    "note": "Control: frase sencilla sin hablar de caídas.",
+    "game": "Horizon Forbidden West",
+    "deaths": 1,
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f15-los-dos-que",
+    "filter": "mention",
+    "input": "¿Los dos qué, Pao?",
+    "note": "Directo 15-11: Pao responde «En los dos» a la pregunta del bot y este se la devuelve.",
+    "question": "En los dos",
+    "botQuestion": "¿Te pierdes en el mapa o en el sofá?",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f15-los-dos-bien",
+    "filter": "mention",
+    "input": "Pues entonces el sofá y el mapa te tienen igual de perdida, Pao.",
+    "note": "Control: reacciona a la respuesta.",
+    "question": "En los dos",
+    "botQuestion": "¿Te pierdes en el mapa o en el sofá?",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f15-chat-partir",
+    "filter": "cohost",
+    "input": "El chat no para de partir con la caída de Manu.",
+    "note": "Directo 15-11: «partir» sin «se».",
+    "game": "Horizon Forbidden West",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f15-chat-partirse",
+    "filter": "cohost",
+    "input": "El chat se parte con la caída de Manu.",
+    "note": "Control: «partirse» bien dicho.",
+    "game": "Horizon Forbidden West",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f15-esa-horizon",
+    "filter": "cohost",
+    "input": "Manu sigue perdido en esa Horizon Forbidden West.",
+    "note": "Directo 15-11: título del juego con artículo femenino.",
+    "game": "Horizon Forbidden West",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f15-horizon-abreviado",
+    "filter": "cohost",
+    "input": "Manu explora Horizon con calma.",
+    "note": "Directo 15-11: título abreviado.",
+    "game": "Horizon Forbidden West",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f15-chat-grita-fua",
+    "filter": "cohost",
+    "input": "El chat no para de gritar FUA mientras Manu avanza.",
+    "note": "Directo 15-11: afirma lo que hace el chat sin hecho de chat.",
+    "game": "Horizon Forbidden West",
+    "facts": [
+      {
+        "id": "h1",
+        "tipo": "estado",
+        "texto": "Manu juega Horizon Forbidden West",
+        "claves": ["manu", "horizon"]
+      }
+    ],
+    "hecho": "h1",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f15-chat-con-hecho",
+    "filter": "cohost",
+    "input": "El chat anima a Manu mientras avanza.",
+    "note": "Control: hay un hecho de chat entre los ofrecidos.",
+    "game": "Horizon Forbidden West",
+    "facts": [
+      {
+        "id": "h1",
+        "tipo": "estado",
+        "texto": "Manu juega Horizon Forbidden West",
+        "claves": ["manu", "horizon"]
+      },
+      {
+        "id": "h2",
+        "tipo": "chat",
+        "texto": "El chat está animando a Manu",
+        "claves": ["chat"]
+      }
+    ],
+    "hecho": "h2",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f15-desierto-sombra",
+    "filter": "cohost",
+    "input": "Manu cruza el desierto sin mirar atrás.",
+    "note": "Directo 15-11: lugar que no sale de los hechos. Regla de lugares en modo sombra: aún no se rechaza (activar con COHOST_PLACE_RULE=on).",
+    "game": "Horizon Forbidden West",
+    "facts": [
+      {
+        "id": "h1",
+        "tipo": "estado",
+        "texto": "Manu juega Horizon Forbidden West",
+        "claves": ["manu", "horizon"]
+      }
+    ],
+    "hecho": "h1",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

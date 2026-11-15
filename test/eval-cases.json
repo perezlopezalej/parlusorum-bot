@@ -929,5 +929,101 @@
       "reply": true,
       "matchNone": ["barco", "pirata", "\\bpower\\b", "\\blads?\\b"]
     }
+  },
+  {
+    "id": "d15-mencion-responde-pregunta",
+    "input": "dios fua en los dos",
+    "lastBot": "¿Te pierdes en el mapa o en el sofá?",
+    "game": "Horizon Forbidden West",
+    "deaths": 1,
+    "note": "15-11: el usuario responde a la pregunta del bot; no se le devuelve la pregunta. Informativo: depende de que el eval simule el hilo.",
+    "informativo": true,
+    "expect": {
+      "reply": true,
+      "matchNone": ["¿Los dos qu[eé]"]
+    }
+  },
+  {
+    "id": "d15-mencion-chiste-moto",
+    "input": "dios fua van dos en una moto y se cae el de en medio",
+    "game": "Horizon Forbidden West",
+    "deaths": 1,
+    "note": "15-11: un chiste se sigue o se ríe, no se responde al pie de la letra.",
+    "expect": {
+      "reply": true,
+      "matchNone": ["ambulancia", "est[aá] bien?"]
+    }
+  },
+  {
+    "id": "d15-dios-fua-este-titulo",
+    "input": "!dios_fua que me puedes decir de este titulo ?",
+    "game": "Horizon Forbidden West",
+    "deaths": 1,
+    "note": "14-11: «este título» es el juego del directo, no «no sé a qué título te refieres».",
+    "expect": {
+      "route": "question",
+      "reply": true,
+      "matchNone": ["no s[eé] a qu[eé] t[ií]tulo"]
+    }
+  },
+  {
+    "id": "d15-dios-fua-lore",
+    "input": "!dios_fua de que va este juego?",
+    "game": "Horizon Forbidden West",
+    "deaths": 1,
+    "note": "De qué va: resumen en español, sin coletillas del FUA.",
+    "expect": {
+      "route": "question",
+      "reply": true,
+      "matchNone": ["y el FUA, de que"]
+    }
+  },
+  {
+    "id": "d15-cohost-muertes-una-vez",
+    "gen": "cohost",
+    "runs": 6,
+    "game": "Horizon Forbidden West",
+    "deaths": 1,
+    "minutes": 150,
+    "chat": [
+      ["markosssx", "buenas"],
+      ["gangar79", "aquí andamos"],
+      ["stewar32", "hola"]
+    ],
+    "note": "15-11: con una sola caída, ningún comentario dice «otra caída» ni afirma lo que hace el chat. Puede callar.",
+    "expect": {
+      "mayStaySilent": true,
+      "matchNone": ["[Oo]tra (muerte|ca[ií]da)", "no para de partir", "esa Horizon"]
+    }
+  },
+  {
+    "id": "d15-cohost-sin-lugares",
+    "gen": "cohost",
+    "runs": 6,
+    "game": "Horizon Forbidden West",
+    "deaths": 0,
+    "minutes": 60,
+    "chat": [
+      ["markosssx", "buenas"],
+      ["gangar79", "aquí andamos"],
+      ["stewar32", "hola"]
+    ],
+    "note": "15-11: sin hechos de lugares no aparecen desierto, selva ni montañas. Informativo mientras la regla está en modo sombra.",
+    "informativo": true,
+    "expect": {
+      "mayStaySilent": true,
+      "matchNone": ["desierto", "selva", "monta[ñn]as?"]
+    }
+  },
+  {
+    "id": "d15-mencion-saludo-titulo",
+    "input": "dios fua hola",
+    "game": "Horizon Forbidden West",
+    "deaths": 0,
+    "note": "Control: saludo normal; si nombra el juego, con el título completo.",
+    "expect": {
+      "reply": true,
+      "matchNone": ["\bHorizon\b(?! Forbidden)"]
+    }
   }
 ]
