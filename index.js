@@ -33,6 +33,7 @@ const {
   restorePendingEnd,
 } = require('./src/eventsub');
 const commands = require('./src/commands/handler');
+const { splitCommandArgs } = require('./src/commands/stats');
 const { resetSessionCounters } = commands;
 
 const games = require('./src/games/handler');
@@ -426,7 +427,7 @@ client.on('message', async (channel, tags, message, self) => {
 
     if (!msg.startsWith(PREFIX)) return;
 
-    const args = msg.slice(PREFIX.length).split(' ');
+    const args = splitCommandArgs(msg.slice(PREFIX.length));
     const command = args[0].toLowerCase();
 
     logger.debug(`💬 [${username}] !${command}`);

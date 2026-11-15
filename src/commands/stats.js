@@ -3,6 +3,14 @@ const { classifyGameMatch } = require('../utils/game-match');
 
 const MAX_DEATHS_ADD = 10;
 
+// Trocea lo que sigue al prefijo en [comando, ...argumentos]. «!boss+1» y «!muertes+1» (sin espacio) valen como «!boss +1»;
+// el resto de comandos se parte solo por espacios, como siempre.
+function splitCommandArgs(body) {
+  const m = /^(boss|muertes)([+-]\d+)(?=\s|$)/i.exec(String(body || ''));
+  const text = m ? `${m[1]} ${m[2]}${String(body).slice(m[0].length)}` : String(body || '');
+  return text.split(' ');
+}
+
 // Interpreta los argumentos de !muertes (args[0] es el comando)
 // → { type: 'show' | 'reset' | 'add' | 'bad_format' | 'game', n?, game? }
 function parseMuertesArgs(args) {
@@ -106,6 +114,7 @@ function findUserByName(users, name) {
 module.exports = {
   gameTotalReply,
   MAX_DEATHS_ADD,
+  splitCommandArgs,
   parseMuertesArgs,
   parseBossArgs,
   applyBossDelta,

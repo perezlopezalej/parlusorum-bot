@@ -106,3 +106,15 @@ describe('!muertes / !boss <texto>: nunca se repite lo que escribe el usuario', 
     });
   });
 });
+
+test('splitCommandArgs: «!boss+1» y «!muertes+1» sin espacio valen como con espacio', () => {
+  const { splitCommandArgs, parseBossArgs, parseMuertesArgs } = require('../src/commands/stats');
+  assert.deepEqual(splitCommandArgs('boss+1'), ['boss', '+1']);
+  assert.deepEqual(splitCommandArgs('MUERTES+2'), ['MUERTES', '+2']);
+  assert.deepEqual(splitCommandArgs('boss-1'), ['boss', '-1']);
+  assert.deepEqual(splitCommandArgs('boss +1'), ['boss', '+1']);
+  assert.deepEqual(splitCommandArgs('dios_fua hola+1'), ['dios_fua', 'hola+1']);
+  assert.deepEqual(splitCommandArgs('boss+1x'), ['boss+1x']);
+  assert.deepEqual(parseBossArgs(splitCommandArgs('boss+1')), { type: 'add', n: 1 });
+  assert.deepEqual(parseMuertesArgs(splitCommandArgs('muertes+1')), { type: 'add', n: 1 });
+});
