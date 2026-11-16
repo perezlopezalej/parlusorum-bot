@@ -125,7 +125,7 @@ Cualquiera puede borrar lo suyo con `!fua_olvidame`; los mods, con `!fua_olvidar
 Requisitos: Node.js 22+, una cuenta de Twitch para el bot, una aplicación en la consola de desarrolladores de Twitch y una clave de Groq. Supabase es opcional (sin ella, `NPOINT_BIN_ID`); IGDB usa el mismo `CLIENT_ID` y secreto de Twitch.
 
 ```bash
-git clone https://github.com/perezlopezalej/parlusorum-bot
+git clone https://github.com/perezlopezalej/parlusorum-bot.git
 cd parlusorum-bot
 npm install
 cp .env.example .env     # nunca subas .env al repositorio
