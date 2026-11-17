@@ -1,0 +1,5 @@
+[33m08c253b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfix/directo-16-11[m[33m)[m feat: los contadores del stream y el consumo diario de Groq sobreviven a un reinicio (bot_state, guardado cada 30 s) y el arranque lo registra
+[33m066c44a[m feat: los contadores del stream y el consumo diario de Groq sobreviven a un reinicio (bot_state, guardado cada 30 s) y el arranque lo registra
+[33m7657504[m fix: las menciones reciben caidas, jefes y tiempo del directo y no pueden citar una cifra de caidas distinta del contador; el timer compara con las caidas de su ventana
+[33mf0260fd[m feat: completar el titulo del juego abreviado en vez de descartar la respuesta (Horizon -> Horizon Forbidden West)
+[33m66fd14e[m feat: las preguntas por planes y horarios se responden con plantilla fija que remite al Discord, y crew como anglicismo

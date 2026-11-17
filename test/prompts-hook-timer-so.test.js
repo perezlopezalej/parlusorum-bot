@@ -357,9 +357,14 @@ describe('timer IA: resumen de la última media hora', () => {
       await sleep(250);
       assert.equal(calls, 0, 'nada relevante: no se llama a la IA');
       assert.equal(said.length, 0);
-      state.addNarrativeEvent('death', 'Manu ha muerto', 2);
-      state.addNarrativeEvent('boss', 'Jefe derrotado (#1 de este stream)');
-      await sleep(400);
+      // La ventana del resumen y el intervalo son los mismos 80 ms: si el tick llega tarde, los sucesos ya han caducado.
+      // Se repite el suceso (con la narrativa limpia, para que las cifras no se acumulen) hasta que el resumen sale.
+      for (let i = 0; i < 12 && !said.some((m) => /última media hora/.test(m)); i++) {
+        state.resetStreamNarrative();
+        state.addNarrativeEvent('death', 'Manu ha muerto', 2);
+        state.addNarrativeEvent('boss', 'Jefe derrotado (#1 de este stream)');
+        await sleep(200);
+      }
     } finally {
       timers.stop();
     }

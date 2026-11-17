@@ -16,7 +16,9 @@ function setApiSender(fn) {
   apiSender = fn;
 }
 
-// Un mensaje por API (o IRC si la API no está o falla). Devuelve 'sent' | 'dropped'
+// Un mensaje por API (o IRC si la API no está o falla).
+// → { outcome: 'sent' | 'dropped', text, threaded, replyTo }: `text` es lo que se envió de verdad (sin la arroba si salió en
+// hilo), `threaded` si salió como respuesta y `replyTo` el id del mensaje padre (null si no hubo hilo).
 // Con CHAT_REPLY_THREAD=1 las respuestas a un usuario salen en hilo y sin la arroba inicial; si Twitch rechaza el mensaje
 // padre (400), el mismo texto sale otra vez sin hilo y con su arroba.
 async function deliver(sayFn, channel, msg, meta) {
@@ -24,25 +26,27 @@ async function deliver(sayFn, channel, msg, meta) {
     try {
       const thread = planReply(msg, meta);
       let r;
+      let used = { text: msg, threaded: false, replyTo: null };
       if (thread) {
         try {
           r = await apiSender(thread.text, { replyTo: thread.replyTo });
+          used = { text: thread.text, threaded: true, replyTo: thread.replyTo };
         } catch (e) {
           if (!e.replyParent) throw e;
           logger.info('Chat API: el mensaje al que se contestaba ya no es válido; se envía sin hilo');
         }
       }
       if (!r) r = await apiSender(msg);
-      if (r.sent) return 'sent';
+      if (r.sent) return { outcome: 'sent', ...used };
       logger.warn(`Chat API: Twitch no publicó el mensaje (${r.reason}): "${String(msg).slice(0, 60)}"`);
       state.recordFilterDiscard('salida', `api:${r.reason}`);
-      return 'dropped';
+      return { outcome: 'dropped', ...used };
     } catch (e) {
       logger.warn(`Chat API no disponible (${e.message}); se envía por IRC`);
     }
   }
   await sayFn(channel, msg);
-  return 'sent';
+  return { outcome: 'sent', text: msg, threaded: false, replyTo: null };
 }
 
 // Límites oficiales Twitch IRC:
@@ -135,14 +139,19 @@ async function _sendNext() {
     _window.push(Date.now());
     let timer;
     try {
-      const outcome = await Promise.race([
+      const delivered = await Promise.race([
         deliver(sayFn, channel, msg, meta),
         new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error(`say sin respuesta en ${SAY_TIMEOUT_MS} ms`)), SAY_TIMEOUT_MS);
         }),
       ]);
-      if (outcome === 'sent') {
-        chatlog.logBotMessage(BOT_NAME, msg, meta);
+      if (delivered.outcome === 'sent') {
+        // El registro guarda el texto tal como salió y si fue en hilo (a quién se contestó, en reply_parent_login)
+        chatlog.logBotMessage(BOT_NAME, delivered.text, {
+          ...meta,
+          threaded: delivered.threaded,
+          replyTo: delivered.threaded ? meta?.replyTo?.nick : null,
+        });
         state.recordFilterSent('salida');
       }
     } catch (e) {

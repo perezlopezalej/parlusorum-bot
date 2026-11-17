@@ -130,7 +130,12 @@ describe('chat_log: reply_parent_login', () => {
   test('buildRow guarda el destinatario en minúsculas solo en mensajes de usuario', () => {
     assert.equal(buildRow({ username: 'a', message: 'x', replyTo: 'Dios_Fua' }).reply_parent_login, 'dios_fua');
     assert.equal(buildRow({ username: 'a', message: 'x' }).reply_parent_login, null);
+    // el bot solo guarda destinatario si salió en hilo (su texto ya no lleva la arroba)
     assert.equal(buildRow({ username: 'b', message: 'x', isBot: true, replyTo: 'z' }).reply_parent_login, null);
+    assert.equal(
+      buildRow({ username: 'b', message: 'x', isBot: true, replyTo: 'Z', threaded: true }).reply_parent_login,
+      'z',
+    );
   });
 });
 

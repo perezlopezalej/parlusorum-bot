@@ -908,8 +908,8 @@ async function insertChatLog(rows) {
   const db = getClient();
   if (!db) throw new Error('Supabase no configurado');
   let { error } = await db.from('chat_log').insert(rows);
-  // Migraciones 006/010 sin aplicar: guardar el chat sin las columnas nuevas antes que perderlo
-  for (const col of ['reply_parent_login', 'user_id']) {
+  // Migraciones 006/010/012 sin aplicar: guardar el chat sin las columnas nuevas antes que perderlo
+  for (const col of ['threaded', 'reply_parent_login', 'user_id']) {
     if (error && new RegExp(col).test(error.message || '')) {
       rows = rows.map(({ [col]: _omit, ...rest }) => rest);
       ({ error } = await db.from('chat_log').insert(rows));

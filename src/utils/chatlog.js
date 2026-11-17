@@ -72,10 +72,15 @@ function buildRow({
   latencyMs = null,
   sessionId = null,
   replyTo = null,
+  threaded = false,
   at = new Date(),
 }) {
+  // Usuarios: login del autor del mensaje al que contestan. Bot: solo si salió en hilo (el texto ya no lleva la @arroba)
+  const parent = replyTo && typeof replyTo === 'object' ? replyTo.nick : replyTo;
+  const bothThreaded = isBot && threaded && !!parent;
   return {
-    reply_parent_login: !isBot && replyTo ? String(replyTo).toLowerCase().slice(0, 50) : null,
+    reply_parent_login: (!isBot || bothThreaded) && parent ? String(parent).toLowerCase().slice(0, 50) : null,
+    threaded: bothThreaded,
     created_at: at.toISOString(),
     session_id: sessionId ?? null,
     user_id: !isBot && userId ? String(userId).slice(0, 30) : null,
@@ -100,7 +105,8 @@ function localDateStr(d) {
 function formatLine(row) {
   const d = new Date(row.created_at);
   const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-  const tag = row.is_bot ? ` [${row.origin || 'otro'}]` : '';
+  // «↩» marca que el bot contestó en hilo (el texto ya no lleva la arroba)
+  const tag = row.is_bot ? ` [${row.origin || 'otro'}${row.threaded ? ' ↩' : ''}]` : '';
   return `${time} ${row.username}${tag}: ${String(row.message).replace(/\r?\n/g, ' ')}`;
 }
 
@@ -175,7 +181,16 @@ function logUserMessage(username, message, replyTo = null, userId = null) {
 
 function logBotMessage(username, message, explicit) {
   try {
-    enqueue(buildRow({ username, message, isBot: true, ...currentMeta(explicit), sessionId: currentSessionId() }));
+    enqueue(
+      buildRow({
+        username,
+        message,
+        isBot: true,
+        ...currentMeta(explicit),
+        threaded: !!explicit?.threaded,
+        sessionId: currentSessionId(),
+      }),
+    );
   } catch {
     /* ignorado */
   }

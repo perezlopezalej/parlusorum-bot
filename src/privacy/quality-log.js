@@ -116,6 +116,7 @@ function buildQualityLog(
       return line;
     }
     const line = { t, who: 'bot', text: pseudo.text(row.message), origin: row.origin || 'otro' };
+    if (row.threaded && row.reply_parent_login) line.reply_to = pseudo.aliasOf(row.reply_parent_login); // en hilo: sin @ en el texto
     if (row.model) line.model = row.model;
     if (Number.isFinite(row.latency_ms)) line.latency_ms = row.latency_ms;
     const s = scoreByRow.get(row);

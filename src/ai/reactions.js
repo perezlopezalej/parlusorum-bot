@@ -26,6 +26,13 @@ function addresseeOf(message) {
   return m ? m[1].toLowerCase() : null;
 }
 
+// A quién va dirigido un mensaje del bot: si salió en hilo, el texto ya no lleva la «@arroba» y el destinatario está en
+// reply_parent_login; si no, se lee de la arroba inicial
+function addresseeOfRow(row) {
+  const parent = String(row?.reply_parent_login || '').toLowerCase();
+  return row?.is_bot && parent ? parent : addresseeOf(row?.message);
+}
+
 // Media de usuarios distintos que se ríen en 60 s (ventanas de un minuto a lo largo del stream): la risa "normal" del chat
 function chatBaseline(rows) {
   const users = rows
@@ -49,7 +56,7 @@ function chatBaseline(rows) {
 function scoreReaction(bot, next, { baseline = 0, botName = 'dios_fua', streamer = process.env.CHANNEL } = {}) {
   const streamerLogin = String(streamer || '').toLowerCase();
   const t0 = timeOf(bot);
-  const addressee = addresseeOf(bot.message);
+  const addressee = addresseeOfRow(bot);
   const inWindow = next.filter((r) => !r.is_bot && timeOf(r) > t0 && timeOf(r) - t0 <= WINDOW_MS);
   const reactors = new Set();
   const laughUsers = new Set();
@@ -156,6 +163,7 @@ module.exports = {
   isNegative,
   namesBot,
   addresseeOf,
+  addresseeOfRow,
   chatBaseline,
   scoreReaction,
   scoreSession,
