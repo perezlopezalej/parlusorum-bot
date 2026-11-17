@@ -2,7 +2,6 @@
 // Así el modelo no recibe líneas literales del chat (jerga, nicks, chistes internos) y no puede copiarlas.
 // Módulo puro: sin estado ni I/O. Lo usan el cohost (lista <hechos>) y el resumen de media hora (tema del chat).
 const { approxDuration, mentionsEthnicTerms, personalMatch } = require('./quality');
-const { translateGenres } = require('../utils/genres');
 
 const MAX_FACTS = 5;
 const MIN_USERS = 2; // una categoría del chat necesita al menos 2 usuarios distintos
@@ -98,7 +97,9 @@ function properNouns(text) {
 // Tema del chat en una frase neutra, o null si no hay un tema claro (charla ajena, pocos usuarios).
 // Solo se nombra una palabra del vocabulario del juego, y solo si 2+ usuarios la usan.
 // opts.minUsers: usuarios distintos que debe tener la categoría (2; el resumen de media hora pide más)
-function chatTopic(chatLines = [], { player = 'el streamer', gameWords = [], minUsers = MIN_USERS } = {}) {
+// opts.skip: categorías que no se ofrecen (ya salieron en la última hora); cae a la siguiente de la lista
+const CHAT_CATEGORIES = ['consejos', 'juego', 'animos', 'risas', 'preguntas'];
+function chatTopic(chatLines = [], { player = 'el streamer', gameWords = [], minUsers = MIN_USERS, skip = [] } = {}) {
   const byCat = new Map();
   const wordUsers = new Map();
   let total = 0;
@@ -118,8 +119,7 @@ function chatTopic(chatLines = [], { player = 'el streamer', gameWords = [], min
   }
   if (total < 3) return null;
   // Prioridad: lo que más aporta al comentario primero
-  const order = ['consejos', 'juego', 'animos', 'risas', 'preguntas'];
-  const cat = order.find((c) => (byCat.get(c)?.size || 0) >= minUsers);
+  const cat = CHAT_CATEGORIES.find((c) => !skip.includes(c) && (byCat.get(c)?.size || 0) >= minUsers);
   if (!cat) return null;
   const topWord = [...wordUsers.entries()]
     .filter(([, u]) => u.size >= MIN_USERS)
@@ -203,23 +203,21 @@ function factDue(lastAt, now = Date.now(), gapMs = FACT_GAP_MS) {
   return !lastAt || now - lastAt >= gapMs;
 }
 
-// Dato de la ficha del juego (IGDB) para hacerle una pregunta al chat cuando no hay sucesos ni charla que contar: género, año
-// de salida o premisa (el resumen en español, si ya está en caché). `used`: preguntas ya hechas en el stream (rota el dato).
-// → texto del dato, o null si la ficha no da para preguntar. Nunca inventa: solo usa lo que trae la ficha.
-function gameQuestion(sheet, { game = '', used = 0, premise = '' } = {}) {
+// Cada tema del chat (risas, consejos…) se comenta como mucho una vez por hora: se guarda como hecho `chat_<categoria>`.
+// → categorías bloqueadas ahora (su último comentario fue hace menos de gapMs). getUse = state.getFactUse.
+function blockedChatTopics(getUse, now = Date.now(), gapMs = FACT_GAP_MS) {
+  return CHAT_CATEGORIES.filter((c) => !factDue(getUse(`chat_${c}`).at, now, gapMs));
+}
+
+// Dato de la ficha del juego para preguntar al chat cuando no hay sucesos ni charla que contar: la premisa (el resumen de
+// IGDB en español que ya está en caché), nunca el género ni el año. Sin resumen en caché no hay pregunta: no se inventa.
+function gameQuestion(sheet, { game = '', premise = '' } = {}) {
   const name = game || sheet?.name || '';
-  if (!name || !sheet) return null;
-  const data = [];
-  const genres = translateGenres(sheet.genres).toLowerCase();
-  if (genres) data.push(`${name} es un juego de ${genres.replace(/, ([^,]+)$/, ' y $1')}`);
-  const year = /^(\d{4})/.exec(String(sheet.released || ''))?.[1];
-  if (year) data.push(`${name} salió en ${year}`);
   const story = String(premise || '')
     .trim()
     .replace(/[.\s]+$/, '');
-  if (story) data.push(`${name} va de esto: ${story}`);
-  if (!data.length) return null;
-  return data[Math.max(0, Math.floor(used)) % data.length];
+  if (!name || !story) return null;
+  return `${name} va de esto: ${story}`;
 }
 
 // Hechos del momento: lista de {id, tipo, texto, claves}. Tipos: suceso, chat, estado, pregunta, tiempo.
@@ -230,7 +228,7 @@ function gameQuestion(sheet, { game = '', used = 0, premise = '' } = {}) {
 // `offerTime`: false si ya hubo un comentario de tiempo en la última hora (el hecho `tiempo` no se ofrece). `question`: dato de
 // la ficha para preguntar al chat (`gameQuestion`); solo entra si no hay sucesos ni charla que contar. `deathCommentedAt`: cuándo
 // se comentaron caídas por última vez (las anteriores no vuelven como «acaba de caer»); `offerDeathTotal`: false si el total de
-// caídas ya se dijo en la última hora. Los hechos de caídas llevan `muertes: 'nueva' | 'total'`.
+// caídas ya se dijo en la última hora. `skipChat`: temas del chat ya comentados en la última hora. Los hechos de caídas llevan `muertes: 'nueva' | 'total'`.
 // Una lista con el rato de directo como único hecho no da para comentar: se devuelve vacía (el cohost calla).
 // No inventa nada: cada hecho sale de un dato recibido. Puede devolver menos de 2 hechos si no hay datos.
 function buildMomentFacts({
@@ -250,6 +248,7 @@ function buildMomentFacts({
   question = null,
   deathCommentedAt = 0,
   offerDeathTotal = true,
+  skipChat = [],
 } = {}) {
   const facts = [];
   const push = (tipo, texto, extra = [], more = {}) =>
@@ -294,7 +293,7 @@ function buildMomentFacts({
       push('suceso', `Hoy ${bosses === 1 ? 'ha caído' : 'han caído'} ${bossCount(bosses)}`, KEYS.jefe);
   }
 
-  const topic = chatTopic(chatLines, { player, gameWords });
+  const topic = chatTopic(chatLines, { player, gameWords, skip: skipChat });
   if (topic)
     push('chat', topic.texto, [...KEYS.chat, ...KEYS[topic.categoria], ...(topic.palabra ? [topic.palabra] : [])], {
       categoria: topic.categoria,
@@ -384,6 +383,8 @@ module.exports = {
   FACT_GAP_MS,
   buildRecapFacts,
   chatTopic,
+  blockedChatTopics,
+  CHAT_CATEGORIES,
   classifyLine,
   gameVocabulary,
   properNouns,

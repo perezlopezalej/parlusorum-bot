@@ -51,7 +51,15 @@ const {
 } = require('../utils/narrative');
 const factcheck = require('./factcheck');
 const { cachedSummaryEs } = require('./game-sheet');
-const { buildMomentFacts, factDue, gameQuestion, gameVocabulary, properNouns, renderFacts } = require('./moment-facts');
+const {
+  buildMomentFacts,
+  blockedChatTopics,
+  factDue,
+  gameQuestion,
+  gameVocabulary,
+  properNouns,
+  renderFacts,
+} = require('./moment-facts');
 const { pickBest } = require('./pick-best');
 const quality = require('./quality');
 const { canMakeRequest } = require('../utils/ratelimit');
@@ -309,9 +317,11 @@ async function runCohost(client, channel, moment = null) {
     // El rato de directo y la pregunta sobre el juego se ofrecen como mucho una vez por hora (13-11: 9 de 25 comentarios
     // hablaban del tiempo). La pregunta sale de la ficha de IGDB y solo entra si no hay sucesos ni charla que contar.
     const offerTime = factDue(getFactUse('tiempo').at, now);
-    const question = factDue(getFactUse('pregunta').at, now)
-      ? gameQuestion(sheet, { game, used: getFactUse('pregunta').count, premise: cachedSummaryEs(game) })
-      : null;
+    // La pregunta de la ficha sale una sola vez por directo y se basa en de qué va el juego (el resumen en caché; sin él no se ofrece)
+    const question =
+      getFactUse('pregunta').count === 0 ? gameQuestion(sheet, { game, premise: cachedSummaryEs(game) }) : null;
+    // Cada tema del chat (risas, consejos…) como mucho una vez por hora: 16-11, «terapia de risa» tres veces seguidas
+    const skipChat = blockedChatTopics(getFactUse, now);
     const factsAvoiding = (avoid) =>
       buildMomentFacts({
         game,
@@ -330,6 +340,7 @@ async function runCohost(client, channel, moment = null) {
         question,
         deathCommentedAt,
         offerDeathTotal,
+        skipChat,
       });
     let momentFacts = factsAvoiding(recentFactTypes);
     if (!momentFacts.length) {
@@ -539,8 +550,11 @@ async function runCohost(client, channel, moment = null) {
     // el tipo de hecho comentado pasa al final de la rotación
     if (!moment) recentFactTypes = [...recentFactTypes.filter((t) => t !== sentType), sentType].slice(-3);
     if (sentType === 'tiempo' || quality.talksStreamTime(reply)) markFactUse('tiempo', now);
-    if (sentType === 'pregunta') markFactUse('pregunta', now);
     const sentFact = quality.factFor(reply, momentFacts, replyFact);
+    // La pregunta de la ficha cuenta como hecha si se ofreció y el comentario es una pregunta, aunque no se reconozca el hecho
+    if (sentType === 'pregunta' || (momentFacts.some((f) => f.tipo === 'pregunta') && reply.includes('?')))
+      markFactUse('pregunta', now);
+    if (sentFact?.tipo === 'chat' && sentFact.categoria) markFactUse(`chat_${sentFact.categoria}`, now);
     if (sentFact?.muertes === 'nueva') markFactUse('muerte_nueva', now);
     if (sentFact?.muertes === 'total' || (sentFact?.muertes && quality.citesDeathCount(reply, deathCount)))
       markFactUse('muertes_total', now);

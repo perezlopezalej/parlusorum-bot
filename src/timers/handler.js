@@ -10,6 +10,7 @@ const {
   getStreamNarrative,
   markStructure,
   markFactUse,
+  getFactUse,
   getUsedStructures,
   getBotHistory,
   addBotMessage,
@@ -18,7 +19,7 @@ const {
   getNamedUsers,
 } = require('../utils/state');
 const { windowFacts } = require('../utils/narrative');
-const { chatTopic, gameVocabulary, properNouns } = require('../ai/moment-facts');
+const { chatTopic, blockedChatTopics, gameVocabulary, properNouns } = require('../ai/moment-facts');
 const { pickBest } = require('../ai/pick-best');
 const { canMakeRequest } = require('../utils/ratelimit');
 const channelConfig = require('../../config/channel.json');
@@ -107,7 +108,12 @@ async function runTimerIA(client) {
   const playerName = { pao: 'Pao', ambos: 'Manu y Pao' }[getPlayer()] || 'Manu';
   const topicFor = (gameWords) =>
     chatLines.length >= MIN_CHAT_FOR_SUMMARY
-      ? chatTopic(chatLines, { player: playerName, gameWords, minUsers: MIN_USERS_FOR_TOPIC })
+      ? chatTopic(chatLines, {
+          player: playerName,
+          gameWords,
+          minUsers: MIN_USERS_FOR_TOPIC,
+          skip: blockedChatTopics(getFactUse, now), // un tema del chat como mucho una vez por hora
+        })
       : null;
   if (!firstFacts.relevant && !topicFor(gameVocabulary(game))) {
     logger.info('Timer IA: nada relevante en la última media hora, no se envía');
@@ -230,6 +236,7 @@ async function runTimerIA(client) {
         markFactUse('muerte_nueva');
         markFactUse('muertes_total'); // el cohost no vuelve a hablar de caídas justo después
       }
+      if (topic) markFactUse(`chat_${topic.categoria}`);
       markNamed(quality.namesIn(msg, ['pao']));
       addBotMessage(msg);
       recentTimerIA.push(msg);

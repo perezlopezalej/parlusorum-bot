@@ -21,12 +21,20 @@ const router = require('../src/utils/ai-router');
 const state = require('../src/utils/state');
 const style = require('../src/ai/style');
 const q = require('../src/ai/quality');
-const { buildMomentFacts, factDue, gameQuestion, FACT_GAP_MS } = require('../src/ai/moment-facts');
-const { cachedSummaryEs, resetSummaryCache } = require('../src/ai/game-sheet');
+const {
+  buildMomentFacts,
+  blockedChatTopics,
+  chatTopic,
+  factDue,
+  gameQuestion,
+  FACT_GAP_MS,
+} = require('../src/ai/moment-facts');
+const { cachedSummaryEs, resetSummaryCache, summarizeGameEs } = require('../src/ai/game-sheet');
 const ai = require('../src/ai/handler');
 
 const NOW = 1_000_000_000;
 const EXAMPLES = style.loadExamples().cohost.map((e) => e.texto);
+const PREMISE = 'Un joven recorre una tierra prohibida para salvar a una chica.';
 const SHEET = {
   name: GAME,
   released: '2005-10-18',
@@ -200,21 +208,24 @@ describe('hechos que salen una vez por hora', () => {
 });
 
 describe('hecho `pregunta`: una pregunta al chat sobre el juego', () => {
-  test('gameQuestion saca el dato de la ficha y rota: género, año y premisa', () => {
-    assert.equal(gameQuestion(SHEET, { game: GAME }), `${GAME} es un juego de aventura y puzles`);
-    assert.equal(gameQuestion(SHEET, { game: GAME, used: 1 }), `${GAME} salió en 2005`);
-    assert.equal(gameQuestion(SHEET, { game: GAME, used: 2 }), `${GAME} es un juego de aventura y puzles`);
+  test('gameQuestion se basa en de qué va el juego (el resumen en español), no en género ni año', () => {
     assert.equal(
-      gameQuestion(SHEET, { game: GAME, used: 2, premise: 'Un joven recorre una tierra prohibida.' }),
-      `${GAME} va de esto: Un joven recorre una tierra prohibida`,
+      gameQuestion(SHEET, { game: GAME, premise: PREMISE }),
+      `${GAME} va de esto: Un joven recorre una tierra prohibida para salvar a una chica`,
     );
+    assert.doesNotMatch(gameQuestion(SHEET, { game: GAME, premise: PREMISE }), /género|aventura|2005/);
   });
 
-  test('sin ficha o sin datos no hay pregunta (no se inventa)', () => {
+  test('sin resumen en caché (o sin ficha) no hay pregunta: no se inventa', () => {
+    assert.equal(gameQuestion(SHEET, { game: GAME }), null);
+    assert.equal(gameQuestion(SHEET, { game: GAME, premise: '  ' }), null);
     assert.equal(gameQuestion(null, { game: GAME }), null);
     assert.equal(gameQuestion({ name: GAME }, { game: GAME }), null);
-    assert.equal(gameQuestion({ name: GAME, genres: 'Unknown Genre' }, { game: GAME }), null);
-    assert.equal(gameQuestion(SHEET, {}), `${GAME} es un juego de aventura y puzles`, 'usa el nombre de la ficha');
+    assert.equal(
+      gameQuestion(SHEET, { premise: PREMISE }),
+      `${GAME} va de esto: Un joven recorre una tierra prohibida para salvar a una chica`,
+      'usa el nombre de la ficha',
+    );
   });
 
   test('cachedSummaryEs no llama a la IA: sin caché devuelve vacío', () => {
@@ -223,13 +234,16 @@ describe('hecho `pregunta`: una pregunta al chat sobre el juego', () => {
   });
 
   test('solo entra si no hay sucesos ni charla que contar', () => {
-    const question = gameQuestion(SHEET, { game: GAME });
+    const question = gameQuestion(SHEET, { game: GAME, premise: PREMISE });
     const calm = buildMomentFacts({ game: GAME, minutes: 150, player: 'Manu', now: NOW, question });
     assert.deepEqual(
       calm.map((f) => f.tipo),
       ['estado', 'pregunta', 'tiempo'],
     );
-    assert.equal(calm[1].texto, `Para preguntar al chat: ${GAME} es un juego de aventura y puzles`);
+    assert.equal(
+      calm[1].texto,
+      `Para preguntar al chat: ${GAME} va de esto: Un joven recorre una tierra prohibida para salvar a una chica`,
+    );
     const withDeaths = buildMomentFacts({
       game: GAME,
       minutes: 150,
@@ -262,7 +276,7 @@ describe('hecho `pregunta`: una pregunta al chat sobre el juego', () => {
       game: GAME,
       player: 'Manu',
       now: NOW,
-      question: gameQuestion(SHEET, { game: GAME }),
+      question: gameQuestion(SHEET, { game: GAME, premise: PREMISE }),
     });
     const id = facts.find((f) => f.tipo === 'pregunta').id;
     const rule = (t) => q.validateCohost(t, { deathCount: 0, facts, hecho: id, game: GAME }).rule;
@@ -307,7 +321,7 @@ describe('prompt del cohost: un candidato por hecho', () => {
   test('el hecho `pregunta` pide una pregunta al chat', () => {
     assert.match(
       task({ facts: [fact(1), fact(2, 'pregunta')] }),
-      /El comentario del hecho h2 es una pregunta al chat sobre ese dato del juego\./,
+      /El comentario del hecho h2 es una pregunta al chat sobre de qué va el juego, con la idea del dato\./,
     );
     assert.doesNotMatch(task({ facts: [fact(1), fact(2, 'tiempo')] }), /pregunta al chat/);
   });
@@ -492,45 +506,107 @@ describe('runCohost: tiempo una vez por hora, un candidato por hecho y pregunta 
     assert.equal(sent.length, 1);
   });
 
-  test('sin sucesos ni charla: pregunta al chat con un dato de la ficha, una vez por hora y rotando el dato', async () => {
+  test('sin sucesos ni charla: pregunta al chat sobre de qué va el juego, solo con resumen en caché y una vez por directo', async () => {
     offset = 72 * 60 * 60000;
     sheet = SHEET;
     startStream(10); // aún no hay rato de directo que contar
-    const QUESTIONS = {
-      aventura: '¿A quién le gustan los juegos de aventura como este, Lusorums?',
-      2005: '¿Quién jugó a Shadow of the Colossus cuando salió en 2005?',
-    };
-    stubModels((user) => {
-      const h = factId(user, /Para preguntar al chat/);
-      const key = Object.keys(QUESTIONS).find((k) => user.includes(k));
-      return h ? [{ hecho: h, giro: 'curiosidad', frase: QUESTIONS[key] }] : [];
-    });
-    chatter(0);
-    assert.equal(await ai.runCohost(client, '#parlusorum', null), 'sent');
-    assert.match(
-      generated()[0].messages[1].content,
-      /h2\. Para preguntar al chat: Shadow of the Colossus es un juego de aventura y puzles\n/,
-    );
-    assert.match(generated()[0].messages[0].content, /El comentario del hecho h2 es una pregunta al chat/);
-    assert.equal(sent[0].msg, QUESTIONS.aventura);
-    assert.equal(state.getFactUse('pregunta').count, 1);
+    const QUESTION = '¿Quién sabe de qué va Shadow of the Colossus, Lusorums?';
+    const offered = () => generated().at(-1).messages[1].content;
+    const ask = () =>
+      stubModels((user) => {
+        const h = factId(user, /Para preguntar al chat/);
+        return h ? [{ hecho: h, giro: 'curiosidad', frase: QUESTION }] : [];
+      });
 
-    // un cuarto de hora después ya no se ofrece la pregunta
+    // sin resumen en caché la pregunta no se ofrece (ni género ni año como sustituto)
+    resetSummaryCache();
+    ask();
+    chatter(0);
+    await ai.runCohost(client, '#parlusorum', null);
+    assert.doesNotMatch(offered(), /Para preguntar al chat/);
+    assert.equal(state.getFactUse('pregunta').count, 0);
+
+    // con el resumen ya generado sí, con la premisa
+    router.setTransport('groq', async () => text(PREMISE));
+    await summarizeGameEs(SHEET);
+    ask();
     offset += 15 * 60000;
     chatter(1);
-    const before = generated().length;
-    await ai.runCohost(client, '#parlusorum', null);
-    assert.doesNotMatch(generated()[before].messages[1].content, /Para preguntar al chat/);
-
-    // pasada una hora vuelve, con el siguiente dato de la ficha
-    offset += 50 * 60000;
-    chatter(2);
-    const later = generated().length;
     assert.equal(await ai.runCohost(client, '#parlusorum', null), 'sent');
-    assert.match(
-      generated()[later].messages[1].content,
-      /Para preguntar al chat: Shadow of the Colossus salió en 2005/,
-    );
-    assert.equal(sent.at(-1).msg, QUESTIONS[2005]);
+    assert.match(offered(), new RegExp(`Para preguntar al chat: ${GAME} va de esto: Un joven recorre`));
+    assert.match(generated().at(-1).messages[0].content, /El comentario del hecho h\d es una pregunta al chat/);
+    assert.equal(sent.at(-1).msg, QUESTION);
+    assert.equal(state.getFactUse('pregunta').count, 1);
+
+    // una sola vez por directo: ni una hora ni cuatro después
+    for (const extra of [50, 180]) {
+      offset += extra * 60000;
+      chatter(2);
+      const before = generated().length;
+      await ai.runCohost(client, '#parlusorum', null);
+      assert.doesNotMatch(generated()[before].messages[1].content, /Para preguntar al chat/);
+    }
+  });
+
+  test('un tema del chat (risas) sale como mucho una vez por hora y cae al siguiente tema', async () => {
+    offset = 72 * 60 * 60000;
+    startStream(10);
+    resetSummaryCache();
+    const laugh = (n) => ai.addToHistory(`risas${n}`, 'jajajajaja');
+    stubModels((user) => {
+      const h = factId(user, /El chat/);
+      return h ? [{ hecho: h, giro: 'reaccion', frase: 'Qué risa tiene el chat, Manu, pura guasa del FUA.' }] : [];
+    });
+    laugh(1);
+    laugh(2);
+    laugh(3);
+    await ai.runCohost(client, '#parlusorum', null);
+    assert.match(generated().at(-1).messages[1].content, /El chat se está riendo bastante/);
+    assert.equal(state.getFactUse('chat_risas').count, 1);
+
+    // 20 minutos después: las risas ya salieron; sin otro tema, el hecho de chat no se ofrece
+    offset += 20 * 60000;
+    laugh(4);
+    laugh(5);
+    laugh(6);
+    await ai.runCohost(client, '#parlusorum', null);
+    assert.doesNotMatch(generated().at(-1).messages[1].content, /El chat se está riendo/);
+
+    // pasada la hora vuelve a poder salir
+    offset += 61 * 60000;
+    laugh(7);
+    laugh(8);
+    laugh(9);
+    await ai.runCohost(client, '#parlusorum', null);
+    assert.match(generated().at(-1).messages[1].content, /El chat se está riendo bastante/);
+  });
+});
+
+describe('temas del chat: una vez por hora (chatTopic con skip)', () => {
+  const lines = (msg, users = ['a', 'b', 'c']) => users.map((username) => ({ username, message: msg }));
+  const NOW2 = 5_000_000_000;
+
+  test('chatTopic salta las categorías bloqueadas y cae a la siguiente', () => {
+    const both = [...lines('jajajajaja'), ...lines('tienes que esquivar a la izquierda', ['d', 'e', 'f'])];
+    assert.equal(chatTopic(both, { player: 'Manu' }).categoria, 'consejos');
+    assert.equal(chatTopic(both, { player: 'Manu', skip: ['consejos'] }).categoria, 'risas');
+    assert.equal(chatTopic(both, { player: 'Manu', skip: ['consejos', 'risas'] }), null);
+    assert.equal(chatTopic(lines('jajajajaja'), { player: 'Manu', skip: ['risas'] }), null);
+  });
+
+  test('blockedChatTopics: bloqueadas durante una hora tras comentarse', () => {
+    state.resetBotHistory();
+    assert.deepEqual(blockedChatTopics(state.getFactUse, NOW2), []);
+    state.markFactUse('chat_risas', NOW2 - 10 * 60000);
+    assert.deepEqual(blockedChatTopics(state.getFactUse, NOW2), ['risas']);
+    assert.deepEqual(blockedChatTopics(state.getFactUse, NOW2 + 51 * 60000), []);
+    state.resetBotHistory();
+  });
+
+  test('buildMomentFacts con skipChat no ofrece el tema bloqueado', () => {
+    const chatLines = lines('jajajajaja');
+    const base = { game: GAME, player: 'Manu', now: NOW2, chatLines };
+    assert.ok(buildMomentFacts(base).some((f) => f.tipo === 'chat' && f.categoria === 'risas'));
+    assert.ok(!buildMomentFacts({ ...base, skipChat: ['risas'] }).some((f) => f.tipo === 'chat'));
   });
 });

@@ -123,7 +123,7 @@ function cohostTask({ event = false, candidates = 3, facts = [] } = {}) {
     return `Escribe ${max} comentarios distintos entre sí, todos con esa forma, sobre el hecho indicado, ${voice}. ${json(Array(max).fill('h1'))} Si el hecho no da para un comentario sin inventar, ${empty}.`;
   const question = targets.find((f) => f.tipo === 'pregunta');
   const questionLine = question
-    ? ` El comentario del hecho ${question.id} es una pregunta al chat sobre ese dato del juego.`
+    ? ` El comentario del hecho ${question.id} es una pregunta al chat sobre de qué va el juego, con la idea del dato.`
     : '';
   if (targets.length === 1) {
     const [only] = targets;
