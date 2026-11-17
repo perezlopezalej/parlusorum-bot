@@ -55,6 +55,7 @@ const text = (c) => ({ choices: [{ message: { content: c }, finish_reason: 'stop
 beforeEach(() => {
   sent = [];
   prompts = [];
+  state.resetBotHistory(); // el hecho de estado y el de tiempo salen una vez por hora: cada test parte de un directo nuevo
   state.resetAiBlocks();
   state.resetAiUsage();
   state.setStreamIsLive(true);

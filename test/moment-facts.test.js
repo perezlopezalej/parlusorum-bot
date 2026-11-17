@@ -105,6 +105,33 @@ describe('buildMomentFacts', () => {
     assert.ok(facts.length >= 2 && facts.length <= 5);
   });
 
+  test('el hecho de estado sale como mucho una vez por hora (17-11: cinco «Manu en Control y…»)', () => {
+    const base = { game: 'Control', player: 'Manu', minutes: 100, now: NOW };
+    assert.ok(buildMomentFacts(base).some((f) => f.tipo === 'estado'));
+    const sin = buildMomentFacts({ ...base, offerState: false });
+    assert.ok(!sin.some((f) => f.tipo === 'estado'));
+    assert.ok(!sin.some((f) => /Juegan a Control/.test(f.texto)));
+  });
+
+  test('sin estado ni nada más que contar, el cohost calla (lista vacía)', () => {
+    // solo quedaría el rato de directo, que no da para comentar
+    assert.deepEqual(
+      buildMomentFacts({ game: 'Control', player: 'Manu', minutes: 100, now: NOW, offerState: false }),
+      [],
+    );
+    // con un suceso sigue habiendo de qué hablar sin el estado
+    const withEvent = buildMomentFacts({
+      game: 'Control',
+      player: 'Manu',
+      minutes: 100,
+      deathCount: 2,
+      events: [{ type: 'death', ts: NOW - 60_000, description: 'x' }],
+      now: NOW,
+      offerState: false,
+    });
+    assert.ok(withEvent.length >= 1 && withEvent.every((f) => f.tipo !== 'estado'));
+  });
+
   test('sin datos no hay hechos', () => {
     assert.deepEqual(buildMomentFacts({}), []);
   });

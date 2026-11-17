@@ -317,6 +317,7 @@ async function runCohost(client, channel, moment = null) {
     // El rato de directo y la pregunta sobre el juego se ofrecen como mucho una vez por hora (13-11: 9 de 25 comentarios
     // hablaban del tiempo). La pregunta sale de la ficha de IGDB y solo entra si no hay sucesos ni charla que contar.
     const offerTime = factDue(getFactUse('tiempo').at, now);
+    const offerState = factDue(getFactUse('estado').at, now); // «Manu en Control y…»: como mucho una vez por hora
     // La pregunta de la ficha sale una sola vez por directo y se basa en de qué va el juego (el resumen en caché; sin él no se ofrece)
     const question =
       getFactUse('pregunta').count === 0 ? gameQuestion(sheet, { game, premise: cachedSummaryEs(game) }) : null;
@@ -337,6 +338,7 @@ async function runCohost(client, channel, moment = null) {
         moment,
         citeDeaths: !lastCitedDeaths,
         offerTime,
+        offerState,
         question,
         deathCommentedAt,
         offerDeathTotal,
@@ -554,6 +556,7 @@ async function runCohost(client, channel, moment = null) {
     // La pregunta de la ficha cuenta como hecha si se ofreció y el comentario es una pregunta, aunque no se reconozca el hecho
     if (sentType === 'pregunta' || (momentFacts.some((f) => f.tipo === 'pregunta') && reply.includes('?')))
       markFactUse('pregunta', now);
+    if (sentType === 'estado') markFactUse('estado', now);
     if (sentFact?.tipo === 'chat' && sentFact.categoria) markFactUse(`chat_${sentFact.categoria}`, now);
     if (sentFact?.muertes === 'nueva') markFactUse('muerte_nueva', now);
     if (sentFact?.muertes === 'total' || (sentFact?.muertes && quality.citesDeathCount(reply, deathCount)))

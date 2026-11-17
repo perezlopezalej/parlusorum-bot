@@ -225,7 +225,8 @@ function gameQuestion(sheet, { game = '', premise = '' } = {}) {
 // hecho (el que se comenta) va rotando de tipo. `moment`: el suceso en cola que se comenta ({ kind, description }); va el
 // primero, es «abierto» (no exige claves) y sustituye a los hechos de caídas y jefes. `citeDeaths`: false si el mensaje
 // anterior del bot ya dio la cifra de caídas. `player`: «Manu», «Pao» o «Manu y Pao».
-// `offerTime`: false si ya hubo un comentario de tiempo en la última hora (el hecho `tiempo` no se ofrece). `question`: dato de
+// `offerTime`: false si ya hubo un comentario de tiempo en la última hora (el hecho `tiempo` no se ofrece). `offerState`: lo
+// mismo para `estado` («Manu juega a Control»): 17-11, cinco comentarios «Manu en Control y…» en dos horas. `question`: dato de
 // la ficha para preguntar al chat (`gameQuestion`); solo entra si no hay sucesos ni charla que contar. `deathCommentedAt`: cuándo
 // se comentaron caídas por última vez (las anteriores no vuelven como «acaba de caer»); `offerDeathTotal`: false si el total de
 // caídas ya se dijo en la última hora. `skipChat`: temas del chat ya comentados en la última hora. Los hechos de caídas llevan `muertes: 'nueva' | 'total'`.
@@ -245,6 +246,7 @@ function buildMomentFacts({
   moment = null,
   citeDeaths = true,
   offerTime = true,
+  offerState = true,
   question = null,
   deathCommentedAt = 0,
   offerDeathTotal = true,
@@ -260,7 +262,8 @@ function buildMomentFacts({
       abierto: true,
       ...(DEATH_MOMENTS.includes(moment.kind) ? { muertes: 'nueva' } : {}),
     });
-  if (game) push('estado', `Juegan a ${game} y ${many ? 'juegan' : 'juega'} ${player}`, [game, ...KEYS.estado]);
+  if (game && offerState)
+    push('estado', `Juegan a ${game} y ${many ? 'juegan' : 'juega'} ${player}`, [game, ...KEYS.estado]);
   if (offerTime && Number.isFinite(minutes) && minutes >= MIN_MINUTES)
     push('tiempo', `Llevan ${approxDuration(minutes)} de directo`, KEYS.tiempo);
 

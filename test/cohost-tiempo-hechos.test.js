@@ -506,6 +506,40 @@ describe('runCohost: tiempo una vez por hora, un candidato por hecho y pregunta 
     assert.equal(sent.length, 1);
   });
 
+  test('17-11: «Manu en Control y…» solo una vez por hora; sin otro hecho que contar, el cohost calla', async () => {
+    offset = 96 * 60 * 60000;
+    startStream(20); // aún sin rato de directo que contar: el único hecho posible es el estado
+    const frases = [
+      'Manu sigue con el mando y el FUA no pierde detalle.',
+      'Manu empuña el mando otra vez y el FUA toma nota con calma.',
+      'Manu tiene la partida bien controlada y el FUA lo celebra.',
+    ];
+    let n = 0;
+    stubModels((user) => {
+      const h = factId(user, /Juegan a/) || 'h1';
+      return [{ hecho: h, giro: 'cariño', frase: frases[n++ % frases.length] }];
+    });
+    const results = [];
+    const offered = [];
+    for (let step = 0; step < 6; step++) {
+      chatter(step);
+      const before = generated().length;
+      results.push(await ai.runCohost(client, '#parlusorum', null));
+      offered.push(generated().length > before && /Juegan a/.test(generated()[before].messages[1].content));
+      offset += 15 * 60000;
+    }
+    // un intento cada cuarto de hora durante hora y media: el estado se ofrece en el 0.º y en el 4.º, y entre medias se calla
+    assert.deepEqual(
+      offered.map((o, i) => (o ? i : null)).filter((i) => i !== null),
+      [0, 4],
+    );
+    assert.deepEqual(
+      results.map((r) => r === 'sent'),
+      [true, false, false, false, true, false],
+    );
+    assert.equal(state.getFactUse('estado').count, 2);
+  });
+
   test('sin sucesos ni charla: pregunta al chat sobre de qué va el juego, solo con resumen en caché y una vez por directo', async () => {
     offset = 72 * 60 * 60000;
     sheet = SHEET;
