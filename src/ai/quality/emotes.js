@@ -1,8 +1,11 @@
 // Política de emotes: cuántos caben, dónde van y cómo se recortan.
 
 // --- Emotes: como mucho 1 de cada 3 mensajes ---
+// Consume los «:» pegados al nombre (el modelo escribe a veces «:emote:» al estilo Discord) para que no queden «::» sueltos
 const emoteRe = (emotes) =>
-  new RegExp(`(?:${emotes.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+  new RegExp(`:?(?:${emotes.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}):?`, 'gi');
+
+const bareEmote = (m) => m.replace(/^:|:$/g, '');
 
 const hasEmote = (text, emotes) => emotes.length > 0 && emoteRe(emotes).test(text);
 
@@ -38,7 +41,7 @@ function moveEmotesToEnd(text, emotes) {
     .replace(/ {2,}/g, ' ')
     .replace(SPACE_BEFORE_PUNCT_RE, '$1')
     .trim();
-  return body ? `${body} ${found[0]}` : found[0];
+  return body ? `${body} ${bareEmote(found[0])}` : bareEmote(found[0]);
 }
 
 // Último "palabra" del texto que es un emote a medias ("parlus1PORELPO"): lo corta max_tokens o el límite de caracteres. Se elimina.
@@ -101,7 +104,7 @@ function applyEmotes(text, allowed, emotes) {
   if (!allowed) return stripEmotes(text, emotes);
   let seen = false;
   const single = text
-    .replace(emoteRe(emotes), (m) => (seen ? '' : ((seen = true), m)))
+    .replace(emoteRe(emotes), (m) => (seen ? '' : ((seen = true), bareEmote(m))))
     .replace(EMPTY_BRACKETS_RE, '')
     .replace(/ {2,}/g, ' ')
     .replace(SPACE_BEFORE_PUNCT_RE, '$1')

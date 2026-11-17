@@ -194,7 +194,7 @@ function buildToneText(question) {
 // recent = últimos mensajes del bot: se ofrecen solo los emotes que no han cerrado ninguno de los últimos
 const emoteLineFor = (allowEmote, emotes, recent = []) =>
   allowEmote
-    ? `Puedes cerrar con un emote de esta lista: ${freshEmotes(emotes, recent).join(', ')}.`
+    ? `Puedes cerrar con un emote de esta lista: ${freshEmotes(emotes, recent).join(', ')}. Escríbelo con su nombre exacto, solo, al final del mensaje: «¡Vaya partida! ${freshEmotes(emotes, recent)[0]}».`
     : 'Escribe solo texto.';
 
 module.exports = {
