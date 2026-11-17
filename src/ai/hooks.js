@@ -148,7 +148,7 @@ async function checkChatHook(client, channel) {
             { role: 'user', content: `<suceso>${eventText}</suceso>` },
           ],
         });
-        const out = truncate((response.choices[0].message.content || '').trim());
+        const out = truncate(quality.completeGameTitle((response.choices[0].message.content || '').trim(), game));
         const check = quality.validateHook(out, {
           deathCount,
           recent: recentHooks,

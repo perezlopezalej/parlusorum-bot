@@ -32,11 +32,15 @@ test('genderedGameTitle: «esa Horizon Forbidden West» falla; «el juego» y el
   assert.equal(quality.genderedGameTitle('Hola', ''), '');
 });
 
-test('validateCohost y vetAuto rechazan el título en femenino y la abreviatura', () => {
+test('validateCohost y vetAuto rechazan el título en femenino; vetAuto completa la abreviatura', () => {
   const gendered = quality.validateCohost('Manu sigue perdido en esa Horizon Forbidden West.', { game: GAME });
   assert.equal(gendered.ok, false);
   assert.equal(gendered.rule, 'juego_nombre');
-  assert.throws(() => quality.vetAuto('¡Bienvenido a Horizon, {usuario}!', { game: GAME }), /descartado/);
+  // la abreviatura ya no se descarta en los avisos: se completa (16-11)
+  assert.equal(
+    quality.vetAuto('¡Bienvenido a Horizon, {usuario}!', { game: GAME }),
+    '¡Bienvenido a Horizon Forbidden West, {usuario}!',
+  );
   assert.throws(() => quality.vetAuto('¡Bienvenido a esa Horizon Forbidden West!', { game: GAME }), /descartado/);
   assert.equal(
     quality.vetAuto('¡Bienvenido a Horizon Forbidden West, {usuario}!', { game: GAME }),

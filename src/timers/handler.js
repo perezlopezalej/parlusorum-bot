@@ -165,7 +165,7 @@ async function runTimerIA(client) {
         emotes,
       );
       const out = quality.applyEmotePolicy(
-        truncate((response.choices[0].message.content || '').trim()),
+        truncate(quality.completeGameTitle((response.choices[0].message.content || '').trim(), game)),
         allowEmote,
         emotes,
         getBotHistory().map((e) => e.msg),

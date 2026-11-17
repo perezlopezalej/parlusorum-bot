@@ -290,6 +290,40 @@ function abbreviatedGame(text, game = '') {
   return hit || '';
 }
 
+// En vez de descartar el texto por llevar el título abreviado («Horizon» por «Horizon Forbidden West», 16-11), el código lo
+// completa. Solo si la regla de abreviatura saltaría por una palabra del principio del título que va sola, con mayúscula
+// inicial, sin comillas y sin otra palabra con mayúscula o número detrás («Horizon Zero Dawn» es otro juego). Lo que no se
+// pueda corregir con seguridad (siglas, palabras sueltas del final, otro título) se devuelve igual y el validador lo descarta.
+function completeGameTitle(text, game = '') {
+  const input = String(text ?? '');
+  const hit = abbreviatedGame(input, game);
+  if (!hit || hit !== hit.toLowerCase()) return input; // sin abreviatura, o es una sigla
+  const full = String(game)
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = full
+    .split(' ')
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean);
+  if (words.length < 2) return input;
+  // Del prefijo más largo al más corto que contenga la palabra delatora
+  for (let k = words.length - 1; k >= 1; k--) {
+    const prefix = words.slice(0, k);
+    if (!prefix.some((w) => norm(w) === hit)) continue;
+    const body = prefix.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+    const re = new RegExp(`(?<![\\p{L}\\p{N}«"“'])(${body})(?![\\p{L}\\p{N}])(?!\\s*[»"”'])(?!\\s+[\\p{Lu}\\d])`, 'gu');
+    let changed = false;
+    const out = input.replace(re, (m) => {
+      if (m[0] !== m[0].toUpperCase()) return m;
+      changed = true;
+      return full;
+    });
+    if (changed) return out;
+  }
+  return input;
+}
+
 // Título sin tildes, signos ni paréntesis, para comparar
 const plainTitle = (s) =>
   norm(String(s || '').replace(/\(.*?\)/g, ' '))
@@ -609,6 +643,7 @@ module.exports = {
   selfHelp,
   mentionsOtherGame,
   abbreviatedGame,
+  completeGameTitle,
   genderedGameTitle,
   partirWithoutSe,
   claimsChatActivity,

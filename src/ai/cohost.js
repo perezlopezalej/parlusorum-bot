@@ -374,7 +374,12 @@ async function runCohost(client, channel, moment = null) {
     };
     // Un candidato listo para validar: recorte, política de emotes y, si abre con un nombre ya citado, sin él
     const prepare = (candidate) => {
-      let text = quality.applyEmotePolicy(truncate(candidate, maxChars), allowEmote, emotes, recentBot);
+      let text = quality.applyEmotePolicy(
+        truncate(quality.completeGameTitle(candidate, game), maxChars),
+        allowEmote,
+        emotes,
+        recentBot,
+      );
       if (!namesAllowed) {
         const repeated = quality.recentlyNamedIn(text, named, now, COHOST_NAME_WINDOW);
         const stripped = repeated.length ? quality.stripLeadingNames(text, repeated) : null;

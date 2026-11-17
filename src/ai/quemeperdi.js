@@ -118,11 +118,15 @@ Cuenta lo ocurrido.`,
         ],
       });
       const choice = response.choices[0];
-      const out = (
-        choice.finish_reason === 'length'
-          ? quality.dropTrailingFragment(choice.message.content)
-          : choice.message.content || ''
-      ).trim();
+      const out = quality
+        .completeGameTitle(
+          (choice.finish_reason === 'length'
+            ? quality.dropTrailingFragment(choice.message.content)
+            : choice.message.content || ''
+          ).trim(),
+          game || '',
+        )
+        .trim();
       const problem = quality.validateQueMePerdi(out, {
         deathCount: deaths,
         bosses,

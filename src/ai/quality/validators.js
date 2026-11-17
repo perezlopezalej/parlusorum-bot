@@ -27,6 +27,7 @@ const {
   mentionsGenre,
   mentionsMechanics,
   abbreviatedGame,
+  completeGameTitle,
   genderedGameTitle,
   partirWithoutSe,
   claimsChatActivity,
@@ -389,7 +390,8 @@ function validateCohost(
 
 // Para avisos con IA (bienvenida, encuestas, raids, subs): devuelve el texto limpio o lanza para que actúe la reserva fija
 function vetAuto(text, opts = {}) {
-  const t = String(text || '').trim();
+  // Con el juego conocido, un título abreviado («Horizon») se completa en vez de descartar el aviso
+  const t = completeGameTitle(String(text || '').trim(), opts.game || '');
   const check = validateAuto(t, opts);
   if (!check.ok) throw new Error(`mensaje automático descartado (${check.reason})`);
   return t;

@@ -310,10 +310,14 @@ async function checkPatternMatch(client, channel, tags, message) {
           { maxDelayMs: MENTION_MAX_RETRY_DELAY_MS },
         );
         const choice = response.choices[0];
-        const raw =
+        const currentGameName = (await getCurrentGame().catch(() => null))?.game || '';
+        // «Horizon» a secas por «Horizon Forbidden West»: el código completa el título en vez de descartar la respuesta
+        const raw = quality.completeGameTitle(
           choice.finish_reason === 'length'
             ? quality.dropTrailingFragment(choice.message.content)
-            : (choice.message.content || '').trim();
+            : (choice.message.content || '').trim(),
+          currentGameName,
+        );
         const check = quality.validateMention(raw, {
           question,
           player: getPlayer(),
@@ -321,7 +325,7 @@ async function checkPatternMatch(client, channel, tags, message) {
           recentToUser,
           usedStructures: getUsedStructures(),
           botQuestion,
-          game: (await getCurrentGame().catch(() => null))?.game || '',
+          game: currentGameName,
         });
         if (!check.ok) {
           fixKey = check.rule;

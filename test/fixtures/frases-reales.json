@@ -1163,5 +1163,24 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "f16-horizon-abreviado",
+    "filter": "cohost",
+    "input": "Media hora de Horizon y Manu sigue firme, ¿quién apuesta por otra hora sin caerse?",
+    "note": "Directo 16-11: «Horizon» a secas. El validador lo rechaza; en producción el código lo completa antes (completeGameTitle, test/titulo-completo-16-11.test.js).",
+    "game": "Horizon Forbidden West",
+    "facts": [
+      {
+        "id": "h1",
+        "tipo": "estado",
+        "texto": "Manu juega Horizon Forbidden West",
+        "claves": ["manu", "horizon"]
+      }
+    ],
+    "hecho": "h1",
+    "expect": {
+      "rejected": true
+    }
   }
 ]

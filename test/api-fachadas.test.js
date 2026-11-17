@@ -25,6 +25,7 @@ const QUALITY = [
   'claimsEnemyKills',
   'cleanChatNoise',
   'closingMark',
+  'completeGameTitle',
   'copiedFromChat',
   'copiesExample',
   'countBits',
