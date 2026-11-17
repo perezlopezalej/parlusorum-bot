@@ -174,13 +174,13 @@ function formatFilterStats(stats) {
   return `descarte por filtro: ${parts.join('; ') || 'sin mensajes'}`;
 }
 
-function formatCohostStats({ attempts, sent, discards, groq429 }) {
+function formatCohostStats({ attempts, sent, discards, groq429, restarts = 0 }) {
   const reasons =
     Object.entries(discards)
       .map(([k, n]) => `${k}: ${n}`)
       .join(', ') || 'ninguno';
   const total = attempts.event + attempts.free;
-  return `cohost: ${total} comentarios intentados (${attempts.event} eventos, ${attempts.free} libres), ${sent.event + sent.free} enviados (${sent.event} eventos, ${sent.free} libres); SKIP del modelo: ${discards.skip || 0}; descartes: ${reasons}; 429 de Groq: ${groq429}`;
+  return `cohost: ${total} comentarios intentados (${attempts.event} eventos, ${attempts.free} libres), ${sent.event + sent.free} enviados (${sent.event} eventos, ${sent.free} libres); SKIP del modelo: ${discards.skip || 0}; descartes: ${reasons}; 429 de Groq: ${groq429}${restarts ? `; reinicios del bot con el directo en curso: ${restarts}` : ''}`;
 }
 
 // --- Inicializar estado del stream al arrancar ---

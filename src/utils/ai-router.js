@@ -15,6 +15,7 @@
 const logger = require('./logger');
 const state = require('./state');
 const chatlog = require('./chatlog');
+const { persistCounters } = require('./bot-state');
 const { pseudonymize, restoreResult } = require('./ai-pseudonym');
 const groqUtils = require('./groq-utils');
 
@@ -226,6 +227,7 @@ async function attempt(l, params, { kind, maxRetries, maxDelayMs, timeoutMs, nam
       });
       state.finishAiRequest(handle, result?.usage);
       state.recordGroqTokens(l.model, result?.usage);
+      persistCounters(); // el consumo y los contadores del stream sobreviven a un reinicio (con tope de 1 guardado / 30 s)
       chatlog.noteAiCall(l.model, Date.now() - t0);
       groqUtils.stripThinking(result);
       restoreResult(result, aliasMap);

@@ -548,8 +548,8 @@ function resetGroqFallbackUse() {
 }
 
 // --- Tokens gastados en Groq por modelo (cada modelo tiene su propio cupo diario) ---
-// stream: desde el último resumen de fin de stream. day: acumulado del día UTC (Groq repone el cupo a las 00:00 UTC);
-// en memoria, así que un reinicio de Render lo pone a cero y el % del cupo es un mínimo.
+// stream: desde el último resumen de fin de stream. day: acumulado del día UTC (Groq repone el cupo a las 00:00 UTC).
+// Ambos se guardan en bot_state (bot-state.js) y se fusionan al arrancar, así que un reinicio ya no los pone a cero.
 const groqTokensStream = new Map();
 let groqTokensDay = new Map();
 let groqTokensDayKey = '';
@@ -643,7 +643,7 @@ function resetFilterStats() {
 }
 
 // --- Router de IA: bloqueos, uso por minuto y por día, y nicks conocidos ---
-// Clave de modelo: "proveedor:modelo". Todo en memoria: un reinicio lo pone a cero.
+// Clave de modelo: "proveedor:modelo". El uso por día y por stream se restaura de bot_state tras un reinicio; los bloqueos no.
 const aiBlocks = new Map();
 function blockAi(key, until) {
   aiBlocks.set(key, until);
@@ -811,18 +811,28 @@ function recordCohostSent(kind) {
 function recordGroq429() {
   groq429Count++;
 }
+// Arranques del bot con el mismo directo en curso (se guarda en bot_state): 0 = sin reinicios
+let streamRestarts = 0;
+function getStreamRestarts() {
+  return streamRestarts;
+}
+function setStreamRestarts(n) {
+  streamRestarts = Number.isInteger(n) && n > 0 ? n : 0;
+}
 function getCohostStats() {
   return {
     attempts: { ...cohostAttempts },
     sent: { ...cohostSent },
     discards: getCohostDiscards(),
     groq429: groq429Count,
+    restarts: streamRestarts,
   };
 }
 function resetCohostStats() {
   cohostAttempts.event = cohostAttempts.free = cohostSent.event = cohostSent.free = 0;
   groq429Count = 0;
   cohostDiscards.clear();
+  streamRestarts = 0;
 }
 
 // --- Usuarios que acaban de pedir ser olvidados: sin bienvenida de «primer mensaje» durante 10 min ---
@@ -869,7 +879,156 @@ function removeChatLogByUser(userId, login) {
   return before - chatLogBuffer.length;
 }
 
+// --- Contadores que sobreviven a un reinicio (bot-state.js los guarda y los fusiona al arrancar) ---
+// Solo cifras y claves de tipo (origen, motivo, modelo, comando): ningún dato por usuario ni texto del bot.
+const SNAP_MAX_KEYS = 60;
+const SNAP_MAX_STRUCTURES = 200;
+const snapNat = (n) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+const snapEntries = (obj) =>
+  Object.entries(obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {})
+    .filter(([k]) => typeof k === 'string' && k.length > 0 && k.length <= 80)
+    .slice(0, SNAP_MAX_KEYS);
+
+// Cuenta (en `n`) los valores que el estado guardado mejora; el mayor gana, así restaurar dos veces no duplica nada
+function createMerger() {
+  const merger = { n: 0 };
+  merger.max = (cur, val) => {
+    const v = snapNat(val);
+    if (v > cur) {
+      merger.n++;
+      return v;
+    }
+    return cur;
+  };
+  return merger;
+}
+
+function exportStreamCounters() {
+  const mapOf = (m) => Object.fromEntries([...m].map(([k, v]) => [k, { ...v }]));
+  return {
+    cohost: {
+      attempts: { ...cohostAttempts },
+      sent: { ...cohostSent },
+      groq429: groq429Count,
+      discards: getCohostDiscards(),
+    },
+    fallback: getGroqFallbackUse(),
+    filters: {
+      sent: Object.fromEntries(filterSent),
+      discards: Object.fromEntries([...filterDiscards].map(([o, m]) => [o, Object.fromEntries(m)])),
+    },
+    ai: mapOf(aiStream),
+    tokens: mapOf(groqTokensStream),
+    factUse: mapOf(factUse),
+    structures: [...usedStructures].slice(-SNAP_MAX_STRUCTURES),
+    cohostTimes: [...cohostTimes],
+    lastCohostTime,
+  };
+}
+
+// Fusiona lo guardado con lo que ya hay en memoria. Devuelve cuántos contadores ha recuperado.
+function mergeStreamCounters(saved, now = Date.now()) {
+  if (!saved || typeof saved !== 'object') return 0;
+  const m = createMerger();
+  const c = saved.cohost || {};
+  for (const k of ['event', 'free']) {
+    cohostAttempts[k] = m.max(cohostAttempts[k], c.attempts?.[k]);
+    cohostSent[k] = m.max(cohostSent[k], c.sent?.[k]);
+  }
+  groq429Count = m.max(groq429Count, c.groq429);
+  for (const [k, v] of snapEntries(c.discards)) cohostDiscards.set(k, m.max(cohostDiscards.get(k) || 0, v));
+  for (const [k, v] of snapEntries(saved.fallback)) groqFallbackUse.set(k, m.max(groqFallbackUse.get(k) || 0, v));
+  const f = saved.filters || {};
+  for (const [o, v] of snapEntries(f.sent)) filterSent.set(o, m.max(filterSent.get(o) || 0, v));
+  for (const [o, reasons] of snapEntries(f.discards)) {
+    const cur = filterDiscards.get(o) || new Map();
+    for (const [r, v] of snapEntries(reasons)) cur.set(r, m.max(cur.get(r) || 0, v));
+    filterDiscards.set(o, cur);
+  }
+  for (const [k, v] of snapEntries(saved.ai)) {
+    const cur = aiStream.get(k) || { requests: 0, prompt: 0, completion: 0 };
+    for (const field of ['requests', 'prompt', 'completion']) cur[field] = m.max(cur[field], v?.[field]);
+    aiStream.set(k, cur);
+  }
+  for (const [k, v] of snapEntries(saved.tokens)) {
+    const cur = groqTokensStream.get(k) || { prompt: 0, completion: 0, calls: 0 };
+    for (const field of ['prompt', 'completion', 'calls']) cur[field] = m.max(cur[field], v?.[field]);
+    groqTokensStream.set(k, cur);
+  }
+  for (const [k, v] of snapEntries(saved.factUse)) {
+    const cur = factUse.get(k) || { at: 0, count: 0 };
+    factUse.set(k, { at: m.max(cur.at, v?.at), count: m.max(cur.count, v?.count) });
+  }
+  if (Array.isArray(saved.structures)) {
+    for (const key of saved.structures.slice(-SNAP_MAX_STRUCTURES)) {
+      if (typeof key === 'string' && key && key.length <= 200 && !usedStructures.has(key)) {
+        usedStructures.add(key);
+        m.n++;
+      }
+    }
+  }
+  if (Array.isArray(saved.cohostTimes)) {
+    const times = saved.cohostTimes.filter((t) => Number.isFinite(t) && t > 0 && t <= now);
+    if (times.length) {
+      const merged = pruneHourly(
+        [...new Set([...cohostTimes, ...times])].sort((a, b) => a - b),
+        now,
+      );
+      if (merged.length > cohostTimes.length) m.n += merged.length - cohostTimes.length;
+      cohostTimes = merged;
+    }
+  }
+  lastCohostTime = m.max(lastCohostTime, Number.isFinite(saved.lastCohostTime) ? saved.lastCohostTime : 0);
+  return m.n;
+}
+
+// Consumo de Groq del día UTC en curso (el cupo se repone a las 00:00 UTC)
+function exportGroqDay(now = Date.now()) {
+  const dayKey = aiDayKey(null, now);
+  const ai = {};
+  for (const [k, d] of aiDay) {
+    if (d.day === dayKey) ai[k] = { requests: d.requests, prompt: d.prompt, completion: d.completion };
+  }
+  const tokens =
+    groqTokensDayKey === dayKey ? Object.fromEntries([...groqTokensDay].map(([k, v]) => [k, { ...v }])) : {};
+  return { dayKey, ai, tokens };
+}
+
+// Solo se fusiona si lo guardado es del mismo día UTC. Devuelve cuántos contadores ha recuperado.
+function mergeGroqDay(saved, now = Date.now()) {
+  const dayKey = aiDayKey(null, now);
+  if (!saved || typeof saved !== 'object' || saved.dayKey !== dayKey) return 0;
+  const m = createMerger();
+  for (const [k, v] of snapEntries(saved.ai)) {
+    let cur = aiDay.get(k);
+    if (!cur || cur.day !== dayKey) {
+      cur = { day: dayKey, requests: 0, prompt: 0, completion: 0 };
+      aiDay.set(k, cur);
+    }
+    for (const field of ['requests', 'prompt', 'completion']) cur[field] = m.max(cur[field], v?.[field]);
+  }
+  const tokens = snapEntries(saved.tokens);
+  if (tokens.length && groqTokensDayKey !== dayKey) {
+    groqTokensDayKey = dayKey;
+    groqTokensDay = new Map();
+  }
+  if (groqTokensDayKey === dayKey) {
+    for (const [k, v] of tokens) {
+      const cur = groqTokensDay.get(k) || { prompt: 0, completion: 0, calls: 0 };
+      for (const field of ['prompt', 'completion', 'calls']) cur[field] = m.max(cur[field], v?.[field]);
+      groqTokensDay.set(k, cur);
+    }
+  }
+  return m.n;
+}
+
 module.exports = {
+  exportStreamCounters,
+  mergeStreamCounters,
+  exportGroqDay,
+  mergeGroqDay,
+  getStreamRestarts,
+  setStreamRestarts,
   pushChatLog,
   takeChatLog,
   requeueChatLog,

@@ -69,6 +69,8 @@ describe('estado persistido del bot', () => {
       bosses: 2,
       muteUntil: 0,
       mode: 'normal',
+      counters: null,
+      restarts: 0,
     });
   });
   test('no se restaura si es de otro directo, si no hay directo o si está vacío/corrupto', () => {
@@ -95,6 +97,8 @@ describe('estado persistido del bot', () => {
       bosses: 0,
       muteUntil: 0,
       mode: 'normal',
+      counters: null,
+      restarts: 0,
     });
   });
 });

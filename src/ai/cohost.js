@@ -69,6 +69,7 @@ const logger = require('../utils/logger');
 const chatlog = require('../utils/chatlog');
 const { truncate, TWITCH_MAX_LENGTH } = require('../utils/groq-utils');
 const { aiChat } = require('../utils/ai-router');
+const { persistCounters } = require('../utils/bot-state');
 const { chatHistory } = require('./chat-memory');
 const { getEventSubLiveStatus, isDirectedElsewhere } = require('./common');
 const { emoteLineFor, getLoreBlock, getModeConfig, refreshMode } = require('./prompt-context');
@@ -550,6 +551,7 @@ async function runCohost(client, channel, moment = null) {
     markNamed(quality.namesIn(reply, [...chatHistory.slice(-60).map((m) => m.username), 'pao']));
     recordCohost();
     recordCohostSent(kind);
+    persistCounters();
     if (isStreak || !moment) {
       // cupo compartido: solo cuentan los enviados (un SKIP o un descarte no gasta cupo)
       lastSharedAt = Date.now();

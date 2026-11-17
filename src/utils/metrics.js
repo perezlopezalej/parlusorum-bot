@@ -49,6 +49,40 @@ function resetStreamMetrics() {
   metrics.commandsUsed.clear();
 }
 
+// Se guardan en bot_state para que un reinicio a mitad de directo no los ponga a cero (bot-state.js)
+const MAX_SAVED_COMMANDS = 20;
+const commandKey = /^[\p{L}\p{N}_]{1,30}$/u;
+function exportMetrics() {
+  const top = [...metrics.commandsUsed.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_SAVED_COMMANDS);
+  return { peakViewers: metrics.peakViewers, messages: metrics.streamMessageCount, commands: Object.fromEntries(top) };
+}
+const natural = (n) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+// El mayor valor gana (no duplica si se restaura dos veces). Devuelve cuántos contadores ha recuperado.
+function mergeMetrics(saved) {
+  if (!saved || typeof saved !== 'object') return 0;
+  let n = 0;
+  const peak = natural(saved.peakViewers);
+  if (peak > metrics.peakViewers) {
+    metrics.peakViewers = peak;
+    n++;
+  }
+  const messages = natural(saved.messages);
+  if (messages > metrics.streamMessageCount) {
+    metrics.streamMessageCount = messages;
+    n++;
+  }
+  const commands = saved.commands && typeof saved.commands === 'object' ? Object.entries(saved.commands) : [];
+  for (const [cmd, v] of commands.slice(0, MAX_SAVED_COMMANDS)) {
+    if (!commandKey.test(cmd)) continue;
+    const val = natural(v);
+    if (val > (metrics.commandsUsed.get(cmd) || 0)) {
+      metrics.commandsUsed.set(cmd, val);
+      n++;
+    }
+  }
+  return n;
+}
+
 function getSummary() {
   const uptime = Math.floor((Date.now() - metrics.sessionStart) / 60000);
   const hours = Math.floor(uptime / 60);
@@ -62,4 +96,13 @@ function getSummary() {
   };
 }
 
-module.exports = { trackMessage, trackCommand, updatePeakViewers, getSummary, getMessagesPerHour, resetStreamMetrics };
+module.exports = {
+  trackMessage,
+  trackCommand,
+  updatePeakViewers,
+  getSummary,
+  getMessagesPerHour,
+  resetStreamMetrics,
+  exportMetrics,
+  mergeMetrics,
+};

@@ -173,7 +173,7 @@ docs/               arquitectura de la IA, privacidad, presupuesto de Groq, audi
 ## Limitaciones y siguientes pasos
 
 - Las últimas fases (privacidad, router con cupo real, envío por API de chat) aún no se han probado en un directo real; la lista está en [PROGRESS.md](PROGRESS.md).
-- Los contadores de cupo del router viven en memoria: un reinicio los pone a cero.
+- Los contadores del stream (cohost, filtros, uso de la IA) y el consumo diario de Groq se guardan en `bot_state` como mucho cada 30 s y se fusionan al arrancar: un reinicio pierde como mucho ese margen, no todo el directo. Los bloqueos del router (429) sí se pierden.
 - El bot no ve ni oye el directo; solo lee el chat y los eventos de Twitch.
 
 ## Autor
