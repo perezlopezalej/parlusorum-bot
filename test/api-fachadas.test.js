@@ -20,6 +20,7 @@ const QUALITY = [
   'citesDeathCount',
   'citesGameScore',
   'citesViewers',
+  'citesWrongDeathCount',
   'claimsChannelOwner',
   'claimsChatActivity',
   'claimsEnemyKills',

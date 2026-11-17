@@ -50,6 +50,8 @@ function verdict(c) {
     channelGames: [],
     usedStructures: new Set(c.usedStructures || []),
     lastCitedDeaths: !!c.lastCitedDeaths,
+    // window: caídas y racha de la ventana que cuenta el timer/hook (windowFacts): su cifra también vale, además del total
+    extraDeathNumbers: c.window ? [c.window.deaths, c.window.streak ?? 0] : [],
     player: c.player || 'manu',
     // chat: líneas del chat de ese momento (regla `copia`); el vocabulario del juego sale de su nombre
     chatLines: c.chat || [],
@@ -81,6 +83,7 @@ function verdict(c) {
         recentToUser: c.recentToUser || [],
         botQuestion: c.botQuestion || '',
         usedStructures: ctx.usedStructures,
+        deathCount: c.deaths ?? null,
       }).ok;
     case 'inject':
       return !containsBlockedContent(c.input);

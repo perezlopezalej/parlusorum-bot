@@ -11,7 +11,8 @@ const IMPLIED_DEATH_RE =
 
 // Muertes: con contador a 0 no se habla de muertes/caídas ni se da a entender que las hubo; si se cita una cifra debe ser la
 // del contador
-function mentionsUnrecordedDeaths(text, deathCount, extraNumbers = []) {
+// strictSingular: el texto solo habla de un tramo concreto (media hora del timer), así que «una caída» siempre es una cifra a comprobar
+function mentionsUnrecordedDeaths(text, deathCount, extraNumbers = [], { strictSingular = false } = {}) {
   if (!deathCount && IMPLIED_DEATH_RE.test(text)) return true;
   if (!DEATH_WORDS_RE.test(text)) return false;
   if (!deathCount) return true;
@@ -20,7 +21,64 @@ function mentionsUnrecordedDeaths(text, deathCount, extraNumbers = []) {
       /(?:#|n[uú]mero |muerte |ca[ií]da )(\d+)|(\d+)\s*(?:muertes?|ca[ií]das?|veces|del d[ií]a|de hoy)/gi,
     ),
   ].map((m) => parseInt(m[1] || m[2], 10));
-  return nums.some((n) => n !== deathCount && !extraNumbers.includes(n));
+  return nums
+    .concat(citedWordDeathNumbers(text, strictSingular))
+    .some((n) => n !== deathCount && !extraNumbers.includes(n));
+}
+
+// Cifras de caídas escritas con palabras («dos caídas», «una caída», «un par de muertes»). «Una caída» a secas solo cuenta como
+// total si la frase lo plantea como cuenta («lleva», «con», «solo», «hoy»…); «una caída más» suma, no cuenta. 16-11: con 8 caídas
+// el bot dijo «una caída y sigue a tope».
+let wordNumbers = null;
+function wordNumberMap() {
+  if (!wordNumbers) {
+    wordNumbers = new Map();
+    for (let n = 0; n < 100; n++) for (const w of numberWordsEs(n)) wordNumbers.set(w, n);
+  }
+  return wordNumbers;
+}
+const SINGULAR_COUNT_CUE_RE = /\b(?:llev\w+|van|vais|solo|solamente|apenas|hoy|ya|total|acumul\w+|suma\w*|sola)\b/;
+
+// Apuestas y pronósticos («apuesto por veinte caídas») hablan del futuro, no del contador
+const PREDICTION_RE =
+  /\b(?:apuest\w*|apostar\w*|apostemos|predic\w*|pronostic\w*|llegar\w*|acabar\w*|terminar\w*|superar\w*|batir\w*|record|mas de|menos de)\b/;
+
+function citedWordDeathNumbers(text, strictSingular = false) {
+  const t = norm(text)
+    .replace(/[^a-zñ0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (PREDICTION_RE.test(t)) return [];
+  const tokens = t.split(' ');
+  const map = wordNumberMap();
+  const out = [];
+  tokens.forEach((tok, i) => {
+    if (!/^(?:muertes?|caidas?)$/.test(tok) || tokens[i + 1] === 'mas') return;
+    let j = i;
+    if (/^(?:sola|solita|unica)$/.test(tokens[j - 1])) j--;
+    if (tokens.slice(j - 3, j).join(' ') === 'un par de') return void out.push(2);
+    for (let len = 3; len >= 1; len--) {
+      if (j - len < 0) continue;
+      const n = map.get(tokens.slice(j - len, j).join(' '));
+      if (n === undefined) continue;
+      if (/^(?:sin|ni)$/.test(tokens[j - len - 1] || '')) break; // «sin una sola caída»
+      if (n === 1 && !strictSingular && !SINGULAR_COUNT_CUE_RE.test(t)) break;
+      out.push(n);
+      break;
+    }
+  });
+  return out;
+}
+
+// ¿Cita una cifra de caídas (con cifras o con palabras) que no es la del contador? Para textos que pueden hablar de caídas
+// (menciones), sin exigir que el contador sea 0 ni prohibir el tema
+function citesWrongDeathCount(text, deathCount, extraNumbers = []) {
+  const digits = [
+    ...String(text || '').matchAll(
+      /(?:#|n[uú]mero |muerte |ca[ií]da )(\d+)|(\d+)\s*(?:muertes?|ca[ií]das?|veces|del d[ií]a|de hoy)/gi,
+    ),
+  ].map((m) => parseInt(m[1] || m[2], 10));
+  return digits.concat(citedWordDeathNumbers(text)).some((n) => n !== deathCount && !extraNumbers.includes(n));
 }
 
 // ¿El texto habla de caídas o muertes? (15-11: con una sola muerte en 2,5 horas el cohost la comentó 5 veces)
@@ -283,6 +341,7 @@ module.exports = {
   wrongWeekday,
   wrongDayPart,
   mentionsUnrecordedDeaths,
+  citesWrongDeathCount,
   talksDeaths,
   againDeathWrong,
   citesDeathCount,

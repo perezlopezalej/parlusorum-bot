@@ -12,13 +12,16 @@ const {
   getStreamNarrative,
   getLastCapsRageTime,
   getDeathCount,
+  getBossCount,
+  getStreamStartedAt,
+  getStreamIsLive,
 } = require('../utils/state');
 const { decideMode, resolveModeConfig, MODE_WINDOWS } = require('../utils/narrative');
 const { sanitizeForAI } = require('../utils/filter');
 const { getMemoryContext } = require('../memory/handler');
 const { getLoreTerms } = require('../lore/handler');
 const { playerLine, roleLine, dayLine } = require('./style');
-const { freshEmotes, asksAboutPastStream, looksLikeJoke } = require('./quality');
+const { freshEmotes, asksAboutPastStream, looksLikeJoke, approxDuration } = require('./quality');
 const { chatHistory, getCachedUserFacts } = require('./chat-memory');
 const { CREATOR_USERNAME, STREAMER_USERNAME } = require('./common');
 
@@ -119,7 +122,15 @@ async function buildContextText({ question = '' } = {}) {
   }
   parts.push(playerLine(getPlayer()), dayLine());
   const deaths = getDeathCount();
-  parts.push(deaths === 0 ? 'Aún sin caídas anotadas hoy.' : `${deaths} caídas anotadas hoy del streamer.`);
+  // Hechos del directo con su cifra exacta: lo que se cuente de hoy sale de aquí (16-11: «una caída» con 8)
+  parts.push(
+    deaths === 0 ? 'Aún sin caídas anotadas hoy.' : `Caídas anotadas hoy del streamer: ${deaths} (cifra exacta).`,
+  );
+  const bosses = getBossCount();
+  parts.push(bosses === 0 ? 'Aún sin jefes derrotados hoy.' : `Jefes derrotados hoy: ${bosses}.`);
+  const startedAt = getStreamIsLive() ? getStreamStartedAt() : null;
+  if (startedAt) parts.push(`Llevan ${approxDuration(Math.floor((Date.now() - startedAt) / 60000))} de directo.`);
+  parts.push('Si citas cifras del directo, usa solo las de estos hechos.');
   parts.push('La comunidad del canal son los Lusorums.');
   try {
     const terms = await getLoreTerms();

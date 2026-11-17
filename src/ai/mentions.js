@@ -326,6 +326,7 @@ async function checkPatternMatch(client, channel, tags, message) {
           usedStructures: getUsedStructures(),
           botQuestion,
           game: currentGameName,
+          deathCount: getDeathCount(),
         });
         if (!check.ok) {
           fixKey = check.rule;

@@ -1182,5 +1182,47 @@
     "expect": {
       "rejected": true
     }
+  },
+  {
+    "id": "f16-mencion-una-caida",
+    "filter": "mention",
+    "input": "@stewar32 Manu lleva la cabeza bien alta, una caída y sigue a tope, ¡el FUA no se rinde! parlus1PORELPODERDELFUAAAAA",
+    "question": "¿qué opinas de cómo está jugando hoy Manu?",
+    "deaths": 8,
+    "game": "Horizon Forbidden West",
+    "note": "Directo 16-11: «una caída» con 8 anotadas. Las menciones no pueden citar una cifra de caídas distinta de la del contador.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f16-timer-una-caida",
+    "filter": "timer_ia",
+    "input": "Media hora de Horizon Forbidden West con una caída de Manu, pero el FUA sigue firme y el chat lo tiene bien sujeto.",
+    "deaths": 8,
+    "window": {
+      "deaths": 1,
+      "streak": 0
+    },
+    "game": "Horizon Forbidden West",
+    "note": "Directo 16-11, 20:14: el resumen habla de la última media hora, no del total. Entre 19:44 y 20:14 hubo una sola caída (la 8), así que «una caída» es correcto.",
+    "expect": {
+      "rejected": false
+    }
+  },
+  {
+    "id": "f16-timer-una-caida-sin-ventana",
+    "filter": "timer_ia",
+    "input": "Media hora de Horizon Forbidden West con una caída de Manu, pero el FUA sigue firme y el chat lo tiene bien sujeto.",
+    "deaths": 8,
+    "window": {
+      "deaths": 0,
+      "streak": 0
+    },
+    "game": "Horizon Forbidden West",
+    "note": "Contrapartida: con 8 en total y ninguna en la última media hora, «una caída» no corresponde a ninguna de las dos cifras y se rechaza.",
+    "expect": {
+      "rejected": true
+    }
   }
 ]

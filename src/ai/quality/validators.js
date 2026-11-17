@@ -59,6 +59,7 @@ const {
   citesViewers,
   exactMinutes,
   mentionsUnrecordedDeaths,
+  citesWrongDeathCount,
   talksDeaths,
   againDeathWrong,
   talksStreamTime,
@@ -491,7 +492,7 @@ function validateTimerIA(
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };
-  if (mentionsUnrecordedDeaths(text, deathCount, extraDeathNumbers))
+  if (mentionsUnrecordedDeaths(text, deathCount, extraDeathNumbers, { strictSingular: true }))
     return { ok: false, reason: 'menciona muertes que no están en el contador' };
   if (lastCitedDeaths && citesDeathCount(text, deathCount)) return { ok: false, reason: DEATH_REPEAT_REASON };
   if (againDeathWrong(text, deathCount)) return { ok: false, reason: AGAIN_DEATH_REASON };
@@ -589,6 +590,7 @@ function validateMention(
     usedStructures = new Set(),
     botQuestion = '',
     game = '',
+    deathCount = null,
   } = {},
 ) {
   if (!text || text.length < 3) return { ok: false, rule: 'vacio', reason: 'vacío' };
@@ -613,6 +615,16 @@ function validateMention(
   if (hasLatam(text))
     return { ok: false, rule: 'latam', reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, rule: 'robot', reason: 'suena a rechazo de robot' };
+  // Cifra de caídas distinta de la del contador (16-11: «una caída» con 8). Valen las cifras que escribió quien pregunta.
+  if (
+    Number.isInteger(deathCount) &&
+    citesWrongDeathCount(
+      text,
+      deathCount,
+      [...String(question).matchAll(/\d+/g)].map((m) => parseInt(m[0], 10)),
+    )
+  )
+    return { ok: false, rule: 'cifra_caidas', reason: 'cita una cifra de caídas que no es la del contador' };
   const style = styleProblem(text, { personal: false, minWords: 2, player, names, allowed: [question] });
   if (style) return { ok: false, rule: style.rule, reason: style.reason };
   const gameName = gameNameReason(text, game);
