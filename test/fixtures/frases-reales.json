@@ -1270,5 +1270,17 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "f17-timer-sospecha-raro",
+    "filter": "timer_ia",
+    "input": "Media hora de pura risa en el chat y sin una sola caída, así que el FUA sospecha que algo muy raro está pasando con Control.",
+    "game": "Control",
+    "deaths": 3,
+    "recent": ["Cinco minutos sin caídas y el FUA pone cara de susto porque algo raro se avecina."],
+    "note": "Directo del 17-11 (y 16-11): la muletilla «algo raro pasa» del resumen de media hora no se repite.",
+    "expect": {
+      "rejected": true
+    }
   }
 ]

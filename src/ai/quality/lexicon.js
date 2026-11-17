@@ -23,6 +23,10 @@ const FORMULAS = [
   /m[aá]s (?:quieto|pesado|denso) que/i,
   /vibra(?:r)? (?:al|como siempre)|hacen vibrar|el chat vibra/i,
   /energ[ií]a (?:pura|fua)/i,
+  // Muletillas del resumen de media hora (16-11 y 17-11): «el FUA sospecha que algo muy raro está pasando», «cara de susto porque algo raro se avecina»
+  /(?:el )?fua sospecha/i,
+  /algo (?:muy )?raro (?:est[aá] pasando|se avecina|pasa)/i,
+  /cara de susto/i,
 ];
 
 // Metáforas de comentarista deportivo: el hook ya no debe sonar a narrador de fútbol

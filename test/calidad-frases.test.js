@@ -83,6 +83,19 @@ describe('estilo y español de España', () => {
       assert.equal(q.hasLatam(t), false, t);
     }
   });
+  test('muletillas del resumen de media hora (16-11 y 17-11): no se repiten', () => {
+    const d17 =
+      'Media hora de pura risa en el chat y sin una sola caída, así que el FUA sospecha que algo muy raro está pasando con Control.';
+    const d16 = 'Cinco minutos sin caídas y el FUA pone cara de susto porque algo raro se avecina.';
+    assert.equal(q.matchesFormula(d17), true);
+    assert.equal(q.matchesFormula(d16), true);
+    // la segunda vez, con cualquiera de las dos como mensaje reciente, se rechaza
+    assert.equal(q.repeatsFormula(d17, [d16]), true);
+    assert.equal(q.repeatsFormula(d16, [d17]), true);
+    const ctx = { deathCount: 3, currentGame: 'Control', channelGames: [] };
+    assert.equal(q.validateTimerIA(d17, { ...ctx, recent: [d16] }).reason, 'repite una fórmula que ya usaste');
+    assert.equal(q.matchesFormula('Media hora de risas en el chat y Manu sin caídas.'), false);
+  });
   test('"el FUA" va en masculino', () => {
     assert.equal(q.styleProblem('La FUA ha hablado hoy.').rule, 'fua');
     assert.equal(q.styleProblem('El FUA ha hablado hoy.'), null);
