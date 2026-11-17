@@ -3,6 +3,7 @@ const channelConfig = require('../../config/channel.json');
 const messagesConfig = require('../../config/messages.json');
 const logger = require('../utils/logger');
 const { loadUsers, saveUser } = require('../utils/storage');
+const { shouldGreetLurker, LURKER_THRESHOLD_MS } = require('./lurker');
 const {
   setRaidActive,
   markGiftBatch,
@@ -215,7 +216,7 @@ function checkAnniversary(client, channel, username, userData, now) {
 const lurkerMap = new Map();
 // Como mucho un aviso de "vuelve el lurker" por persona y stream
 const lurkerGreeted = new Set();
-const LURKER_THRESHOLD = parseInt(process.env.LURKER_THRESHOLD_MS || String(15 * 60 * 1000), 10);
+const LURKER_THRESHOLD = LURKER_THRESHOLD_MS;
 
 // timestamp de inicio del stream actual
 let streamOnlineTimestamp = 0;
@@ -240,7 +241,7 @@ setInterval(
   60 * 60 * 1000,
 );
 
-function trackLurker(client, channel, tags) {
+async function trackLurker(client, channel, tags) {
   const userId = tags['user-id'];
   const username = tags['display-name'];
   if (username.toLowerCase() === BOT_NAME || username.toLowerCase() === STREAMER_USERNAME) return;
@@ -254,7 +255,18 @@ function trackLurker(client, channel, tags) {
     return;
   }
 
-  if (lurkerMap.has(userId) && now - lurkerMap.get(userId) >= LURKER_THRESHOLD && !lurkerGreeted.has(userId)) {
+  // Solo quien estaba en la sombra de verdad: ni VIP, mods o suscriptores ni habituales por mensajes (17-11)
+  const userData = (await loadUsers().catch(() => ({})))[userId];
+  if (
+    shouldGreetLurker({
+      tags,
+      userData,
+      lastSeenAt: lurkerMap.get(userId) || 0,
+      now,
+      greeted: lurkerGreeted.has(userId),
+      thresholdMs: LURKER_THRESHOLD,
+    })
+  ) {
     lurkerGreeted.add(userId);
     throttleSay(client, channel, pick(lurkerMessages).replace('{username}', username));
   }
@@ -534,7 +546,7 @@ async function handleMessage(client, channel, tags) {
   if (tags['display-name']?.toLowerCase() === botName) return;
   if (tags['username']?.toLowerCase() === botName) return;
   await checkFirstMessage(client, channel, tags);
-  trackLurker(client, channel, tags);
+  await trackLurker(client, channel, tags);
 }
 
 module.exports = {
