@@ -32,3 +32,4 @@ win | victoria
 team | equipo
 challenge | reto
 squad | grupo
+crew | grupo

@@ -152,6 +152,11 @@
     "some": "Llevamos {n} muertes en este stream 💀",
     "none": "El contador está a 0 muertes, o nadie las ha apuntado todavía 💀"
   },
+  "mention_schedule": [
+    "Eso lo deciden Manu y Pao, y a mí no me cuentan sus planes. Los horarios y avisos están en el Discord: escribe !redes 📲",
+    "Qué juego toca y cuándo lo deciden Manu y Pao; yo no me entero. Mira el Discord, escribe !redes y allí lo tienes 💜",
+    "Los planes los marcan Manu y Pao, no yo. Para horarios y próximos juegos, el Discord: escribe !redes 🎮"
+  ],
   "mention_current_game": {
     "some": ["Estamos con {game} 🎮", "Hoy toca {game}, ¡a darle FUA!", "El juego de hoy es {game} 🎮"],
     "none": "Ahora mismo no sé qué juego es, ni el FUA lo ve claro 🤔"

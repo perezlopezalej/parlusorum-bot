@@ -68,6 +68,7 @@ const QUALITY = [
   'isGameQuestion',
   'isMetaphor',
   'isRobotRefusal',
+  'isScheduleQuestion',
   'judgesChatMood',
   'junkProblem',
   'lastSentenceEnd',

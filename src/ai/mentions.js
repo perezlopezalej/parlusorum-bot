@@ -229,6 +229,9 @@ async function checkPatternMatch(client, channel, tags, message) {
     // Si IGDB no contesta, a !dios_fua; si pide datos de un juego que no encuentra, se dice con humor que no se pilla.
     const identity = isProvocation ? null : quality.identityQuestion(question);
     if (identity) answer = pickIdentityReply(identity);
+    // Planes, horarios y próximos juegos: el bot no lo sabe; plantilla fija que remite al Discord, sin IA
+    if (!answer && !isProvocation && quality.isScheduleQuestion(question))
+      answer = pickRandom(messagesConfig.mention_schedule);
     if (!answer && !isProvocation && !quality.isCurrentGameQuestion(question) && !quality.isDeathQuestion(question)) {
       const gameQuery = quality.extractGameQuery(question);
       if (gameQuery) {

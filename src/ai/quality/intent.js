@@ -180,6 +180,31 @@ function isCurrentGameQuestion(text) {
   return CURRENT_GAME_RE.test(t);
 }
 
+// Planes, horarios y próximos juegos («¿a qué jugáis el finde?», «¿cuándo hay directo?», «¿qué va a jugar Manu mañana?»):
+// el bot no lo sabe, así que se responde con una plantilla fija (16-11: se inventó «Elden Ring con la crew»)
+const SCHEDULE_TIME = String.raw`(?:finde|fin de semana|manana|pasado manana|esta semana|la semana que viene|proxima semana|esta noche|esta tarde|luego|despues|mas tarde|el (?:lunes|martes|miercoles|jueves|viernes|sabado|domingo)|otro dia|la proxima vez|proximamente)`;
+const SCHEDULE_PLAY = String.raw`(?:jug\w+|stream\w*|direct\w*|hac\w+|har\w+|vais a|toca\w*|volv\w+|conect\w+)`;
+const SCHEDULE_RES = [
+  /\b(?:a que hora|horarios?|que dias)\b/,
+  /\bcuando\b.*\b(?:direct\w*|stream\w*|jugais|jugareis|jugamos|volv\w+|empiez\w+|conect\w+)\b/,
+  /\bproxim[oa]s?\s+(?:direct\w*|stream\w*|juego|partida|sesion|dia)\b/,
+  /\b(?:habra|haceis|hareis|teneis)\s+(?:direct\w*|stream\w*)\b/,
+  /\bque\s+(?:jugareis|jugaran|jugara|(?:vais|va|van|vamos)\s+a\s+(?:jugar|streamear|estrenar|traer))\b/,
+  new RegExp(String.raw`\b${SCHEDULE_TIME}\b.*\b${SCHEDULE_PLAY}\b`),
+  new RegExp(String.raw`\b${SCHEDULE_PLAY}\b.*\b${SCHEDULE_TIME}\b`),
+];
+
+function isScheduleQuestion(text) {
+  const t = norm(text)
+    .replace(/@\S+/g, '')
+    .replace(/\b(?:dios\s*fua|dios_fua|fua|bot)\b/g, '')
+    .replace(/[¡!.,;:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!/\?|^(?:y\s+)?(?:que|a que|cuando|cual|vais|jugais|haceis|hay|habra|teneis)\b/.test(t)) return false;
+  return SCHEDULE_RES.some((re) => re.test(t));
+}
+
 // «¿Qué pasó en el último stream?», «el directo de ayer», «el stream anterior»: pide la memoria entre streams
 // (entonces se usa aunque sea de otro juego, diciendo cuál era)
 const PAST_STREAM_RE =
@@ -327,6 +352,7 @@ module.exports = {
   extractGameQuery,
   extractGameMention,
   isCurrentGameQuestion,
+  isScheduleQuestion,
   isGameQuestion,
   isDeathQuestion,
 };
