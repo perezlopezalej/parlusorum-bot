@@ -1035,5 +1035,60 @@
       "reply": true,
       "matchNone": ["\bHorizon\b(?! Forbidden)"]
     }
+  },
+  {
+    "id": "d16-mencion-finde-plantilla",
+    "input": "dios fua a que jugais el finde?",
+    "game": "Horizon Forbidden West",
+    "deaths": 8,
+    "note": "16-11: planes y horarios se responden con la plantilla fija (sin IA), sin inventar juegos.",
+    "expect": {
+      "reply": true,
+      "fromPool": "mention_schedule",
+      "matchNone": ["Elden", "crew"]
+    }
+  },
+  {
+    "id": "d16-mencion-proximo-juego",
+    "input": "dios fua que vais a jugar mañana?",
+    "game": "Horizon Forbidden West",
+    "deaths": 8,
+    "note": "16-11: variante sobre el próximo juego; también plantilla fija.",
+    "expect": {
+      "reply": true,
+      "fromPool": "mention_schedule"
+    }
+  },
+  {
+    "id": "d16-mencion-opinion-manu-8",
+    "input": "dios fua que opinas de como esta jugando hoy Manu?",
+    "game": "Horizon Forbidden West",
+    "deaths": 8,
+    "note": "16-11: con 8 caídas anotadas, la respuesta no puede citar otra cifra de caídas («una caída», «dos caídas»).",
+    "expect": {
+      "reply": true,
+      "matchNone": [
+        "(?:una|dos|tres|cuatro|cinco|seis|siete) (?:ca[ií]das?|muertes?)",
+        "un par de (?:ca[ií]das|muertes)"
+      ]
+    }
+  },
+  {
+    "id": "d16-cohost-risas-una-hora",
+    "gen": "cohost",
+    "runs": 4,
+    "game": "Horizon Forbidden West",
+    "deaths": 0,
+    "minutes": 60,
+    "chat": [
+      ["markosssx", "jajajajaja"],
+      ["gangar79", "jajajaja"],
+      ["stewar32", "jajaja"]
+    ],
+    "note": "16-11: la risa del chat sale como mucho una vez por hora y sin «::» antes del emote. Puede callar.",
+    "expect": {
+      "mayStaySilent": true,
+      "matchNone": ["[!?…]\\s*:+\\s*(?:parlus1|$)"]
+    }
   }
 ]

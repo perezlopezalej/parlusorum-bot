@@ -590,9 +590,11 @@ function check(exp, r) {
     f.push(`no cumple ninguno de: ${exp.matchAny.join(' | ')}`);
   for (const p of exp.matchAll || []) if (!re(p).test(r.answer)) f.push(`falta /${p}/`);
   for (const p of exp.matchNone || []) if (re(p).test(r.answer)) f.push(`contiene /${p}/`);
-  if (exp.fromPool && !flattenPool(exp.fromPool).includes(r.answer)) {
+  // El límite de emojis de la cola de salida puede quitar un 💜 final: eso no cambia la plantilla (los espacios sí cuentan)
+  const noEmoji = (s) => s.replace(/\p{Extended_Pictographic}️?/gu, '').trim();
+  if (exp.fromPool && !flattenPool(exp.fromPool).some((p) => p === r.answer || noEmoji(p) === noEmoji(r.answer))) {
     const squash = (s) => s.replace(/\s+/g, '');
-    const altered = flattenPool(exp.fromPool).some((p) => squash(p) === squash(r.answer));
+    const altered = flattenPool(exp.fromPool).some((p) => squash(noEmoji(p)) === squash(noEmoji(r.answer)));
     f.push(
       altered
         ? `texto de messages.json → ${exp.fromPool} alterado por un filtro (espacios)`

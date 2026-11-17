@@ -1224,5 +1224,29 @@
     "expect": {
       "rejected": true
     }
+  },
+  {
+    "id": "f16-mencion-finde-crew",
+    "filter": "mention",
+    "input": "@stewar32 Este finde nos lanzamos a Elden Ring con la crew, a ver si Manu deja de caer tanto. ¡Prepárate para más FUA, Lusorum! ¡FUA!",
+    "question": "A que jugais el finde?",
+    "deaths": 8,
+    "game": "Horizon Forbidden West",
+    "note": "Directo 16-11, 21:12: el bot inventó planes («Elden Ring con la crew») y usó un anglicismo. Ahora estas preguntas se responden con plantilla fija; si el modelo llegara a escribirlo, el anglicismo lo rechaza.",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f16-mencion-finde-plantilla",
+    "filter": "mention",
+    "input": "@stewar32 Eso lo deciden Manu y Pao; los horarios y avisos están en el Discord, escribe !redes",
+    "question": "A que jugais el finde?",
+    "deaths": 8,
+    "game": "Horizon Forbidden West",
+    "note": "Control: la plantilla fija de planes y horarios pasa los filtros.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]
