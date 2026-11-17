@@ -48,6 +48,7 @@ n- **Arreglos tras el eval completo (11-11, sin commit)**: `quality.oneLine` (en
 
 ## Pendiente de probar en directo
 
+- **Eval del 17-11** (`npm run eval -- --pause 30`, informe en `logs/eval.txt`): 66/67 casos en la primera pasada. Los 3 casos nuevos (`d17-cohost-sin-latam-ni-estado`, `d17-timer-sin-muletilla-ni-tres-horas`, `juego-control-nombre`) se comportan como se esperaba; `juego-control-nombre` (informativo) confirma que por nombre IGDB devuelve «Control: Override» (2021) y por eso el directo usa el igdb_id. `d13-stream-de-ayer` falló una vez porque la IA llamó «maratón» a un directo de cuatro horas: el caso ya lo permite («madrugada», otra fecha u otro juego distinto de Hell Is Us siguen fallando) y pasa 3/3 con `--repeat 3`.
 - **Directo del 17-11, paso 8**: ningún «sale de las sombras» a mods, VIP, suscriptores ni habituales; sí a un espectador nuevo que vuelve tras ≥ 45 min.
 - **Directo del 17-11, paso 7**: un sub regalado entre habituales: el agradecimiento no dice «vuelve a», no pide deberes ni reprocha al receptor; si la IA lo intenta, el log dice «Sub IA descartada» y sale la plantilla.
 - **Directo del 17-11, paso 4**: en un directo largo, el cohost no vuelve a abrir con «Manu en/jugando a <juego>» hasta pasada una hora; si no hay sucesos, charla ni pregunta, el log dice «sin hechos que comentar».

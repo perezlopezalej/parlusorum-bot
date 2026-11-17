@@ -804,7 +804,7 @@
   {
     "id": "d13-stream-de-ayer",
     "input": "!dios_fua cual fue el stream de ayer?",
-    "note": "Directo del 13-11: contestó «maratón… de madrugada». Con la memoria sembrada (ninguna fila es de ayer) dice que de ayer no consta nada o cuenta el último guardado con su día, sin «maratón» ni «madrugada».",
+    "note": "Directo del 13-11: contestó «maratón… de madrugada». Con la memoria sembrada (ninguna fila es de ayer) dice que de ayer no consta nada o cuenta el último guardado con su día. «Maratón» vale para un directo de cuatro horas; no valen «madrugada», otra fecha ni otro juego distinto de Hell Is Us.",
     "memory": [
       {
         "stream_date": "2026-11-08",
@@ -817,7 +817,14 @@
     "expect": {
       "route": "question",
       "reply": true,
-      "matchNone": ["marat[oó]n", "madrugada", "bomba", "bah[ií]a", "Un abrazo"]
+      "matchNone": [
+        "madrugada",
+        "bomba",
+        "bah[ií]a",
+        "Un abrazo",
+        "\\b(?!(?:8|ocho)\\s+de\\b)(?:\\d{1,2}|[a-zá-ú]+)\\s+de\\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\b",
+        "\\b(?:Horizon|Shadow of the Colossus|Final Fantasy|Phantom Blade|Elden Ring|Control)\\b"
+      ]
     }
   },
   {
@@ -1089,6 +1096,79 @@
     "expect": {
       "mayStaySilent": true,
       "matchNone": ["[!?…]\\s*:+\\s*(?:parlus1|$)"]
+    }
+  },
+  {
+    "id": "d17-cohost-sin-latam-ni-estado",
+    "gen": "cohost",
+    "runs": 6,
+    "game": "Control",
+    "deaths": 0,
+    "minutes": 161,
+    "chat": [
+      ["markosssx", "buenas"],
+      ["gangar79", "aquí andamos"],
+      ["stewar32", "hola"]
+    ],
+    "note": "17-11 (Control, 2 h 41): sin imperativos de ustedes («prepárense», «miren»), sin «tres horas» redondeadas hacia arriba y «Manu en/jugando a Control» como mucho una vez en los 6 comentarios. Puede callar.",
+    "expect": {
+      "mayStaySilent": true,
+      "matchNone": [
+        "\b(?:prep[aá]rense|f[ií]jense|c[uú]ídense|agárrense|miren|vean|escuchen)\b",
+        "(?<!casi )(?<!y pico )\b[Tt]res horas\b(?! y media)"
+      ],
+      "maxMatches": [
+        {
+          "pattern": "Manu (?:en|jugando a|sigue con) Control",
+          "max": 1
+        }
+      ]
+    }
+  },
+  {
+    "id": "d17-timer-sin-muletilla-ni-tres-horas",
+    "gen": "timer",
+    "game": "Control",
+    "deaths": 3,
+    "minutes": 161,
+    "chat": [
+      ["markosssx", "jajajaja"],
+      ["gangar79", "jajajaja"],
+      ["stewar32", "jajaja"],
+      ["markosssx", "vamos Manu"],
+      ["gangar79", "animo Manu"],
+      ["stewar32", "tu puedes"],
+      ["markosssx", "jajaja que bueno"],
+      ["gangar79", "jajajaja"],
+      ["stewar32", "jajajaja"],
+      ["markosssx", "dale Manu"],
+      ["gangar79", "jajaja"],
+      ["stewar32", "vamos"],
+      ["markosssx", "jajaja"],
+      ["gangar79", "jajaja"],
+      ["stewar32", "buena"],
+      ["markosssx", "jajaja"]
+    ],
+    "events": [
+      {
+        "type": "death",
+        "description": "Manu ha caído",
+        "n": 1
+      }
+    ],
+    "note": "17-11: el resumen de media hora no usa la muletilla «el FUA sospecha que algo raro pasa» / «cara de susto», ni redondea las 2 h 41 a «tres horas». Puede callar.",
+    "expect": {
+      "mayStaySilent": true,
+      "matchNone": ["sospecha", "algo (?:muy )?raro", "cara de susto", "(?<!casi )\b[Tt]res horas\b(?! y media)"]
+    }
+  },
+  {
+    "id": "juego-control-nombre",
+    "igdb": "Control",
+    "informativo": true,
+    "note": "17-11: buscando «Control» por nombre IGDB devolvió otro juego (el directo usa ahora el igdb_id de la categoría). Informativo: Control de Remedy es de 2019.",
+    "expect": {
+      "year": 2019
     }
   }
 ]
