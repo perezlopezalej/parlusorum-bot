@@ -7,8 +7,6 @@ const COMMANDS = ['redes', 'discord', 'tiktok'];
 const USER_COOLDOWN_MS = 60 * 1000;
 const GLOBAL_COOLDOWN_MS = 30 * 1000;
 const REMINDER_INTERVAL_MS = parseInt(process.env.REDES_INTERVAL_MS || String(60 * 60 * 1000), 10);
-// Mitad del intervalo del recordatorio del follow (60 min): los dos timers se alternan y no coinciden
-const REMINDER_OFFSET_MS = REMINDER_INTERVAL_MS / 2;
 const MIN_UPTIME_MS = 10 * 60 * 1000;
 
 const isLink = (v) => typeof v === 'string' && /^https:\/\/\S+$/.test(v.trim());
@@ -59,7 +57,6 @@ function reminderDue({ live, silenced, reactive, startedAt, now = Date.now() }) 
 module.exports = {
   COMMANDS,
   REMINDER_INTERVAL_MS,
-  REMINDER_OFFSET_MS,
   MIN_UPTIME_MS,
   replyFor,
   allowedHosts,

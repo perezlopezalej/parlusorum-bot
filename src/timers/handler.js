@@ -35,6 +35,7 @@ const { buildTimerSystem, retryNote, dayLine } = require('../ai/style');
 const { truncate } = require('../utils/groq-utils');
 const { template } = require('../utils/plantillas');
 const redes = require('../commands/redes');
+const { nextFixedNotice, useKey, TIME_INTERVAL_MS, CHECK_INTERVAL_MS } = require('./fixed-notices');
 const { aiChat } = require('../utils/ai-router');
 const MIN_CHAT_FOR_SUMMARY = 15; // mensajes en la ventana para contar solo de qué ha hablado el chat
 const MIN_USERS_FOR_TOPIC = 3; // usuarios distintos en el mismo tema para que entre en el resumen
@@ -74,22 +75,59 @@ const recentTimerIA = [];
 
 const timerRefs = [];
 let lastMessages = [];
-let streamDurationInterval = null;
-let redesOffsetRef = null;
-let redesInterval = null;
+let fixedNoticeRef = null;
 
 // Aviso periódico de las redes: SIN enlaces (el lector de voz los leería letra a letra), solo invita a escribir !redes
-function sendRedesReminder(client) {
-  if (
-    !redes.reminderDue({
-      live: isLiveViaEventSub(),
-      silenced: isSilenced(),
-      reactive: isReactive(),
-      startedAt: getStreamStartedAt(),
-    })
-  )
-    return;
-  const msg = template('redes_recordatorio');
+function redesMessage() {
+  const due = redes.reminderDue({
+    live: isLiveViaEventSub(),
+    silenced: isSilenced(),
+    reactive: isReactive(),
+    startedAt: getStreamStartedAt(),
+  });
+  return due ? template('redes_recordatorio') : null;
+}
+
+// Los avisos fijos (follow de config/commands.json, redes y «Llevamos X de stream») los reparte un solo reloj: ver fixed-notices.js.
+// Cada uno es { kind, intervalMs, message() }; message() devuelve el texto o null si ahora no hay nada que decir.
+function fixedNoticeList(config) {
+  const follow = (config.timers || []).map((timer, index) => ({
+    kind: `follow${index}`,
+    intervalMs: timer.interval * 60 * 1000,
+    message: () => {
+      const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
+      lastMessages[index] = timer.message + suffix;
+      return lastMessages[index];
+    },
+  }));
+  return [
+    ...follow,
+    { kind: 'redes', intervalMs: redes.REMINDER_INTERVAL_MS, message: redesMessage },
+    {
+      kind: 'tiempo',
+      intervalMs: TIME_INTERVAL_MS,
+      message: () => {
+        const uptime = getStreamUptime();
+        return uptime ? `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜` : null;
+      },
+    },
+  ];
+}
+
+function checkFixedNotices(client, list, now = Date.now()) {
+  if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
+  const startedAt = getStreamStartedAt();
+  if (!startedAt || now - startedAt < MIN_UPTIME_MS) return;
+  const kind = nextFixedNotice({
+    now,
+    notices: list,
+    lastAt: (k) => getFactUse(useKey(k)).at,
+    startedAt,
+  });
+  const notice = list.find((n) => n.kind === kind);
+  const msg = notice?.message();
+  if (!msg) return;
+  markFactUse(useKey(kind), now); // desde aquí cuenta el hueco de 20 minutos, aunque el mensaje espere en la cola
   enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, truncate(msg))));
 }
 
@@ -252,57 +290,14 @@ async function runTimerIA(client) {
 }
 
 function start(client, config) {
-  if (!config.timers || config.timers.length === 0) return;
-
-  logger.info(`⏰ Timers iniciados (${config.timers.length} mensajes)`);
-  lastMessages = new Array(config.timers.length).fill('');
-
-  config.timers.forEach((timer, index) => {
-    const ref = setInterval(
-      withOrigin('timer', () => {
-        // Usar EventSub para saber si está en directo (fiable)
-        if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
-
-        const suffix = lastMessages[index] === timer.message ? ' ‎' : '';
-        const msg = timer.message + suffix;
-        lastMessages[index] = msg;
-        enqueueTimerMessage(withOrigin('timer', () => client.say(`#${process.env.CHANNEL}`, msg)));
-      }),
-      timer.interval * 60 * 1000,
-    );
-
-    timerRefs.push(ref);
-  });
-
-  // Timer de duración del stream cada 40 min — usa EventSub (fiable)
-  streamDurationInterval = setInterval(
-    withOrigin('timer', () => {
-      if (!isLiveViaEventSub() || isSilenced() || isReactive()) return;
-
-      const uptime = getStreamUptime();
-      const startedAt = getStreamStartedAt();
-      // Sin tiempo real de directo (p. ej. justo tras un despliegue) no hay nada que contar
-      if (!uptime || !startedAt || Date.now() - startedAt < MIN_UPTIME_MS) return;
-
-      enqueueTimerMessage(
-        withOrigin('timer', () =>
-          client.say(`#${process.env.CHANNEL}`, `⏱️ ¡Llevamos ${uptime} de stream! ¿Cómo lo estáis pasando? 💜`),
-        ),
-      );
-    }),
-    40 * 60 * 1000,
+  const list = fixedNoticeList(config || {});
+  lastMessages = new Array((config?.timers || []).length).fill('');
+  logger.info(`⏰ Avisos fijos iniciados (${list.length}: máx. uno cada 20 min)`);
+  fixedNoticeRef = setInterval(
+    withOrigin('timer', () => checkFixedNotices(client, list)),
+    CHECK_INTERVAL_MS,
   );
-
-  // Aviso de redes: desplazado media hora respecto al recordatorio del follow para que se alternen
-  redesOffsetRef = setTimeout(() => {
-    redesOffsetRef = null;
-    redesInterval = setInterval(
-      withOrigin('timer', () => sendRedesReminder(client)),
-      redes.REMINDER_INTERVAL_MS,
-    );
-    redesInterval.unref?.();
-  }, redes.REMINDER_OFFSET_MS);
-  redesOffsetRef.unref?.();
+  fixedNoticeRef.unref?.();
 
   // Timer IA: resumen de la última media hora. El código reúne lo que ha pasado (caídas, jefes, tema del chat) y la IA
   // lo cuenta con gracia en una frase. Si no ha pasado nada relevante, no se envía nada.
@@ -323,14 +318,9 @@ function stop() {
     clearTimeout(timerDrainRef);
     timerDrainRef = null;
   }
-  if (redesOffsetRef) clearTimeout(redesOffsetRef);
-  if (redesInterval) clearInterval(redesInterval);
-  redesOffsetRef = redesInterval = null;
-  if (streamDurationInterval) {
-    clearInterval(streamDurationInterval);
-    streamDurationInterval = null;
-  }
+  if (fixedNoticeRef) clearInterval(fixedNoticeRef);
+  fixedNoticeRef = null;
   logger.info('⏹️ Timers detenidos');
 }
 
-module.exports = { start, stop, enqueueTimerMessage, runTimerIA, sendRedesReminder };
+module.exports = { start, stop, enqueueTimerMessage, runTimerIA, checkFixedNotices, fixedNoticeList };

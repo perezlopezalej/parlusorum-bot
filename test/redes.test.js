@@ -93,9 +93,6 @@ describe('aviso periódico', () => {
     assert.equal(outboundBlock('timer', { silenced: true }), 'silencio');
     assert.equal(outboundBlock('timer', { reactive: true }), 'reactivo');
   });
-  test('se alterna con el follow: desfase de media hora', () => {
-    assert.equal(redes.REMINDER_OFFSET_MS * 2, redes.REMINDER_INTERVAL_MS);
-  });
 });
 
 describe('ayuda', () => {
