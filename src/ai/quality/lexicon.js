@@ -223,6 +223,15 @@ function isRobotRefusal(text) {
   return ROBOT_REFUSAL_RE.test(text);
 }
 
+// Repetición o reproche que el evento no trae (17-11: «@x vuelve a regalarle una sub a @y. Ya era hora de que repasara sus
+// deberes como habitual»): de una sub, un regalo o un agradecimiento no consta que sea «otra vez» ni se le pide nada a nadie.
+const REPEAT_CLAIM_RE =
+  /(?<![\p{L}\p{N}])(?:vuelv\p{L}*\s+a\s+\p{L}+|otra\s+(?:vez|sub)|de\s+nuevo|nuevamente|una\s+vez\s+m[aá]s|segunda\s+sub|como\s+(?:siempre|de\s+costumbre)|ya\s+era\s+hora|(?:repas|hac)\p{L}*\s+(?:sus|los)\s+deberes|deberes)(?![\p{L}\p{N}])/iu;
+function claimsRepeat(text) {
+  const m = REPEAT_CLAIM_RE.exec(String(text || ''));
+  return m ? m[0] : '';
+}
+
 function matchesFormula(text) {
   return FORMULAS.some((re) => re.test(text));
 }
@@ -687,6 +696,7 @@ module.exports = {
   ANGLICISM_REASON,
   isRobotRefusal,
   matchesFormula,
+  claimsRepeat,
   judgesChatMood,
   SPORTS_RE,
   fuaGender,

@@ -9,7 +9,12 @@ const { sanitizeForAI } = require('../utils/filter');
 const MIN_WINS = 2;
 
 // facts: [{ fact_type, value }]; nickname: apodo del lore manual o null; isAvoided: (texto) => bool
-function buildSubContext(username, facts, { nickname = null, isAvoided = () => false, rng = Math.random } = {}) {
+// gift: regalo (subgift/mysterygift); el dato es de quien regala y no incluye «habitual», que invitaba a reproches («ya era hora…»)
+function buildSubContext(
+  username,
+  facts,
+  { nickname = null, isAvoided = () => false, rng = Math.random, gift = false } = {},
+) {
   const byType = new Map((facts || []).map((f) => [f.fact_type, f.value]));
   const options = [];
 
@@ -21,7 +26,7 @@ function buildSubContext(username, facts, { nickname = null, isAvoided = () => f
   const wins = parseInt(byType.get('trivia_wins'), 10) || 0;
   if (wins >= MIN_WINS) options.push(`ha ganado ${wins} trivias del chat`);
 
-  if (byType.get('is_regular') === 'true') options.push('es habitual del canal, lleva tiempo por aquí');
+  if (!gift && byType.get('is_regular') === 'true') options.push('es habitual del canal, lleva tiempo por aquí');
 
   if (!options.length) return '';
   const chosen = options[Math.min(options.length - 1, Math.floor(rng() * options.length))];

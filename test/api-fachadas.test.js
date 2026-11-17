@@ -24,6 +24,7 @@ const QUALITY = [
   'claimsChannelOwner',
   'claimsChatActivity',
   'claimsEnemyKills',
+  'claimsRepeat',
   'cleanChatNoise',
   'closingMark',
   'completeGameTitle',
