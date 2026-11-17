@@ -357,6 +357,7 @@ async function runCohost(client, channel, moment = null) {
     const reviewData = () =>
       `Juego: ${game || 'desconocido'}. Muertes anotadas: ${deathCount}. ${gameFacts} Hechos del momento: ${momentFacts.map((f) => f.texto).join('. ')}.`;
     const validateCtx = {
+      minutes, // minutos reales de directo: el rato no se redondea hacia arriba («tres horas» con 2 h 41)
       player: getPlayer(),
       deathCount,
       recent: recentBot,

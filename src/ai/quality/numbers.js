@@ -278,7 +278,7 @@ function approxDuration(minutes) {
   const m = Math.max(0, Math.round(Number(minutes) || 0));
   if (m < 20) return 'un ratito';
   if (m < 40) return 'media hora';
-  if (m < 55) return 'casi una hora';
+  if (m < 60) return 'casi una hora';
   if (m < 70) return 'una hora';
   const h = Math.floor(m / 60);
   const rem = m - h * 60;
@@ -309,6 +309,40 @@ const STREAM_TIME_RE = new RegExp(
     ')(?![\\p{L}\\p{N}])',
   'iu',
 );
+// Horas de directo dichas de más (17-11: «Tres horas ya» con 2 h 41 min; había que decir «casi tres horas»). Lee «N horas»
+// (con «y media» suma 30 min) y compara con los minutos reales: «casi» siempre vale; sin él (o con «unas»/«cerca de») la cifra no
+// puede pasar de lo real en más de 10 min. «y pico» cuenta desde la hora redonda. → la expresión pasada de rosca, o ''.
+const HOURS_VALUE = {
+  una: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+  once: 11,
+  doce: 12,
+};
+const STATED_HOURS_RE = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(?:(casi|cerca de|unas?)\s+)?(${HOURS_WORD})\s+horas?(?![\p{L}\p{N}])(\s+y\s+(media|pico))?`,
+  'giu',
+);
+function roundsUpTime(text, minutes, toleranceMin = 10) {
+  if (!Number.isFinite(minutes)) return '';
+  for (const m of String(text || '').matchAll(STATED_HOURS_RE)) {
+    const [whole, qualifier, word, , tail] = m;
+    if (/^casi$/i.test(qualifier || '')) continue;
+    const hours = HOURS_VALUE[word.toLowerCase()] ?? Number(word);
+    if (!hours) continue;
+    const claimed = hours * 60 + (/^media$/i.test(tail || '') ? 30 : 0);
+    if (claimed > minutes + toleranceMin) return whole.trim();
+  }
+  return '';
+}
+
 function talksStreamTime(text) {
   return STREAM_TIME_RE.test(String(text || ''));
 }
@@ -347,6 +381,7 @@ module.exports = {
   citesDeathCount,
   exactMinutes,
   talksStreamTime,
+  roundsUpTime,
   citesViewers,
   achievesDeaths,
   approxDuration,

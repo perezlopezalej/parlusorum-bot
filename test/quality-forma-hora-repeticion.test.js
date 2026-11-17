@@ -535,3 +535,36 @@ describe('mayúsculas raras: los nombres propios y los nicks no cuentan', () => 
     assert.equal(q.validateMention(txt).ok, false);
   });
 });
+
+describe('el rato de directo no se redondea hacia arriba (17-11)', () => {
+  test('«Tres horas ya» con 2 h 41 min se rechaza; «casi tres horas» pasa', () => {
+    assert.equal(q.roundsUpTime('Tres horas ya y siguen como si fuera lunes, ¡fuerza Lusorums!', 161), 'Tres horas');
+    assert.equal(q.roundsUpTime('Casi tres horas ya y siguen como si fuera lunes.', 161), '');
+    assert.equal(q.roundsUpTime('Dos horas y media y siguen aquí.', 161), '');
+    assert.equal(q.roundsUpTime('Tres horas y media de directo.', 161), 'Tres horas y media');
+    assert.equal(q.roundsUpTime('Dos horas y pico, qué aguante.', 161), '');
+    assert.equal(q.roundsUpTime('Llevan 3 horas', 161), '3 horas');
+    assert.equal(q.roundsUpTime('Tres horas ya', 175), '', 'a menos de 10 min de la hora redonda no se marca');
+    assert.equal(q.roundsUpTime('Tres horas ya', null), '', 'sin minutos reales no se comprueba');
+  });
+  test('lo que escribe approxDuration nunca se pasa de lo real', () => {
+    for (let m = 0; m < 600; m++) {
+      const said = `Llevan ${q.approxDuration(m)} de directo`;
+      assert.equal(q.roundsUpTime(said, m), '', `${m} min → ${said}`);
+    }
+    assert.equal(q.approxDuration(161), 'casi tres horas');
+    assert.equal(q.approxDuration(57), 'casi una hora');
+  });
+  test('cohost y timer lo rechazan con los minutos reales', () => {
+    const t = 'Tres horas ya y siguen como si fuera lunes, ¡fuerza Lusorums!';
+    assert.equal(q.validateCohost(t, { deathCount: 0, minutes: 161 }).rule, 'tiempo_redondeado');
+    assert.equal(q.validateCohost(t, { deathCount: 0, minutes: 185 }).rule === 'tiempo_redondeado', false);
+    const timer = q.validateTimerIA('Tres horas ya y el chat sin una sola caída.', {
+      deathCount: 3,
+      minutes: 161,
+      currentGame: 'Control',
+    });
+    assert.match(timer.reason, /casi/);
+    assert.match(require('../src/ai/style').positiveFix('tiempo_redondeado'), /casi/);
+  });
+});

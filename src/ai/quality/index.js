@@ -78,6 +78,7 @@ const {
   wrongDayPart,
   exactMinutes,
   talksStreamTime,
+  roundsUpTime,
   approxDuration,
   citesViewers,
   citesWrongDeathCount,
@@ -315,6 +316,7 @@ module.exports = {
   refersToCurrentGame,
   asksPremise,
   talksStreamTime,
+  roundsUpTime,
   copiesExample,
   wornMould,
 };

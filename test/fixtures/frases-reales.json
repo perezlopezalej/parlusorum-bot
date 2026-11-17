@@ -1282,5 +1282,29 @@
     "expect": {
       "rejected": true
     }
+  },
+  {
+    "id": "f17-cohost-tres-horas",
+    "filter": "cohost",
+    "input": "Tres horas ya y siguen como si fuera lunes, ¡fuerza Lusorums! parlus1Kelokekelowa",
+    "game": "Control",
+    "deaths": 0,
+    "directoMinutes": 161,
+    "note": "Directo del 17-11 (14:46): 2 h 41 min redondeadas hacia arriba; debía decir «casi tres horas».",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f17-cohost-casi-tres-horas",
+    "filter": "cohost",
+    "input": "Casi tres horas ya y siguen como si fuera lunes, ¡fuerza Lusorums!",
+    "game": "Control",
+    "deaths": 0,
+    "directoMinutes": 161,
+    "note": "Directo del 17-11: con «casi» la misma frase pasa.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

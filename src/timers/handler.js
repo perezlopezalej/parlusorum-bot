@@ -229,6 +229,7 @@ async function runTimerIA(client) {
         chatLines,
         allowedWords: [system, summary, gameFacts],
         gameWords,
+        minutes: getStreamStartedAt() ? Math.floor((at - getStreamStartedAt()) / 60000) : null,
       });
       if (!check.ok) {
         recordFilterDiscard('timer_ia', String(check.reason).slice(0, 30));

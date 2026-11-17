@@ -118,6 +118,7 @@ const QUALITY = [
   'repeatsFormula',
   'repeatsYear',
   'reportFormat',
+  'roundsUpTime',
   'sameOpening',
   'selfHelp',
   'similarity',

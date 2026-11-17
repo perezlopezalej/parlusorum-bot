@@ -63,6 +63,7 @@ const {
   talksDeaths,
   againDeathWrong,
   talksStreamTime,
+  roundsUpTime,
   wrongDayPart,
   wrongWeekday,
 } = require('./numbers');
@@ -210,6 +211,9 @@ const EXACT_MINUTES_REASON =
 const VIEWERS_REASON =
   'cita una cifra de viewers; los de una raid son visitantes de otro canal, no los espectadores del canal';
 
+const ROUNDED_UP_TIME_REASON =
+  'dice más horas de las que lleva el directo; di el rato con «casi» o «y pico», sin redondear hacia arriba';
+
 // Validación del cohost. ctx: { deathCount, recent: string[], sameKind: string[], named: Map, now, nameWindowMs }
 // ctx.facts/hecho/giro: hechos del momento, el que declara el candidato y su giro (reglas `hecho` y `giro`).
 // ctx.chatLines/allowedWords/gameWords: regla `copia`. ctx.game/channelGames: sin nombrar otros juegos.
@@ -239,6 +243,7 @@ function validateCohost(
     allowedWords = [],
     gameWords = [],
     timeOffered = null,
+    minutes = null,
     deathsOffered = null,
     examples = [],
     placeRule = false,
@@ -289,6 +294,7 @@ function validateCohost(
       rule: 'tiempo',
       reason: 'habla del rato que llevan de directo, que no está entre los hechos; cuenta otro hecho de la lista',
     };
+  if (roundsUpTime(text, minutes)) return { ok: false, rule: 'tiempo_redondeado', reason: ROUNDED_UP_TIME_REASON };
   if (factFor(text, facts, hecho)?.tipo === 'pregunta' && !/\?/.test(text))
     return { ok: false, rule: 'pregunta', reason: 'el hecho pide una pregunta al chat y no es una pregunta' };
   const mould = wornMould(text);
@@ -486,9 +492,11 @@ function validateTimerIA(
     chatLines = [],
     allowedWords = [],
     gameWords = [],
+    minutes = null,
   } = {},
 ) {
   if (!text || text.length < 8) return { ok: false, reason: 'vacío o demasiado corto' };
+  if (roundsUpTime(text, minutes)) return { ok: false, reason: ROUNDED_UP_TIME_REASON };
   if (SPORTS_RE.test(text)) return { ok: false, reason: 'usa metáforas de comentarista deportivo' };
   if (hasLatam(text)) return { ok: false, reason: 'usa expresiones latinoamericanas; escribe español de España' };
   if (isRobotRefusal(text)) return { ok: false, reason: 'suena a rechazo de robot' };

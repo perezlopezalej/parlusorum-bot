@@ -58,6 +58,7 @@ function verdict(c) {
     // allowed: textos legítimos (hechos del momento): activa la regla `inventado`
     allowedWords: c.allowed || [],
     gameWords: gameVocabulary(c.game || ''),
+    minutes: c.directoMinutes ?? null, // minutos reales de directo: regla `tiempo_redondeado`
   };
   switch (c.filter) {
     case 'cohost':

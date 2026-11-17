@@ -466,6 +466,7 @@ const FIX_BY_RULE = {
   nombre: 'Habla al chat en general o de Manu.',
   estructura: 'Empieza por el FUA o por el chat con una idea nueva.',
   formula: 'Cambia de enfoque con una idea nueva.',
+  tiempo_redondeado: 'Di el rato de directo con «casi» o «y pico», tal como aparece en los hechos.',
   parecido: 'Cambia de enfoque con una idea nueva.',
   ambiente: 'Comenta algo concreto del directo con humor.',
   sentido: 'Una sola idea, palabras sencillas, que se entienda a la primera.',
