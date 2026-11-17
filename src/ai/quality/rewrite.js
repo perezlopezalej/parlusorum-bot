@@ -174,7 +174,7 @@ function fixMentions(text, names = []) {
       return close && close[1] <= 3 ? `@${close[0]}` : '';
     })
     .replace(/\s{2,}/g, ' ')
-    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/\s+([,.?]|!(?![\p{L}\p{N}_]))/gu, '$1') // no pega «!redes» a la palabra anterior
     .trim();
 }
 

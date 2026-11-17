@@ -15,7 +15,7 @@ function fill(text, vars = {}) {
   return String(text)
     .replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : ''))
     .replace(/ {2,}/g, ' ')
-    .replace(/ +([.,!?])/g, '$1')
+    .replace(/ +([.,?]|!(?![\p{L}\p{N}_]))/gu, '$1') // no pega «!redes» a la palabra anterior
     .trim();
 }
 
