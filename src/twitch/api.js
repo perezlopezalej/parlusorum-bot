@@ -1,7 +1,7 @@
 const channelConfig = require('../../config/channel.json');
 const logger = require('../utils/logger');
 const { classifyGameMatch } = require('../utils/game-match');
-const { searchGame: searchIgdb } = require('./igdb');
+const { searchGame: searchIgdb, validIgdbId } = require('./igdb');
 
 function getToken() {
   return (process.env.BROADCASTER_TOKEN || '').replace('oauth:', '');
@@ -198,11 +198,12 @@ async function getStreamInfo() {
           live: true,
           viewers: stream.viewer_count || 0,
           game: stream.game_name || null,
+          gameId: stream.game_id || null,
           title: stream.title || null,
           startedAt: stream.started_at || null,
           streamId: stream.id || null,
         }
-      : { live: false, viewers: 0, game: null, title: null, startedAt: null, streamId: null };
+      : { live: false, viewers: 0, game: null, gameId: null, title: null, startedAt: null, streamId: null };
 
     lastStreamCheck = now;
     return streamCache;
@@ -220,7 +221,7 @@ const GAME_CACHE_TTL = 3 * 60 * 1000;
 async function getCurrentGame() {
   const now = Date.now();
   if (streamCache?.live && streamCache?.game && now - lastStreamCheck < STREAM_CACHE_TTL) {
-    return { game: streamCache.game, title: streamCache.title };
+    return { game: streamCache.game, title: streamCache.title, gameId: streamCache.gameId || null };
   }
   if (currentGameCache && now - lastGameCheck < GAME_CACHE_TTL) {
     return currentGameCache;
@@ -233,12 +234,15 @@ async function getCurrentGame() {
     const channel = data.data?.[0];
 
     if (channel) {
-      currentGameCache = { game: channel.game_name || null, title: channel.title || null };
+      currentGameCache = {
+        game: channel.game_name || null,
+        title: channel.title || null,
+        gameId: channel.game_id || null,
+      };
       if (currentGameCache.game) {
         logger.info(`🎮 Juego actual: ${currentGameCache.game}`);
         // Ficha precalentada (con detalle): si las fuentes caen después, el juego actual sigue respondiendo
-        if (!gameInfoCache.has(`${currentGameCache.game}|detail`))
-          lookupGameInfo(currentGameCache.game, { detail: true }).catch(() => {});
+        lookupGameInfo(currentGameCache.game, { detail: true }).catch(() => {});
       }
     }
     lastGameCheck = now;
@@ -275,7 +279,54 @@ async function createClip() {
 const GAME_INFO_TTL = 24 * 60 * 60 * 1000;
 // La ficha del juego actual del stream dura más: así las fuentes caídas no dejan sin datos al juego que se está jugando
 const CURRENT_GAME_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
-const gameInfoCache = new Map(); // valores: { data, ts, ttl }
+const gameInfoCache = new Map(); // valores: { data, ts, ttl }; clave: nombre, o `igdb:<id>` cuando se conoce el id de IGDB
+
+// id de IGDB de cada categoría de Twitch (game_id → igdb_id): Helix lo da en GET /games. Los juegos no cambian de id, así que
+// dura mucho; una categoría sin juego enlazado (id vacío) se reintenta antes.
+const IGDB_ID_TTL = 7 * 24 * 60 * 60 * 1000;
+const IGDB_ID_MISS_TTL = 60 * 60 * 1000;
+const igdbIdCache = new Map(); // game_id → { id, ts }
+const igdbIdCleanupInterval = setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, c] of igdbIdCache)
+      if (now - c.ts > (c.id ? IGDB_ID_TTL : IGDB_ID_MISS_TTL)) igdbIdCache.delete(key);
+  },
+  6 * 60 * 60 * 1000,
+);
+igdbIdCleanupInterval.unref();
+
+// → id de IGDB de la categoría de Twitch, o null (sin enlace o Helix no responde: se busca por nombre).
+// Las consultas simultáneas de la misma categoría comparten una sola petición.
+const igdbIdInFlight = new Map();
+function getIgdbIdForGame(gameId) {
+  if (!gameId) return Promise.resolve(null);
+  const key = String(gameId);
+  const cached = igdbIdCache.get(key);
+  if (cached && Date.now() - cached.ts <= (cached.id ? IGDB_ID_TTL : IGDB_ID_MISS_TTL))
+    return Promise.resolve(cached.id);
+  if (!igdbIdInFlight.has(key)) {
+    const run = (async () => {
+      try {
+        const res = await helixFetch(`https://api.twitch.tv/helix/games?id=${encodeURIComponent(key)}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const id = validIgdbId(data.data?.[0]?.igdb_id);
+        igdbIdCache.set(key, { id, ts: Date.now() });
+        return id;
+      } catch (e) {
+        logger.warn(`No se pudo obtener el igdb_id de la categoría ${key}: ${e.message}`);
+        return null;
+      } finally {
+        igdbIdInFlight.delete(key);
+      }
+    })();
+    igdbIdInFlight.set(key, run);
+  }
+  return igdbIdInFlight.get(key);
+}
+
+const infoKey = (name, detail, igdbId) => `${igdbId ? `igdb:${igdbId}` : name}${detail ? '|detail' : ''}`;
 
 // Purga entradas expiradas cada 6h para evitar memory leak de juegos que ya no se streamean
 const gameCacheCleanupInterval = setInterval(
@@ -292,17 +343,20 @@ gameCacheCleanupInterval.unref();
 // detail=true recorta la descripción a 600 en vez de 300 (solo !dios_fua y la trivia lo usan).
 // { info, error }: error=true solo si IGDB no pudo responder (5xx, timeout, respuesta ilegible);
 // "no encontrado" es info null con error false.
+// igdbId: el juego exacto de IGDB. Si no se pasa y el nombre es el del juego actual del stream, se toma el igdb_id de su
+// categoría de Twitch; la búsqueda por nombre queda de respaldo. La caché es por id cuando se conoce.
 // Si IGDB falla, sirve la ficha en caché aunque haya caducado.
-async function lookupGameInfo(gameName, { detail = false } = {}) {
+async function lookupGameInfo(gameName, { detail = false, igdbId } = {}) {
   if (!gameName) return { info: null, error: false };
-  const cacheKey = detail ? `${gameName}|detail` : gameName;
+  const id = validIgdbId(igdbId !== undefined ? igdbId : await currentIgdbIdFor(gameName));
+  const cacheKey = infoKey(gameName, detail, id);
   const cached = gameInfoCache.get(cacheKey);
   if (cached && Date.now() - cached.ts <= (cached.ttl || GAME_INFO_TTL)) return { info: cached.data, error: false };
 
   let info = null;
   let answered = false;
   try {
-    info = await searchIgdb(gameName, { detail });
+    info = await searchIgdb(gameName, { detail, igdbId: id });
     answered = true;
   } catch (e) {
     logger.error(`Error IGDB: ${e.message}`);
@@ -323,22 +377,43 @@ async function lookupGameInfo(gameName, { detail = false } = {}) {
   if (answered) return { info: null, error: false };
   // Caducada o la ficha del juego actual (el nombre buscado puede ser una variante): mejor eso que nada
   if (cached) return { info: cached.data, error: false };
-  const stale = staleCurrentGame(gameName, detail);
+  const stale = staleCurrentGame(gameName, detail, id);
   return stale ? { info: stale, error: false } : { info: null, error: true };
 }
 
-// Nombre del juego actual del stream según las cachés de Helix (sin llamar a la API)
+// Juego actual del stream según las cachés de Helix (sin llamar a la API): { name, gameId } o null
+function currentGame() {
+  if (streamCache?.live && streamCache?.game) return { name: streamCache.game, gameId: streamCache.gameId || null };
+  if (currentGameCache?.game) return { name: currentGameCache.game, gameId: currentGameCache.gameId || null };
+  return null;
+}
+
 function currentGameName() {
-  return (streamCache?.live && streamCache?.game) || currentGameCache?.game || null;
+  return currentGame()?.name || null;
+}
+
+// igdb_id de la categoría actual si el nombre buscado es exactamente el del juego actual; null si no
+async function currentIgdbIdFor(gameName) {
+  const current = currentGame();
+  if (!current?.gameId || current.name.toLowerCase() !== String(gameName).toLowerCase()) return null;
+  return getIgdbIdForGame(current.gameId);
 }
 
 // Ficha en caché del juego actual si el nombre buscado es ese juego (p. ej. "phantom blade 0")
-function staleCurrentGame(query, detail) {
+function staleCurrentGame(query, detail, igdbId = null) {
   const current = currentGameName();
   if (!current || classifyGameMatch(query, current) !== 'match') return null;
-  return (
-    (gameInfoCache.get(detail ? `${current}|detail` : current) || gameInfoCache.get(`${current}|detail`))?.data || null
-  );
+  const keys = [
+    infoKey(current, detail, igdbId),
+    infoKey(current, true, igdbId),
+    infoKey(current, detail),
+    infoKey(current, true),
+  ];
+  for (const key of keys) {
+    const hit = gameInfoCache.get(key);
+    if (hit) return hit.data;
+  }
+  return null;
 }
 
 async function getGameInfo(gameName, opts) {
@@ -424,6 +499,7 @@ module.exports = {
   createStreamMarker,
   getGameInfo,
   lookupGameInfo,
+  getIgdbIdForGame,
   getFollowerCount,
   getChannelInfo,
   getUserIdByLogin,

@@ -445,7 +445,8 @@ function rankCandidates(candidates, { validate, recent = [], groupOf = null }) {
 // --- Reintentos: solo la corrección, en positivo ---
 const FIX_BY_RULE = {
   vacio: 'Escribe una frase completa con una ocurrencia propia de Dios Fua.',
-  latam: 'Escríbelo como lo diría alguien de Madrid; al chat se le habla de vosotros («creéis», «queréis»).',
+  latam:
+    'Escríbelo como lo diría alguien de Madrid; al chat se le habla de vosotros («creéis», «queréis», «preparaos», «mirad», «fijaos»).',
   robot: 'Responde con una ocurrencia propia de Dios Fua.',
   muertes: 'Habla de la partida y del chat, sin cifras de caídas.',
   cifra_caidas: 'Si hablas de las caídas del streamer, usa solo la cifra que aparece en los hechos.',

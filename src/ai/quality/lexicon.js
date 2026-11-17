@@ -149,9 +149,60 @@ const USTEDES_VERB_RE = new RegExp(
     ')(?![\\p{L}\\p{N}])',
   'iu',
 );
+// Imperativos de «ustedes» (17-11: «¡prepárense que el FUA está a punto de explotar!»; en España: «preparaos», «mirad»).
+// Con enclítico y acento («prepárense», «fíjense», «mírenlo», «díganme») no hay lectura de tercera persona: siempre cuentan.
+const ENCLITIC_IMPERATIVE_RE =
+  /(?<![\p{L}\p{N}])\p{L}*[áéíóú]\p{L}*?(?:en|an)(?:se|selo|sela|selos|selas|lo|la|los|las|me|nos)(?![\p{L}\p{N}])/iu;
+// Sueltos («miren», «vean»…) valen como imperativo solo al abrir frase («¡Miren cómo cae!»), tras un conector corto o un vocativo
+const BARE_IMPERATIVES = [
+  'miren',
+  'vean',
+  'oigan',
+  'escuchen',
+  'presten',
+  'esperen',
+  'dejen',
+  'vengan',
+  'vayan',
+  'sigan',
+  'pongan',
+  'digan',
+  'sepan',
+  'tomen',
+  'pasen',
+  'entren',
+  'ayuden',
+  'cuiden',
+  'apoyen',
+  'aguanten',
+  'aprovechen',
+  'disfruten',
+  'celebren',
+  'aplaudan',
+  'griten',
+  'escriban',
+  'comenten',
+  'atiendan',
+  'recuerden',
+  'imaginen',
+  'animen',
+];
+const BARE_IMPERATIVE_START_RE = new RegExp(
+  '^[\\s¡¿"“«(\\-—]*(?:(?:y|pero|ahora|venga|vamos|todos|a ver|bueno|chat|lusorums?|gente)\\s*,?\\s+)?(?:' +
+    BARE_IMPERATIVES.join('|') +
+    ')(?![\\p{L}\\p{N}])',
+  'iu',
+);
+
 function ustedesForm(text) {
   const t = String(text || '');
   if (/(?<![\p{L}\p{N}])ustedes(?![\p{L}\p{N}])/iu.test(t)) return 'ustedes';
+  const enclitic = ENCLITIC_IMPERATIVE_RE.exec(t);
+  if (enclitic) return enclitic[0];
+  for (const sentence of t.split(/(?<=[.!?…])\s+/)) {
+    const bare = BARE_IMPERATIVE_START_RE.exec(sentence);
+    if (bare) return bare[0].trim();
+  }
   for (const sentence of t.split(/(?<=[.!?…])\s+/)) {
     if (!CHAT_ADDRESS_START_RE.test(sentence) && !CHAT_ADDRESS_END_RE.test(sentence)) continue;
     const m = USTEDES_VERB_RE.exec(sentence);

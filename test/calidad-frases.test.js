@@ -60,6 +60,29 @@ describe('estilo y español de España', () => {
     }
     assert.equal(q.hasLatam('Vamos con todo, tíos.'), false);
   });
+  test('imperativos de ustedes al chat: prepárense, fíjense, miren, vean (17-11)', () => {
+    for (const t of [
+      '¡Prepárense que el FUA está a punto de explotar!',
+      'Fíjense cómo se levanta Manu.',
+      '¡Miren cómo cae el jefe!',
+      'Vean esto, que no pasa todos los días.',
+      'Y mírenlo, ahí sigue.',
+      'Chat, esperen un momento.',
+      'Agárrense, que viene curva.',
+    ]) {
+      assert.equal(q.hasLatam(t), true, t);
+    }
+    for (const t of [
+      '¡Preparaos que el FUA está a punto de explotar!',
+      'Fijaos cómo se levanta Manu.',
+      '¡Mirad cómo cae el jefe!',
+      'Los jugadores miran el mapa y ven un camino nuevo.',
+      'Manu se prepara y el chat mira con calma.',
+      'Si lo miran bien, se entiende.',
+    ]) {
+      assert.equal(q.hasLatam(t), false, t);
+    }
+  });
   test('"el FUA" va en masculino', () => {
     assert.equal(q.styleProblem('La FUA ha hablado hoy.').rule, 'fua');
     assert.equal(q.styleProblem('El FUA ha hablado hoy.'), null);

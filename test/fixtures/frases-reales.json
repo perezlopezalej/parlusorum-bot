@@ -1248,5 +1248,27 @@
     "expect": {
       "rejected": false
     }
+  },
+  {
+    "id": "f17-cohost-prepárense",
+    "filter": "cohost",
+    "input": "Manu en Control y ya está piloteando la nave del caos, ¡prepárense que el FUA está a punto de explotar! parlus1PORELPODERDELFUAAAAA",
+    "game": "Control",
+    "deaths": 0,
+    "note": "Directo del 17-11: imperativo de ustedes (prepárense) al chat; en España es «preparaos».",
+    "expect": {
+      "rejected": true
+    }
+  },
+  {
+    "id": "f17-cohost-preparaos",
+    "filter": "cohost",
+    "input": "Manu sigue con Control y el FUA ya tiene el mando en la mano, ¡preparaos que esto se anima!",
+    "game": "Control",
+    "deaths": 0,
+    "note": "Directo del 17-11: la misma frase con vosotros pasa la regla latam.",
+    "expect": {
+      "rejected": false
+    }
   }
 ]

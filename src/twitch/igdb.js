@@ -228,9 +228,27 @@ async function searchOnce(query) {
   return best;
 }
 
+// id de IGDB válido (entero positivo) o null: Twitch devuelve "" o "0" en las categorías sin juego enlazado
+function validIgdbId(id) {
+  const n = Number(id);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+// Un juego concreto por su id de IGDB (el `igdb_id` de la categoría de Twitch): sin búsqueda por nombre, así que no puede
+// salir otro juego con el mismo título (17-11: «Control» de Remedy 2019 devolvió otro «Control»). → info | null.
+async function fetchGameById(igdbId, { detail = false } = {}) {
+  const id = validIgdbId(igdbId);
+  if (!id) return null;
+  const game = (await igdbQuery(`fields ${FIELDS}; where id = ${id}; limit 1;`))[0];
+  return game ? mapGame(game, detail) : null;
+}
+
 // → info | null (no encontrado). Lanza si IGDB falla (HTTP, timeout, token, formato).
+// Con `igdbId` pide exactamente ese juego; la búsqueda por nombre queda de respaldo si el id no existe en IGDB.
 // Si la primera búsqueda no da una coincidencia clara se reintenta con los números normalizados y se queda con la mejor.
-async function searchGame(name, { detail = false } = {}) {
+async function searchGame(name, { detail = false, igdbId = null } = {}) {
+  const byId = await fetchGameById(igdbId, { detail });
+  if (byId) return byId;
   const query = String(name).replace(/[\\"]/g, ' ').trim();
   if (!query) return null;
   let best = await searchOnce(query);
@@ -254,4 +272,14 @@ async function searchGame(name, { detail = false } = {}) {
   return mapGame(best, detail);
 }
 
-module.exports = { searchGame, mapGame, pickBest, nameVariants, countryName, ATTRIBUTION, MIN_GAP_MS };
+module.exports = {
+  searchGame,
+  fetchGameById,
+  validIgdbId,
+  mapGame,
+  pickBest,
+  nameVariants,
+  countryName,
+  ATTRIBUTION,
+  MIN_GAP_MS,
+};
